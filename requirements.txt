@@ -1,0 +1,9 @@
+# SRK (Rikai Kotoba) Dependencies
+
+# Core binary parsing and formatting
+rich>=13.0.0      # For gorgeous, readable CLI outputs and progress bars
+
+# Optional / Future Localization Extensions
+# (Uncomment as we build out text injection/repacking tools)
+# pyyaml>=6.0
+# jinja2>=3.1.0
