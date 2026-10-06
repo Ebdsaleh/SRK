@@ -123,11 +123,11 @@ class MjolnirTests(unittest.TestCase):
 
     def test_numbered_backup_uses_first_available_count(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
+            output = os.path.join(temp_dir, "SAMPLE.DAT.hex")
             for name in (
-                "GOUMA.CHR.hex",
-                "GOUMA.CHR(1).hex",
-                "GOUMA.CHR(2).hex",
+                "SAMPLE.DAT.hex",
+                "SAMPLE.DAT(1).hex",
+                "SAMPLE.DAT(2).hex",
             ):
                 with open(
                     os.path.join(temp_dir, name),
@@ -138,12 +138,12 @@ class MjolnirTests(unittest.TestCase):
 
             self.assertEqual(
                 _next_numbered_backup_path(output),
-                os.path.join(temp_dir, "GOUMA.CHR(3).hex"),
+                os.path.join(temp_dir, "SAMPLE.DAT(3).hex"),
             )
 
     def test_conflict_cancel_preserves_existing_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
+            output = os.path.join(temp_dir, "SAMPLE.DAT.hex")
             with open(output, "w", encoding="utf-8") as handle:
                 handle.write("old")
 
@@ -160,7 +160,7 @@ class MjolnirTests(unittest.TestCase):
 
     def test_conflict_empty_input_defaults_to_cancel(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
+            output = os.path.join(temp_dir, "SAMPLE.DAT.hex")
             with open(output, "w", encoding="utf-8") as handle:
                 handle.write("old")
 
@@ -177,8 +177,8 @@ class MjolnirTests(unittest.TestCase):
 
     def test_conflict_auto_rename_preserves_old_and_writes_new(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
-            existing_backup = os.path.join(temp_dir, "GOUMA.CHR(1).hex")
+            output = os.path.join(temp_dir, "SAMPLE.DAT.hex")
+            existing_backup = os.path.join(temp_dir, "SAMPLE.DAT(1).hex")
             with open(output, "w", encoding="utf-8") as handle:
                 handle.write("old")
             with open(existing_backup, "w", encoding="utf-8") as handle:
@@ -191,7 +191,7 @@ class MjolnirTests(unittest.TestCase):
                 print_func=lambda _message: None,
             )
 
-            expected_backup = os.path.join(temp_dir, "GOUMA.CHR(2).hex")
+            expected_backup = os.path.join(temp_dir, "SAMPLE.DAT(2).hex")
             self.assertEqual(result.action, "renamed_existing")
             self.assertEqual(result.backup_path, expected_backup)
             with open(output, "r", encoding="utf-8") as handle:
@@ -203,7 +203,7 @@ class MjolnirTests(unittest.TestCase):
 
     def test_conflict_overwrite_replaces_existing_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
+            output = os.path.join(temp_dir, "SAMPLE.DAT.hex")
             with open(output, "w", encoding="utf-8") as handle:
                 handle.write("old")
 
@@ -221,7 +221,7 @@ class MjolnirTests(unittest.TestCase):
 
     def test_auto_rename_rolls_back_if_final_placement_fails(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
+            output = os.path.join(temp_dir, "SAMPLE.DAT.hex")
             with open(output, "w", encoding="utf-8") as handle:
                 handle.write("old")
 
@@ -240,7 +240,7 @@ class MjolnirTests(unittest.TestCase):
             with open(output, "r", encoding="utf-8") as handle:
                 self.assertEqual(handle.read(), "old")
             self.assertFalse(
-                os.path.exists(os.path.join(temp_dir, "GOUMA.CHR(1).hex"))
+                os.path.exists(os.path.join(temp_dir, "SAMPLE.DAT(1).hex"))
             )
 
 

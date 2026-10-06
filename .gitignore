@@ -1,29 +1,47 @@
-# Python bytecode & cache
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Virtual environments
 .venv/
-env/
 venv/
+env/
 
-# Local build artifacts & temporary dumps
+# Build and packaging artifacts
 build/
 dist/
 *.egg-info/
-extracted_files/
-*.bin
-*.iso
-*.cue
 
-# Local game images and extracted game data
+# Local workspaces and generated output
+workspace/
 iso/
+images/
 extracted_output/
 extracted_files/
+private_research/
 
-/Devil Summoner - Soul Hackers*/
+# Optical-disc media and binary dumps
+*.bin
+*.iso
+*.img
+*.raw
+*.cue
+*.chd
+*.ccd
+*.sub
+*.mds
+*.mdf
 
 # Generated research artifacts
 *.hex
 *-dump.zip
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,25 +1,30 @@
-"""Mjolnir: interactive SRK disc/hex research utility.
+"""Mjolnir: interactive, game-agnostic SRK disc and hex research utility.
 
-This is the cleaned successor to the original ``hexdump.py`` experiment. It
-keeps the useful interactive workflow while delegating disc geometry, CUE
-mapping, ISO-9660 parsing, and safe extraction to SRK core modules.
+Mjolnir delegates disc geometry, CUE mapping, ISO-9660 parsing, extraction, and
+hex formatting to SRK core modules. Input media is always opened read-only.
 
-Run from the project root with:
+Examples after installing SRK::
 
-    set PYTHONPATH=src
-    python -m rikai_kotoba.tools.mjolnir
+    srk-mjolnir /path/to/disc.cue
+    srk-mjolnir /path/to/disc-images --output-dir /path/to/workspace
+
+With no source argument, Mjolnir searches the current working directory when
+option 0 is selected. No repository-relative game or image path is assumed.
 """
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 import os
 import shutil
 import tempfile
 from typing import Callable, List, Optional, Sequence, Tuple
 
-from rikai_kotoba.core.cue_disc import CueDisc, parse_cue
-from rikai_kotoba.core.disc_image import DiscImage
+from rikai_kotoba.core.disc_source import (
+    discover_disc_candidates,
+    open_disc_source,
+)
 from rikai_kotoba.core.hex_dump import iter_hexdump_lines, write_hexdump
 from rikai_kotoba.core.iso9660 import ISO9660Entry, ISO9660Reader
 from rikai_kotoba.core.safe_extractor import ExtractionReport, ISOExtractor
@@ -44,68 +49,11 @@ class OutputWriteResult:
     backup_path: Optional[str] = None
 
 
-def _canonical(path: os.PathLike[str] | str) -> str:
-    return os.path.normcase(os.path.realpath(os.path.abspath(os.fspath(path))))
-
-
-def discover_disc_candidates(
-    iso_dir: os.PathLike[str] | str,
-) -> List[str]:
-    """Return CUE sheets plus standalone images not already owned by a CUE.
-
-    When both ``game.cue`` and its ``Track 1.bin`` / ``Track 2.bin`` files are
-    present, the CUE is the meaningful whole-disc object and the referenced
-    track files are suppressed from the selection list.
-    """
-
-    root = os.path.abspath(os.fspath(iso_dir))
-    if not os.path.isdir(root):
-        return []
-
-    cues: List[str] = []
-    standalones: List[str] = []
-    for current_root, _dirs, files in os.walk(root):
-        for name in files:
-            path = os.path.join(current_root, name)
-            suffix = os.path.splitext(name)[1].lower()
-            if suffix == ".cue":
-                cues.append(path)
-            elif suffix in (".bin", ".img", ".iso", ".raw"):
-                standalones.append(path)
-
-    cues.sort(key=str.casefold)
-    standalones.sort(key=str.casefold)
-
-    referenced: set[str] = set()
-    for cue in cues:
-        try:
-            tracks = parse_cue(cue)
-        except Exception:
-            continue
-        cue_dir = os.path.dirname(cue)
-        for track in tracks:
-            target = track.file_name
-            if not os.path.isabs(target):
-                target = os.path.join(cue_dir, target)
-            referenced.add(_canonical(target))
-
-    return cues + [
-        path for path in standalones if _canonical(path) not in referenced
-    ]
-
-
 def open_disc(path: os.PathLike[str] | str) -> DiscSession:
-    """Open a CUE-backed or standalone data image as a read-only SRK session."""
+    """Open a supported disc source as a read-only Mjolnir session."""
 
     source_path = os.path.abspath(os.fspath(path))
-    if not os.path.isfile(source_path):
-        raise FileNotFoundError(f"Disc image not found: {source_path}")
-
-    if os.path.splitext(source_path)[1].lower() == ".cue":
-        source = CueDisc(source_path)
-    else:
-        source = DiscImage(source_path)
-
+    source = open_disc_source(source_path)
     reader = ISO9660Reader(source)
     entries = list(reader.walk())
     return DiscSession(
@@ -116,6 +64,22 @@ def open_disc(path: os.PathLike[str] | str) -> DiscSession:
         entries=entries,
         base_name=os.path.splitext(os.path.basename(source_path))[0],
     )
+
+
+def _resolve_startup_source(
+    source_path: Optional[os.PathLike[str] | str],
+) -> Tuple[str, Optional[DiscSession]]:
+    """Resolve a CLI source into an image-search root and optional open session."""
+
+    if source_path is None:
+        return os.path.abspath(os.getcwd()), None
+
+    path = os.path.abspath(os.fspath(source_path))
+    if os.path.isdir(path):
+        return path, None
+    if os.path.isfile(path):
+        return os.path.dirname(path), open_disc(path)
+    raise FileNotFoundError(f"Input path not found: {path}")
 
 
 def _non_directory_entries(
@@ -300,14 +264,7 @@ def _write_with_conflict_resolution(
     input_func: Callable[[str], str] = input,
     print_func: Callable[[str], None] = print,
 ) -> OutputWriteResult:
-    """Write a file with Mjolnir's interactive three-way conflict policy.
-
-    The reusable writer remains strict by default. Mjolnir only enables
-    overwrite after explicit user selection. Auto-rename is transactional:
-    the new output is completely generated in a temporary sibling first, then
-    the old canonical file is moved to the first available ``(n)`` name. If
-    final placement fails, the old canonical file is restored.
-    """
+    """Write a file with Mjolnir's Cancel/Rename/Overwrite policy."""
 
     path = os.path.abspath(os.fspath(output_path))
     if not os.path.exists(path):
@@ -321,7 +278,6 @@ def _write_with_conflict_resolution(
     )
     if decision == "cancel":
         return OutputWriteResult(path, "cancelled")
-
     if decision == "overwrite":
         created = writer(path, True)
         return OutputWriteResult(created, "overwritten")
@@ -341,18 +297,14 @@ def _write_with_conflict_resolution(
     old_file_moved = False
     try:
         writer(temp_path, True)
-
         backup_path = _next_numbered_backup_path(path)
-        if os.path.exists(backup_path):
-            backup_path = _next_numbered_backup_path(path)
-
         os.rename(path, backup_path)
         old_file_moved = True
 
         try:
             os.replace(temp_path, path)
         except Exception:
-            if not os.path.exists(path) and os.path.exists(backup_path):
+            if not os.path.exists(path) and backup_path and os.path.exists(backup_path):
                 os.rename(backup_path, path)
                 old_file_moved = False
             raise
@@ -376,13 +328,7 @@ def _write_directory_with_conflict_resolution(
     input_func: Callable[[str], str] = input,
     print_func: Callable[[str], None] = print,
 ) -> Tuple[OutputWriteResult, Optional[ExtractionReport]]:
-    """Build a directory with the same Cancel/Rename/Overwrite policy.
-
-    Existing directories are never merged. For Rename and Overwrite, the new
-    directory is fully built in a temporary sibling first. The existing output
-    is moved only after that build succeeds, and placement failures roll back
-    to the previous canonical directory.
-    """
+    """Build a directory with the same Cancel/Rename/Overwrite policy."""
 
     path = os.path.abspath(os.fspath(output_path))
     parent = os.path.dirname(path)
@@ -405,12 +351,12 @@ def _write_directory_with_conflict_resolution(
         prefix=".srk-mjolnir-directory-",
         dir=parent or None,
     )
-    report: Optional[ExtractionReport] = None
     try:
         report = builder(temp_path)
 
         if decision == "rename":
             backup_path = _next_numbered_backup_path(path)
+            old_output_moved = False
             os.rename(path, backup_path)
             old_output_moved = True
             try:
@@ -435,6 +381,7 @@ def _write_directory_with_conflict_resolution(
             dir=parent or None,
         )
         os.rmdir(old_backup)
+        old_output_moved = False
         os.rename(path, old_backup)
         old_output_moved = True
         try:
@@ -450,24 +397,12 @@ def _write_directory_with_conflict_resolution(
                     os.rename(old_backup, path)
 
         if os.path.exists(old_backup):
-            if os.path.isdir(old_backup):
-                shutil.rmtree(old_backup, ignore_errors=True)
-            else:
-                try:
-                    os.remove(old_backup)
-                except OSError:
-                    pass
+            shutil.rmtree(old_backup, ignore_errors=True)
 
         return OutputWriteResult(path, "overwritten"), report
     finally:
         if os.path.exists(temp_path):
-            if os.path.isdir(temp_path):
-                shutil.rmtree(temp_path, ignore_errors=True)
-            else:
-                try:
-                    os.remove(temp_path)
-                except OSError:
-                    pass
+            shutil.rmtree(temp_path, ignore_errors=True)
 
 
 def _write_filesystem_hex_blob(
@@ -476,12 +411,7 @@ def _write_filesystem_hex_blob(
     *,
     overwrite: bool = False,
 ) -> str:
-    """Write one text blob containing each readable ISO file as hex.
-
-    Files whose extents cannot be represented as ISO user data (for example an
-    audio-track pseudo-file) are recorded as explicit diagnostics instead of
-    being written as empty data.
-    """
+    """Write one text blob containing each readable ISO file as hex."""
 
     path = os.path.abspath(os.fspath(output_path))
     parent = os.path.dirname(path)
@@ -514,12 +444,16 @@ def _write_filesystem_hex_blob(
     return path
 
 
-def _structured_output_root(project_root: str, base_name: str) -> str:
-    return os.path.join(project_root, "extracted_output", base_name)
+def _structured_output_root(workspace_root: str, base_name: str) -> str:
+    return os.path.join(workspace_root, "extracted_output", base_name)
 
 
-def _portable_zip_output_path(project_root: str, base_name: str) -> str:
-    return os.path.join(project_root, "extracted_output", f"{base_name}-dump.zip")
+def _portable_zip_output_path(workspace_root: str, base_name: str) -> str:
+    return os.path.join(
+        workspace_root,
+        "extracted_output",
+        f"{base_name}-dump.zip",
+    )
 
 
 def _write_portable_zip(
@@ -581,7 +515,7 @@ def _menu_option_lines(
     session: Optional[DiscSession],
     active_file: Optional[Tuple[str, ISO9660Entry]],
 ) -> List[str]:
-    """Return menu labels that preview the outputs Mjolnir will actually write."""
+    """Return menu labels previewing the outputs Mjolnir will write."""
 
     if session is None:
         file_hex = "<filename>.hex"
@@ -620,13 +554,49 @@ def _print_output_write_result(result: OutputWriteResult) -> None:
         print(f"[!] Existing output overwritten: {result.output_path}")
 
 
-def main() -> None:
-    project_root = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "..")
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="srk-mjolnir",
+        description="Interactive read-only disc explorer and hex research utility",
     )
-    iso_dir = os.path.join(project_root, "iso")
+    parser.add_argument(
+        "source",
+        nargs="?",
+        help=(
+            "Disc image/CUE to open immediately, or a directory to search. "
+            "Defaults to the current working directory."
+        ),
+    )
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        default=".",
+        help=(
+            "Workspace root for generated HEX files and extracted_output/. "
+            "Defaults to the current working directory."
+        ),
+    )
+    return parser
 
-    session: Optional[DiscSession] = None
+
+def _display_candidate(path: str, search_root: str) -> str:
+    try:
+        return os.path.relpath(path, search_root)
+    except ValueError:
+        return path
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    workspace_root = os.path.abspath(os.fspath(args.output_dir))
+    os.makedirs(workspace_root, exist_ok=True)
+
+    try:
+        search_root, session = _resolve_startup_source(args.source)
+    except Exception as exc:
+        print(f"[-] Unable to use input source: {type(exc).__name__}: {exc}")
+        return 2
+
     active_file: Optional[Tuple[str, ISO9660Entry]] = None
 
     while True:
@@ -647,23 +617,34 @@ def main() -> None:
             print(menu_line)
         print("-" * 64)
 
-        choice = input("Select an option [0-8]: ").strip()
+        try:
+            choice = input("Select an option [0-8]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n[+] Exiting Mjolnir.")
+            return 0
 
         if choice == "8":
             print("[+] Exiting Mjolnir.")
-            break
+            return 0
 
         if choice == "0":
-            candidates = discover_disc_candidates(iso_dir)
+            candidates = discover_disc_candidates(search_root)
             if not candidates:
-                print(f"[-] No supported disc images found beneath: {iso_dir}")
+                print(
+                    "[-] No supported disc images found beneath: "
+                    f"{search_root}"
+                )
+                print(
+                    "    Restart Mjolnir with an image file or search directory, "
+                    "for example: srk-mjolnir /path/to/images"
+                )
                 continue
 
             print("\n[+] Available disc images:")
             for index, candidate in enumerate(candidates):
                 print(
                     f"    [{index}] "
-                    f"{os.path.relpath(candidate, project_root)}"
+                    f"{_display_candidate(candidate, search_root)}"
                 )
 
             selected = input(
@@ -720,7 +701,7 @@ def main() -> None:
             iso_path, entry = active_file
             try:
                 data = session.reader.read_file(entry)
-                output = os.path.join(project_root, f"{entry.name}.hex")
+                output = os.path.join(workspace_root, f"{entry.name}.hex")
                 result = _write_with_conflict_resolution(
                     output,
                     lambda path, overwrite: write_hexdump(
@@ -737,10 +718,7 @@ def main() -> None:
                     print(f"[+] Dumped {iso_path} to {result.output_path}")
 
         elif choice == "5":
-            output = os.path.join(
-                project_root,
-                f"{session.base_name}.hex",
-            )
+            output = os.path.join(workspace_root, f"{session.base_name}.hex")
             try:
                 result = _write_with_conflict_resolution(
                     output,
@@ -762,7 +740,7 @@ def main() -> None:
 
         elif choice == "6":
             output_root = _structured_output_root(
-                project_root,
+                workspace_root,
                 session.base_name,
             )
             try:
@@ -787,7 +765,7 @@ def main() -> None:
 
         elif choice == "7":
             output = _portable_zip_output_path(
-                project_root,
+                workspace_root,
                 session.base_name,
             )
             report_holder: List[ExtractionReport] = []
@@ -802,10 +780,7 @@ def main() -> None:
                 return created
 
             try:
-                result = _write_with_conflict_resolution(
-                    output,
-                    write_zip,
-                )
+                result = _write_with_conflict_resolution(output, write_zip)
             except Exception as exc:
                 print(
                     f"[-] Portable dump failed: "
@@ -826,4 +801,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

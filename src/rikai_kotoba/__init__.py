@@ -1,6 +1,3 @@
-# src/rikai_kotoba/__init__.py
-"""
-SRK (Rikai Kotoba) - Retro Game Localization & Reverse Engineering Toolkit.
-"""
+"""SRK (Salix Rikai Kotoba) retro localization and reverse-engineering toolkit."""
 
 __version__ = "0.1.0"
