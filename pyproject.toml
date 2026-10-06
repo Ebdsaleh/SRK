@@ -15,6 +15,7 @@ authors = [
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
+  "Environment :: Win32 (MS Windows)",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
@@ -25,13 +26,16 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dependencies = []
+dependencies = [
+  "dearpygui>=2.2.0",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
 srk = "rikai_kotoba.cli:main"
+srk-gui = "rikai_kotoba.desktop:main"
 srk-mjolnir = "rikai_kotoba.tools.mjolnir:main"
 
 [tool.setuptools.dynamic]
