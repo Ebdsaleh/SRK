@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import os
 import shutil
 import tempfile
-from typing import List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from rikai_kotoba.core.cue_disc import CueDisc, parse_cue
 from rikai_kotoba.core.disc_image import DiscImage
@@ -33,6 +33,15 @@ class DiscSession:
     extractor: ISOExtractor
     entries: List[Tuple[str, ISO9660Entry]]
     base_name: str
+
+
+@dataclass(frozen=True)
+class OutputWriteResult:
+    """Result of an interactive Mjolnir output-write decision."""
+
+    output_path: str
+    action: str
+    backup_path: Optional[str] = None
 
 
 def _canonical(path: os.PathLike[str] | str) -> str:
@@ -237,9 +246,129 @@ def _report_summary(report: ExtractionReport) -> None:
                 )
 
 
+def _next_numbered_backup_path(
+    output_path: os.PathLike[str] | str,
+) -> str:
+    """Return the first unused ``name(n).ext`` sibling for ``output_path``."""
+
+    path = os.path.abspath(os.fspath(output_path))
+    stem, extension = os.path.splitext(path)
+    index = 1
+    while True:
+        candidate = f"{stem}({index}){extension}"
+        if not os.path.exists(candidate):
+            return candidate
+        index += 1
+
+
+def _prompt_existing_output(
+    output_path: str,
+    *,
+    input_func: Callable[[str], str] = input,
+    print_func: Callable[[str], None] = print,
+) -> str:
+    """Ask how Mjolnir should handle an existing output file."""
+
+    print_func("\n[!] Output file already exists:")
+    print_func(f"    {output_path}")
+    print_func("")
+    print_func("Choose an action:")
+    print_func("    1. Cancel")
+    print_func("    2. Auto-rename existing file")
+    print_func("    3. Overwrite")
+
+    while True:
+        choice = input_func("Select [1-3] (default 1): ").strip().lower()
+        if choice in ("", "1", "cancel", "c"):
+            return "cancel"
+        if choice in ("2", "rename", "r"):
+            return "rename"
+        if choice in ("3", "overwrite", "o"):
+            return "overwrite"
+        print_func("[-] Invalid selection. Choose 1, 2, or 3.")
+
+
+def _write_with_conflict_resolution(
+    output_path: os.PathLike[str] | str,
+    writer: Callable[[str, bool], str],
+    *,
+    input_func: Callable[[str], str] = input,
+    print_func: Callable[[str], None] = print,
+) -> OutputWriteResult:
+    """Write an output with Mjolnir's interactive three-way conflict policy.
+
+    The reusable writer remains strict by default. Mjolnir only enables
+    overwrite after explicit user selection. Auto-rename is transactional:
+    the new output is completely generated in a temporary sibling first, then
+    the old canonical file is moved to the first available ``(n)`` name. If
+    final placement fails, the old canonical file is restored.
+    """
+
+    path = os.path.abspath(os.fspath(output_path))
+    if not os.path.exists(path):
+        created = writer(path, False)
+        return OutputWriteResult(created, "created")
+
+    decision = _prompt_existing_output(
+        path,
+        input_func=input_func,
+        print_func=print_func,
+    )
+    if decision == "cancel":
+        return OutputWriteResult(path, "cancelled")
+
+    if decision == "overwrite":
+        created = writer(path, True)
+        return OutputWriteResult(created, "overwritten")
+
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    fd, temp_path = tempfile.mkstemp(
+        prefix=".srk-mjolnir-hex-",
+        suffix=".tmp",
+        dir=parent or None,
+    )
+    os.close(fd)
+
+    backup_path: Optional[str] = None
+    old_file_moved = False
+    try:
+        writer(temp_path, True)
+
+        backup_path = _next_numbered_backup_path(path)
+        if os.path.exists(backup_path):
+            backup_path = _next_numbered_backup_path(path)
+
+        os.rename(path, backup_path)
+        old_file_moved = True
+
+        try:
+            os.replace(temp_path, path)
+        except Exception:
+            if not os.path.exists(path) and os.path.exists(backup_path):
+                os.rename(backup_path, path)
+                old_file_moved = False
+            raise
+
+        return OutputWriteResult(path, "renamed_existing", backup_path)
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        if old_file_moved and not os.path.exists(path) and backup_path:
+            if os.path.exists(backup_path):
+                os.rename(backup_path, path)
+
+
 def _write_filesystem_hex_blob(
     session: DiscSession,
     output_path: os.PathLike[str] | str,
+    *,
+    overwrite: bool = False,
 ) -> str:
     """Write one text blob containing each readable ISO file as hex.
 
@@ -253,7 +382,8 @@ def _write_filesystem_hex_blob(
     if parent:
         os.makedirs(parent, exist_ok=True)
 
-    with open(path, "x", encoding="utf-8", newline="\n") as handle:
+    mode = "w" if overwrite else "x"
+    with open(path, mode, encoding="utf-8", newline="\n") as handle:
         for iso_path, entry in session.entries:
             if entry.is_dir:
                 continue
@@ -306,6 +436,15 @@ def _create_portable_zip(
         created = shutil.make_archive(archive_base, "zip", temp_dir)
 
     return created, report
+
+
+def _print_hex_write_result(result: OutputWriteResult) -> None:
+    if result.action == "cancelled":
+        print("[+] Cancelled. Existing file left unchanged.")
+    elif result.action == "renamed_existing":
+        print(f"[+] Preserved existing file as: {result.backup_path}")
+    elif result.action == "overwritten":
+        print(f"[!] Existing file overwritten: {result.output_path}")
 
 
 def main() -> None:
@@ -416,24 +555,44 @@ def main() -> None:
             try:
                 data = session.reader.read_file(entry)
                 output = os.path.join(project_root, f"{entry.name}.hex")
-                created = write_hexdump(data, output, overwrite=False)
+                result = _write_with_conflict_resolution(
+                    output,
+                    lambda path, overwrite: write_hexdump(
+                        data,
+                        path,
+                        overwrite=overwrite,
+                    ),
+                )
             except Exception as exc:
                 print(f"[-] Hex dump failed: {type(exc).__name__}: {exc}")
             else:
-                print(f"[+] Dumped {iso_path} to {created}")
+                _print_hex_write_result(result)
+                if result.action != "cancelled":
+                    print(f"[+] Dumped {iso_path} to {result.output_path}")
 
         elif choice == "5":
             output = os.path.join(
                 project_root,
                 f"{session.base_name}.hex",
             )
-            print(f"[+] Generating filesystem hex blob: {output}")
             try:
-                created = _write_filesystem_hex_blob(session, output)
+                result = _write_with_conflict_resolution(
+                    output,
+                    lambda path, overwrite: _write_filesystem_hex_blob(
+                        session,
+                        path,
+                        overwrite=overwrite,
+                    ),
+                )
             except Exception as exc:
                 print(f"[-] Hex blob failed: {type(exc).__name__}: {exc}")
             else:
-                print(f"[+] Complete hex blob saved to {created}")
+                _print_hex_write_result(result)
+                if result.action != "cancelled":
+                    print(
+                        f"[+] Complete hex blob saved to "
+                        f"{result.output_path}"
+                    )
 
         elif choice == "6":
             output_root = _structured_output_root(
