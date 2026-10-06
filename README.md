@@ -1,6 +1,6 @@
 # SRK — Salix Rikai Kotoba
 
-SRK is a modular retro-disc localization and reverse-engineering toolkit written in Python. The project begins with Sega Saturn support, while keeping the core disc, ISO-9660, extraction, and hex tooling platform- and game-agnostic.
+SRK is a modular retro-disc localization and reverse-engineering toolkit written in Python. The project begins with Sega Saturn support, while keeping the core disc, ISO-9660, extraction, hex, application, and runtime layers platform- and game-agnostic.
 
 SRK is currently alpha software. The public repository intentionally contains no game-specific offsets, patches, extracted game data, or disc images.
 
@@ -12,6 +12,8 @@ SRK is currently alpha software. The public repository intentionally contains no
 - Surface unsupported/non-data extents explicitly instead of silently creating partial or zero-byte output.
 - Keep platform-specific format knowledge separate from generic disc infrastructure.
 - Keep title-specific research outside the reusable public core.
+- Keep application/runtime logic independent of the GUI toolkit.
+- Keep Dear PyGui on the main thread and route background results through explicit worker events.
 
 ## Current capabilities
 
@@ -29,6 +31,19 @@ SRK is currently alpha software. The public repository intentionally contains no
 
 - Saturn `IP.BIN` boot-header inspection from logical LBA 0.
 - Saturn-specific code lives under `rikai_kotoba.formats.saturn` rather than in the generic core.
+- `hardware/saturn/saroo/` is reserved for generic original-hardware capture/debug tooling.
+
+### Desktop application
+
+SRK includes a Dear PyGui desktop shell built around backend-neutral runtime/application contracts:
+
+- **Disc Workspace** — open and index a CUE or standalone disc without blocking the UI thread;
+- **Saturn / SAROO** — presentation shell for the upcoming flight-recorder/capture toolchain;
+- **Diagnostics** — runtime state, worker-pool state, queue depth, and UI error-log location.
+
+Dear PyGui 2.2+ manual callback management is enabled so toolkit callbacks, worker-event delivery, scene updates, and rendering are serialized on the same owner thread. Background workers never manipulate Dear PyGui widgets directly.
+
+See [`docs/DESKTOP-ARCHITECTURE.md`](docs/DESKTOP-ARCHITECTURE.md).
 
 ### Mjolnir
 
@@ -66,18 +81,35 @@ For the optional pytest development dependency:
 python -m pip install -e .[dev]
 ```
 
-The package installs two console commands:
+The package installs three console commands:
 
 ```text
 srk
+srk-gui
 srk-mjolnir
 ```
 
-You can also run the package directly:
+You can also run the CLI package directly:
 
 ```bash
 python -m rikai_kotoba
 ```
+
+## Desktop examples
+
+Launch the desktop shell:
+
+```bash
+srk-gui
+```
+
+Open one disc after startup and choose a separate output workspace:
+
+```bash
+srk-gui /path/to/disc.cue --output-dir /path/to/SRK-Workspace/Output
+```
+
+The GUI never requires images to live inside the Git repository. Use the Disc Workspace file chooser to select media from any location.
 
 ## CLI examples
 
@@ -148,6 +180,7 @@ Future patch/rebuild tooling must create a separate output image and preserve th
 ```text
 rikai_kotoba/
 ├── cli.py
+├── desktop.py
 ├── core/
 │   ├── disc_source.py
 │   ├── disc_image.py
@@ -155,6 +188,24 @@ rikai_kotoba/
 │   ├── iso9660.py
 │   ├── safe_extractor.py
 │   └── hex_dump.py
+├── application/
+│   ├── controller.py
+│   └── disc_workspace.py
+├── runtime/
+│   ├── application.py
+│   ├── lifecycle.py
+│   ├── workers.py
+│   ├── scenes.py
+│   ├── diagnostics.py
+│   └── paths.py
+├── engine/
+│   ├── gui_engine.py
+│   └── scene_host.py
+├── views/
+│   ├── main_viewport.py
+│   ├── disc_workspace.py
+│   ├── saroo.py
+│   └── diagnostics.py
 ├── formats/
 │   └── saturn/
 │       └── ip_bin.py
@@ -165,7 +216,7 @@ rikai_kotoba/
         └── saroo/
 ```
 
-The `hardware/saturn/saroo/` namespace is reserved for upcoming original-hardware development/debug tooling. Hardware tooling is intended to remain generic; title-specific addresses and experimental research do not belong in the reusable core.
+Dependency direction is deliberate: core/domain code does not import Dear PyGui. GUI callbacks submit application work; background jobs publish immutable events; those events are consumed by the application runtime on the Dear PyGui owner thread before the live widget tree is updated.
 
 ## Testing
 
@@ -182,6 +233,8 @@ Or, with development extras installed:
 ```bash
 pytest
 ```
+
+Architecture tests explicitly guard the rule that `core`, `application`, and `runtime` do not import Dear PyGui.
 
 ## Current CUE limitations
 
