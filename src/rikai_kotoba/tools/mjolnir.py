@@ -577,6 +577,40 @@ def _write_portable_zip(
     return path, report
 
 
+def _menu_option_lines(
+    session: Optional[DiscSession],
+    active_file: Optional[Tuple[str, ISO9660Entry]],
+) -> List[str]:
+    """Return menu labels that preview the outputs Mjolnir will actually write."""
+
+    if session is None:
+        file_hex = "<filename>.hex"
+        image_hex = "<imagefilename>.hex"
+        structured = "extracted_output/<image>/"
+        portable = "extracted_output/<image>-dump.zip"
+    else:
+        file_hex = (
+            f"{active_file[1].name}.hex"
+            if active_file is not None
+            else "<filename>.hex"
+        )
+        image_hex = f"{session.base_name}.hex"
+        structured = f"extracted_output/{session.base_name}/"
+        portable = f"extracted_output/{session.base_name}-dump.zip"
+
+    return [
+        "0. Select image",
+        "1. Deselect image",
+        "2. Scan image (list available files)",
+        "3. Select target file",
+        f"4. Dump active file to hex file ({file_hex})",
+        f"5. Dump filesystem to one hex blob ({image_hex})",
+        f"6. Structured image dump ({structured})",
+        f"7. Portable structured dump ({portable})",
+        "8. Exit",
+    ]
+
+
 def _print_output_write_result(result: OutputWriteResult) -> None:
     if result.action == "cancelled":
         print("[+] Cancelled. Existing output left unchanged.")
@@ -609,15 +643,8 @@ def main() -> None:
         print(f"Active Image: {active_display}")
         print(f"Active File:  {file_display}")
         print("-" * 64)
-        print("0. Select image")
-        print("1. Deselect image")
-        print("2. Scan image (list available files)")
-        print("3. Select target file")
-        print("4. Dump active file to hex file (<filename>.hex)")
-        print("5. Dump filesystem to one hex blob (<imagefilename>.hex)")
-        print("6. Structured image dump (extracted_output/<image>/)")
-        print("7. Portable structured dump (extracted_output/<image>-dump.zip)")
-        print("8. Exit")
+        for menu_line in _menu_option_lines(session, active_file):
+            print(menu_line)
         print("-" * 64)
 
         choice = input("Select an option [0-8]: ").strip()
