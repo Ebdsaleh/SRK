@@ -3,8 +3,14 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from rikai_kotoba.tools.mjolnir import discover_disc_candidates, open_disc
+from rikai_kotoba.tools.mjolnir import (
+    _next_numbered_backup_path,
+    _write_with_conflict_resolution,
+    discover_disc_candidates,
+    open_disc,
+)
 
 
 SECTOR = 2048
@@ -66,6 +72,16 @@ def _make_iso2048(path):
         handle.write(image)
 
 
+def _writer_for(payload):
+    def writer(path, overwrite):
+        mode = "w" if overwrite else "x"
+        with open(path, mode, encoding="utf-8") as handle:
+            handle.write(payload)
+        return os.path.abspath(path)
+
+    return writer
+
+
 class MjolnirTests(unittest.TestCase):
     def test_disc_discovery_prefers_cue_over_referenced_tracks(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -104,6 +120,128 @@ class MjolnirTests(unittest.TestCase):
             self.assertEqual(session.entries[0][0], "/HELLO.TXT")
             self.assertEqual(session.reader.read_file("/HELLO.TXT"), b"hello")
             self.assertEqual(session.base_name, "sample")
+
+    def test_numbered_backup_uses_first_available_count(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
+            for name in (
+                "GOUMA.CHR.hex",
+                "GOUMA.CHR(1).hex",
+                "GOUMA.CHR(2).hex",
+            ):
+                with open(
+                    os.path.join(temp_dir, name),
+                    "w",
+                    encoding="utf-8",
+                ) as handle:
+                    handle.write(name)
+
+            self.assertEqual(
+                _next_numbered_backup_path(output),
+                os.path.join(temp_dir, "GOUMA.CHR(3).hex"),
+            )
+
+    def test_conflict_cancel_preserves_existing_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
+            with open(output, "w", encoding="utf-8") as handle:
+                handle.write("old")
+
+            result = _write_with_conflict_resolution(
+                output,
+                _writer_for("new"),
+                input_func=lambda _prompt: "1",
+                print_func=lambda _message: None,
+            )
+
+            self.assertEqual(result.action, "cancelled")
+            with open(output, "r", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "old")
+
+    def test_conflict_empty_input_defaults_to_cancel(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
+            with open(output, "w", encoding="utf-8") as handle:
+                handle.write("old")
+
+            result = _write_with_conflict_resolution(
+                output,
+                _writer_for("new"),
+                input_func=lambda _prompt: "",
+                print_func=lambda _message: None,
+            )
+
+            self.assertEqual(result.action, "cancelled")
+            with open(output, "r", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "old")
+
+    def test_conflict_auto_rename_preserves_old_and_writes_new(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
+            existing_backup = os.path.join(temp_dir, "GOUMA.CHR(1).hex")
+            with open(output, "w", encoding="utf-8") as handle:
+                handle.write("old")
+            with open(existing_backup, "w", encoding="utf-8") as handle:
+                handle.write("older")
+
+            result = _write_with_conflict_resolution(
+                output,
+                _writer_for("new"),
+                input_func=lambda _prompt: "2",
+                print_func=lambda _message: None,
+            )
+
+            expected_backup = os.path.join(temp_dir, "GOUMA.CHR(2).hex")
+            self.assertEqual(result.action, "renamed_existing")
+            self.assertEqual(result.backup_path, expected_backup)
+            with open(output, "r", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "new")
+            with open(existing_backup, "r", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "older")
+            with open(expected_backup, "r", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "old")
+
+    def test_conflict_overwrite_replaces_existing_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
+            with open(output, "w", encoding="utf-8") as handle:
+                handle.write("old")
+
+            result = _write_with_conflict_resolution(
+                output,
+                _writer_for("new"),
+                input_func=lambda _prompt: "3",
+                print_func=lambda _message: None,
+            )
+
+            self.assertEqual(result.action, "overwritten")
+            self.assertIsNone(result.backup_path)
+            with open(output, "r", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "new")
+
+    def test_auto_rename_rolls_back_if_final_placement_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = os.path.join(temp_dir, "GOUMA.CHR.hex")
+            with open(output, "w", encoding="utf-8") as handle:
+                handle.write("old")
+
+            with patch(
+                "rikai_kotoba.tools.mjolnir.os.replace",
+                side_effect=OSError("simulated placement failure"),
+            ):
+                with self.assertRaises(OSError):
+                    _write_with_conflict_resolution(
+                        output,
+                        _writer_for("new"),
+                        input_func=lambda _prompt: "2",
+                        print_func=lambda _message: None,
+                    )
+
+            with open(output, "r", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "old")
+            self.assertFalse(
+                os.path.exists(os.path.join(temp_dir, "GOUMA.CHR(1).hex"))
+            )
 
 
 if __name__ == "__main__":
