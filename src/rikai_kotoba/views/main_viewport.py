@@ -42,25 +42,31 @@ class MainViewport:
             with dpg.menu(label="File"):
                 dpg.add_menu_item(
                     label="Open Disc Image...",
-                    callback=lambda: self.disc_view.show_source_dialog(),
+                    callback=lambda *_args: self.disc_view.show_source_dialog(),
                 )
                 dpg.add_separator()
-                dpg.add_menu_item(label="Exit", callback=lambda: self.engine.request_stop())
+                dpg.add_menu_item(
+                    label="Exit",
+                    callback=lambda *_args: self.engine.request_stop(),
+                )
             with dpg.menu(label="View"):
                 dpg.add_menu_item(
                     label="Disc Workspace",
-                    callback=lambda: self.engine.switch_scene("disc"),
+                    callback=lambda *_args: self.engine.switch_scene("disc"),
                 )
                 dpg.add_menu_item(
                     label="Saturn / SAROO",
-                    callback=lambda: self.engine.switch_scene("saroo"),
+                    callback=lambda *_args: self.engine.switch_scene("saroo"),
                 )
                 dpg.add_menu_item(
                     label="Diagnostics",
-                    callback=lambda: self.engine.switch_scene("diagnostics"),
+                    callback=lambda *_args: self.engine.switch_scene("diagnostics"),
                 )
             with dpg.menu(label="Help"):
-                dpg.add_menu_item(label="About SRK", callback=lambda: self._show_about())
+                dpg.add_menu_item(
+                    label="About SRK",
+                    callback=lambda *_args: self._show_about(),
+                )
 
     def _build(self) -> None:
         with dpg.window(
@@ -75,15 +81,15 @@ class MainViewport:
                 dpg.add_spacer(width=20)
                 dpg.add_button(
                     label="Disc Workspace",
-                    callback=lambda: self.engine.switch_scene("disc"),
+                    callback=lambda *_args: self.engine.switch_scene("disc"),
                 )
                 dpg.add_button(
                     label="Saturn / SAROO",
-                    callback=lambda: self.engine.switch_scene("saroo"),
+                    callback=lambda *_args: self.engine.switch_scene("saroo"),
                 )
                 dpg.add_button(
                     label="Diagnostics",
-                    callback=lambda: self.engine.switch_scene("diagnostics"),
+                    callback=lambda *_args: self.engine.switch_scene("diagnostics"),
                 )
             dpg.add_separator()
 
@@ -142,7 +148,9 @@ class MainViewport:
             dpg.add_spacer(height=8)
             dpg.add_button(
                 label="Close",
-                callback=lambda: dpg.configure_item("srk_about_window", show=False),
+                callback=lambda *_args: dpg.configure_item(
+                    "srk_about_window", show=False
+                ),
             )
 
         dpg.set_primary_window("srk_primary_window", True)
