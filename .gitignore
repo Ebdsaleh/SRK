@@ -16,3 +16,14 @@ extracted_files/
 *.bin
 *.iso
 *.cue
+
+# Local game images and extracted game data
+iso/
+extracted_output/
+extracted_files/
+
+/Devil Summoner - Soul Hackers*/
+
+# Generated research artifacts
+*.hex
+*-dump.zip
