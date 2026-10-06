@@ -1,5 +1,6 @@
-# SRK has no third-party runtime dependencies.
-#
+# SRK desktop runtime
+dearpygui>=2.2.0
+
 # Recommended editable install:
 #   python -m pip install -e .
 #
