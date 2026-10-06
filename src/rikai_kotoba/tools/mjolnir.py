@@ -1,6 +1,6 @@
 """Mjolnir: interactive SRK disc/hex research utility.
 
-This is the cleaned successor to the original ``hexdump.py`` experiment.  It
+This is the cleaned successor to the original ``hexdump.py`` experiment. It
 keeps the useful interactive workflow while delegating disc geometry, CUE
 mapping, ISO-9660 parsing, and safe extraction to SRK core modules.
 
@@ -249,10 +249,14 @@ def _report_summary(report: ExtractionReport) -> None:
 def _next_numbered_backup_path(
     output_path: os.PathLike[str] | str,
 ) -> str:
-    """Return the first unused ``name(n).ext`` sibling for ``output_path``."""
+    """Return the first unused ``name(n).ext`` sibling for an output path."""
 
     path = os.path.abspath(os.fspath(output_path))
-    stem, extension = os.path.splitext(path)
+    if os.path.isdir(path):
+        stem, extension = path, ""
+    else:
+        stem, extension = os.path.splitext(path)
+
     index = 1
     while True:
         candidate = f"{stem}({index}){extension}"
@@ -267,14 +271,15 @@ def _prompt_existing_output(
     input_func: Callable[[str], str] = input,
     print_func: Callable[[str], None] = print,
 ) -> str:
-    """Ask how Mjolnir should handle an existing output file."""
+    """Ask how Mjolnir should handle an existing output path."""
 
-    print_func("\n[!] Output file already exists:")
+    kind = "directory" if os.path.isdir(output_path) else "file"
+    print_func(f"\n[!] Output {kind} already exists:")
     print_func(f"    {output_path}")
     print_func("")
     print_func("Choose an action:")
     print_func("    1. Cancel")
-    print_func("    2. Auto-rename existing file")
+    print_func(f"    2. Auto-rename existing {kind}")
     print_func("    3. Overwrite")
 
     while True:
@@ -295,7 +300,7 @@ def _write_with_conflict_resolution(
     input_func: Callable[[str], str] = input,
     print_func: Callable[[str], None] = print,
 ) -> OutputWriteResult:
-    """Write an output with Mjolnir's interactive three-way conflict policy.
+    """Write a file with Mjolnir's interactive three-way conflict policy.
 
     The reusable writer remains strict by default. Mjolnir only enables
     overwrite after explicit user selection. Auto-rename is transactional:
@@ -326,7 +331,7 @@ def _write_with_conflict_resolution(
         os.makedirs(parent, exist_ok=True)
 
     fd, temp_path = tempfile.mkstemp(
-        prefix=".srk-mjolnir-hex-",
+        prefix=".srk-mjolnir-output-",
         suffix=".tmp",
         dir=parent or None,
     )
@@ -362,6 +367,107 @@ def _write_with_conflict_resolution(
         if old_file_moved and not os.path.exists(path) and backup_path:
             if os.path.exists(backup_path):
                 os.rename(backup_path, path)
+
+
+def _write_directory_with_conflict_resolution(
+    output_path: os.PathLike[str] | str,
+    builder: Callable[[str], ExtractionReport],
+    *,
+    input_func: Callable[[str], str] = input,
+    print_func: Callable[[str], None] = print,
+) -> Tuple[OutputWriteResult, Optional[ExtractionReport]]:
+    """Build a directory with the same Cancel/Rename/Overwrite policy.
+
+    Existing directories are never merged. For Rename and Overwrite, the new
+    directory is fully built in a temporary sibling first. The existing output
+    is moved only after that build succeeds, and placement failures roll back
+    to the previous canonical directory.
+    """
+
+    path = os.path.abspath(os.fspath(output_path))
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    if not os.path.exists(path):
+        report = builder(path)
+        return OutputWriteResult(path, "created"), report
+
+    decision = _prompt_existing_output(
+        path,
+        input_func=input_func,
+        print_func=print_func,
+    )
+    if decision == "cancel":
+        return OutputWriteResult(path, "cancelled"), None
+
+    temp_path = tempfile.mkdtemp(
+        prefix=".srk-mjolnir-directory-",
+        dir=parent or None,
+    )
+    report: Optional[ExtractionReport] = None
+    try:
+        report = builder(temp_path)
+
+        if decision == "rename":
+            backup_path = _next_numbered_backup_path(path)
+            os.rename(path, backup_path)
+            old_output_moved = True
+            try:
+                os.rename(temp_path, path)
+            except Exception:
+                if not os.path.exists(path) and os.path.exists(backup_path):
+                    os.rename(backup_path, path)
+                    old_output_moved = False
+                raise
+            finally:
+                if old_output_moved and not os.path.exists(path):
+                    if os.path.exists(backup_path):
+                        os.rename(backup_path, path)
+
+            return (
+                OutputWriteResult(path, "renamed_existing", backup_path),
+                report,
+            )
+
+        old_backup = tempfile.mkdtemp(
+            prefix=".srk-mjolnir-old-directory-",
+            dir=parent or None,
+        )
+        os.rmdir(old_backup)
+        os.rename(path, old_backup)
+        old_output_moved = True
+        try:
+            os.rename(temp_path, path)
+        except Exception:
+            if not os.path.exists(path) and os.path.exists(old_backup):
+                os.rename(old_backup, path)
+                old_output_moved = False
+            raise
+        finally:
+            if old_output_moved and not os.path.exists(path):
+                if os.path.exists(old_backup):
+                    os.rename(old_backup, path)
+
+        if os.path.exists(old_backup):
+            if os.path.isdir(old_backup):
+                shutil.rmtree(old_backup, ignore_errors=True)
+            else:
+                try:
+                    os.remove(old_backup)
+                except OSError:
+                    pass
+
+        return OutputWriteResult(path, "overwritten"), report
+    finally:
+        if os.path.exists(temp_path):
+            if os.path.isdir(temp_path):
+                shutil.rmtree(temp_path, ignore_errors=True)
+            else:
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
 
 
 def _write_filesystem_hex_blob(
@@ -412,39 +518,72 @@ def _structured_output_root(project_root: str, base_name: str) -> str:
     return os.path.join(project_root, "extracted_output", base_name)
 
 
-def _create_portable_zip(
-    session: DiscSession,
-    project_root: str,
-) -> Tuple[str, ExtractionReport]:
-    output_dir = os.path.join(project_root, "extracted_output")
-    os.makedirs(output_dir, exist_ok=True)
+def _portable_zip_output_path(project_root: str, base_name: str) -> str:
+    return os.path.join(project_root, "extracted_output", f"{base_name}-dump.zip")
 
-    zip_path = os.path.join(output_dir, f"{session.base_name}-dump.zip")
-    if os.path.exists(zip_path):
-        raise FileExistsError(f"Output already exists: {zip_path}")
+
+def _write_portable_zip(
+    session: DiscSession,
+    output_path: os.PathLike[str] | str,
+    *,
+    overwrite: bool = False,
+) -> Tuple[str, ExtractionReport]:
+    """Build a portable ZIP completely before publishing it to ``output_path``."""
+
+    path = os.path.abspath(os.fspath(output_path))
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    if os.path.exists(path) and not overwrite:
+        raise FileExistsError(f"Output already exists: {path}")
 
     with tempfile.TemporaryDirectory(
-        prefix=".srk-mjolnir-",
-        dir=output_dir,
+        prefix=".srk-mjolnir-extract-",
+        dir=parent or None,
     ) as temp_dir:
         report = session.extractor.extract_all(
             temp_dir,
             overwrite=False,
             continue_on_error=True,
         )
-        archive_base = os.path.splitext(zip_path)[0]
-        created = shutil.make_archive(archive_base, "zip", temp_dir)
 
-    return created, report
+        fd, archive_stub = tempfile.mkstemp(
+            prefix=".srk-mjolnir-archive-",
+            dir=parent or None,
+        )
+        os.close(fd)
+        os.remove(archive_stub)
+        created_archive = ""
+        try:
+            created_archive = shutil.make_archive(
+                archive_stub,
+                "zip",
+                temp_dir,
+            )
+            if os.path.exists(path):
+                if not overwrite:
+                    raise FileExistsError(f"Output already exists: {path}")
+                os.replace(created_archive, path)
+            else:
+                os.rename(created_archive, path)
+        finally:
+            if created_archive and os.path.exists(created_archive):
+                try:
+                    os.remove(created_archive)
+                except OSError:
+                    pass
+
+    return path, report
 
 
-def _print_hex_write_result(result: OutputWriteResult) -> None:
+def _print_output_write_result(result: OutputWriteResult) -> None:
     if result.action == "cancelled":
-        print("[+] Cancelled. Existing file left unchanged.")
+        print("[+] Cancelled. Existing output left unchanged.")
     elif result.action == "renamed_existing":
-        print(f"[+] Preserved existing file as: {result.backup_path}")
+        print(f"[+] Preserved existing output as: {result.backup_path}")
     elif result.action == "overwritten":
-        print(f"[!] Existing file overwritten: {result.output_path}")
+        print(f"[!] Existing output overwritten: {result.output_path}")
 
 
 def main() -> None:
@@ -566,7 +705,7 @@ def main() -> None:
             except Exception as exc:
                 print(f"[-] Hex dump failed: {type(exc).__name__}: {exc}")
             else:
-                _print_hex_write_result(result)
+                _print_output_write_result(result)
                 if result.action != "cancelled":
                     print(f"[+] Dumped {iso_path} to {result.output_path}")
 
@@ -587,7 +726,7 @@ def main() -> None:
             except Exception as exc:
                 print(f"[-] Hex blob failed: {type(exc).__name__}: {exc}")
             else:
-                _print_hex_write_result(result)
+                _print_output_write_result(result)
                 if result.action != "cancelled":
                     print(
                         f"[+] Complete hex blob saved to "
@@ -599,12 +738,14 @@ def main() -> None:
                 project_root,
                 session.base_name,
             )
-            print(f"[+] Extracting safely into: {output_root}")
             try:
-                report = session.extractor.extract_all(
+                result, report = _write_directory_with_conflict_resolution(
                     output_root,
-                    overwrite=False,
-                    continue_on_error=True,
+                    lambda path: session.extractor.extract_all(
+                        path,
+                        overwrite=False,
+                        continue_on_error=True,
+                    ),
                 )
             except Exception as exc:
                 print(
@@ -612,14 +753,31 @@ def main() -> None:
                     f"{type(exc).__name__}: {exc}"
                 )
             else:
-                _report_summary(report)
+                _print_output_write_result(result)
+                if result.action != "cancelled" and report is not None:
+                    _report_summary(report)
+                    print(f"[+] Structured dump created: {result.output_path}")
 
         elif choice == "7":
-            print("[+] Building portable structured dump...")
-            try:
-                archive, report = _create_portable_zip(
+            output = _portable_zip_output_path(
+                project_root,
+                session.base_name,
+            )
+            report_holder: List[ExtractionReport] = []
+
+            def write_zip(path: str, overwrite: bool) -> str:
+                created, report = _write_portable_zip(
                     session,
-                    project_root,
+                    path,
+                    overwrite=overwrite,
+                )
+                report_holder.append(report)
+                return created
+
+            try:
+                result = _write_with_conflict_resolution(
+                    output,
+                    write_zip,
                 )
             except Exception as exc:
                 print(
@@ -627,8 +785,14 @@ def main() -> None:
                     f"{type(exc).__name__}: {exc}"
                 )
             else:
-                _report_summary(report)
-                print(f"[+] Portable archive created: {archive}")
+                _print_output_write_result(result)
+                if result.action != "cancelled":
+                    if report_holder:
+                        _report_summary(report_holder[-1])
+                    print(
+                        f"[+] Portable archive created: "
+                        f"{result.output_path}"
+                    )
 
         else:
             print("[-] Invalid choice. Please select between 0 and 8.")
