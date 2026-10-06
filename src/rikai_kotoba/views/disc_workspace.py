@@ -72,7 +72,7 @@ class DiscWorkspaceView:
                 dpg.add_button(
                     label="Browse Image...",
                     width=130,
-                    callback=lambda: dpg.show_item(self.source_dialog),
+                    callback=lambda *_args: dpg.show_item(self.source_dialog),
                 )
                 self.open_button = dpg.add_button(
                     label="Open / Scan",
@@ -90,7 +90,7 @@ class DiscWorkspaceView:
                 dpg.add_button(
                     label="Browse Folder...",
                     width=130,
-                    callback=lambda: dpg.show_item(self.output_dialog),
+                    callback=lambda *_args: dpg.show_item(self.output_dialog),
                 )
 
         dpg.add_separator(parent=parent)
