@@ -51,10 +51,17 @@ class SarooToolchainTests(unittest.TestCase):
 
             self.assertFalse(report.ready)
             self.assertIsNotNone(report.path_for("sh-elf-gcc"))
-            self.assertIn("sh-elf-as", report.missing)
-            self.assertIn("sh-elf-objdump", report.missing)
-            self.assertIn("sh-elf-objcopy", report.missing)
-            self.assertIn("make", report.missing)
+            for required_name in (
+                "sh-elf-as",
+                "sh-elf-objdump",
+                "sh-elf-objcopy",
+                "make",
+                "touch",
+                "cat",
+                "rm",
+            ):
+                with self.subTest(required_name=required_name):
+                    self.assertIn(required_name, report.missing)
 
     def test_make_compatible_alias_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -66,6 +73,34 @@ class SarooToolchainTests(unittest.TestCase):
             make_path = report.path_for("make")
             self.assertIsNotNone(make_path)
             self.assertEqual(make_path.name.casefold(), "mingw32-make.exe")
+
+    def test_legacy_saturnorbit_layout_resolves_compiler_and_utilities(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            compiler_bin = root / "SH_ELF" / "sh-elf" / "bin"
+            utility_bin = root / "SH_ELF" / "Other Utilities"
+            mingw_bin = root / "MinGW" / "bin"
+            compiler_bin.mkdir(parents=True)
+            utility_bin.mkdir(parents=True)
+            mingw_bin.mkdir(parents=True)
+
+            for name in (
+                "sh-elf-gcc.exe",
+                "sh-elf-as.exe",
+                "sh-elf-objdump.exe",
+                "sh-elf-objcopy.exe",
+            ):
+                (compiler_bin / name).write_bytes(b"synthetic-tool")
+            for name in ("touch.exe", "cat.exe", "rm.exe"):
+                (utility_bin / name).write_bytes(b"synthetic-tool")
+            (mingw_bin / "make.exe").write_bytes(b"synthetic-tool")
+
+            report = inspect_saroo_toolchain(root, path_env="")
+
+            self.assertTrue(report.ready)
+            self.assertTrue(os.path.samefile(report.path_for("sh-elf-gcc").parent, compiler_bin))
+            self.assertTrue(os.path.samefile(report.path_for("touch").parent, utility_bin))
+            self.assertTrue(os.path.samefile(report.path_for("make").parent, mingw_bin))
 
     def test_invalid_explicit_root_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
