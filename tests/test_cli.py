@@ -123,6 +123,37 @@ class CLITests(unittest.TestCase):
             with open(os.path.join(output_root, "HELLO.TXT"), "rb") as handle:
                 self.assertEqual(handle.read(), b"hello")
 
+    def test_correlate_reports_exact_source_to_memory_run(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = os.path.join(temp_dir, "source.bin")
+            dump = os.path.join(temp_dir, "ram.bin")
+            with open(source, "wb") as handle:
+                handle.write(b"ABCDEFGH" + b"IJKLMNOP")
+            with open(dump, "wb") as handle:
+                handle.write(b"----" + b"ABCDEFGH" + b"IJKLMNOP" + b"----")
+
+            output = io.StringIO()
+            with redirect_stdout(output), redirect_stderr(io.StringIO()):
+                result = main(
+                    [
+                        "correlate",
+                        source,
+                        dump,
+                        "--base-address",
+                        "0x06000000",
+                        "--chunk-size",
+                        "8",
+                        "--minimum-chunk-size",
+                        "8",
+                    ]
+                )
+
+            rendered = output.getvalue()
+            self.assertEqual(result, 0)
+            self.assertIn("0x06000004", rendered)
+            self.assertIn("0x00000010", rendered)
+            self.assertIn("2 matched", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()
