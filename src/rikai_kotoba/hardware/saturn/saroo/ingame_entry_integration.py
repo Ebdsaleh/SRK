@@ -46,7 +46,7 @@ _MAIN_MENU_PATCH = (
     + '\tadd_menu_item(&main_menu, "SRK Arm 1st-Read Capture");\n'
 )
 _MAIN_HANDLER_ANCHOR = "\t}else if(index==update_index){\n"
-_MAIN_HANDLER_PATCH = r'''\t}else if(index==srk_first_read_index){
+_MAIN_HANDLER_PATCH = '''\t}else if(index==srk_first_read_index){
 \t\tint retv;
 \t\tretv = srk_arm_first_read_capture();
 \t\tif(retv==SRK_CAPTURE_OK){
