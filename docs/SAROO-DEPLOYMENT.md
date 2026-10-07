@@ -23,6 +23,43 @@ token.
 SRK does not deploy or modify MCU firmware, FPGA firmware, configuration files,
 game images, or the SAROO update directory as part of this workflow.
 
+## Physical planning validation — 2026-10-07
+
+The read-only planner was physically validated on ERIDU against an existing,
+independently prepared SAROO SD card after the full SRK suite passed:
+
+```text
+205 tests passed
+23 subtests passed
+```
+
+The mounted card was detected as the unambiguous modern layout. Its existing
+working Saturn-side firmware was:
+
+```text
+SAROO/ssfirm.bin
+size:    447357 bytes
+SHA-256: d93c2c91e958a3bfd125fbf02cccea729ddc8c6f1e1bd9bed298389614880ba7
+```
+
+The separately built SRK capture candidate was:
+
+```text
+size:    484246 bytes
+SHA-256: 7f30e1a58ff1a26cd70af1d36a85129fad132016b2b7c47626e3c2fb04a90686
+```
+
+The planner proposed the off-card baseline backup:
+
+```text
+SRK-Workspace/Backups/SAROO/ssfirm_d93c2c91e958a3bf.bin
+```
+
+and completed with no backup creation and no SD-card modification. This physical
+checkpoint is the evidence used to permit development of the explicit apply and
+restore stages; it is not itself evidence that write-capable deployment has yet
+been physically exercised.
+
 ## Modern layout gate
 
 Automatic deployment is currently gated to the unambiguous modern layout:
