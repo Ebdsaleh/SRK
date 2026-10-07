@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import dearpygui.dearpygui as dpg
 
-from rikai_kotoba.runtime.diagnostics import ExceptionReporter
-from rikai_kotoba.runtime.lifecycle import ApplicationRuntime
-from rikai_kotoba.runtime.workers import BackgroundWorkerService
+from rikai_kotoba.application.workers import BackgroundWorkerService
+from salix.runtime.diagnostics import ExceptionReporter
+from salix.runtime.lifecycle import ApplicationRuntime
 
 
 class DiagnosticsView:
@@ -26,9 +26,10 @@ class DiagnosticsView:
         self._built = True
         dpg.add_text("DIAGNOSTICS", parent=parent, color=(180, 160, 255))
         dpg.add_text(
-            "Runtime state is intentionally separate from the Dear PyGui widget tree.",
+            "Application services are supervised by the backend-neutral Salix runtime; Dear PyGui owns presentation only.",
             parent=parent,
             color=(180, 180, 180),
+            wrap=1050,
         )
         dpg.add_separator(parent=parent)
         self.runtime_text = dpg.add_text(parent=parent)
@@ -38,7 +39,7 @@ class DiagnosticsView:
         dpg.add_text(f"UI error log: {log_path}", parent=parent, wrap=1050)
         dpg.add_spacer(height=8, parent=parent)
         dpg.add_text(
-            "Thread rule: only the Dear PyGui owner thread may touch widgets. Background workers return immutable events through the runtime queue.",
+            "Thread rule: only the Dear PyGui owner thread may touch widgets. Background workers return immutable events and Salix dispatches service updates on the application thread.",
             parent=parent,
             wrap=1050,
             color=(150, 190, 255),
@@ -49,12 +50,18 @@ class DiagnosticsView:
         if not self._built:
             return
         snapshot = self.workers.snapshot()
-        dpg.set_value(self.runtime_text, f"Application runtime: {self.runtime.state.value}")
+        dpg.set_value(
+            self.runtime_text,
+            f"Salix application runtime: {self.runtime.state.value}",
+        )
         dpg.set_value(
             self.worker_text,
             f"Background workers: {'running' if snapshot.running else 'stopped'} | pool={snapshot.max_workers} | tracked jobs={snapshot.tracked_jobs}",
         )
-        dpg.set_value(self.queue_text, f"Pending worker events: {snapshot.queued_events}")
+        dpg.set_value(
+            self.queue_text,
+            f"Pending worker events: {snapshot.queued_events}",
+        )
 
     def update(self, delta_seconds: float) -> None:
         self._elapsed += max(0.0, float(delta_seconds))
