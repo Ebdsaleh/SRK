@@ -111,11 +111,20 @@ class SarooBuildTests(unittest.TestCase):
             clean_call = run_make.call_args_list[0]
             child_path = clean_call.kwargs["env"]["PATH"]
             child_entries = [Path(value) for value in child_path.split(os.pathsep) if value]
+            self.assertTrue(child_entries)
+            self.assertTrue(
+                child_entries[0].exists()
+                and os.path.samefile(Path(sys.executable).resolve().parent, child_entries[0])
+            )
             self.assertTrue(
                 any(
                     entry.exists() and os.path.samefile(tool_bin, entry)
                     for entry in child_entries
                 )
+            )
+            self.assertEqual(
+                clean_call.kwargs["env"]["PYTHON"],
+                Path(sys.executable).resolve().name,
             )
             self.assertEqual(clean_call.kwargs["env"]["SHELL"], "cmd.exe")
             self.assertTrue(clean_call.args[0][0].endswith("make.exe"))
@@ -134,6 +143,10 @@ class SarooBuildTests(unittest.TestCase):
 
             self.assertTrue(result.log_path.is_file())
             log_text = result.log_path.read_text(encoding="utf-8")
+            self.assertIn(
+                f"Python recipe command: {Path(sys.executable).resolve().name}",
+                log_text,
+            )
             self.assertIn("Make recipe shell: cmd.exe (explicit override)", log_text)
             self.assertIn("SHELL=cmd.exe", log_text)
             self.assertIn("clean ok", log_text)
