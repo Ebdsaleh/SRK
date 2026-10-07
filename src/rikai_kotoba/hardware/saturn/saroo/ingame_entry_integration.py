@@ -1,14 +1,20 @@
-"""Create a separate SAROO tree for one-shot game-entry Work RAM capture.
+"""Create a separate SAROO tree for one-shot first-read execution capture.
 
 The source tree is expected to be the already hardware-validated SRK capture-menu
-build tree.  A new output tree is created and patched; the source tree is never
+build tree. A new output tree is created and patched; the source tree is never
 edited in place.
 
-The first in-game checkpoint deliberately avoids title-specific addresses.  When
-the user arms the feature from the SAROO menu, the Saturn-side helper waits until
-SAROO has populated the BIOS game-entry pointer at 0x06000284, then uses SAROO's
-existing SH-2 UBR support to stop immediately after the first instruction at that
-entry point, write one 1 MiB WRAM-H snapshot, disarm itself, and resume execution.
+The first in-game checkpoint deliberately avoids title-specific addresses. When
+the user arms the feature from the SAROO menu, the Saturn-side helper reads the
+1st-read transfer address from the in-memory Saturn System ID/IP header at
+0x060020F0 (IP offset 0xF0), then uses SAROO's existing SH-2 UBR support to stop
+if/when execution reaches that address. The handler writes one 1 MiB WRAM-H
+snapshot, disarms itself, and returns to the game.
+
+Saturn's boot specification only guarantees that the 1st-read file is loaded to
+this address; it does not guarantee that every title executes it. Therefore this
+is called a first-read execution checkpoint rather than a universal game-entry
+checkpoint. Later SRK stages can accept an explicit caller-supplied PC.
 """
 
 from __future__ import annotations
@@ -20,7 +26,7 @@ import shutil
 
 
 class SarooInGameEntryIntegrationError(RuntimeError):
-    """Raised when the in-game entry-capture tree cannot be prepared safely."""
+    """Raised when the first-read capture tree cannot be prepared safely."""
 
 
 @dataclass(frozen=True)
@@ -35,19 +41,19 @@ class SarooInGameEntryIntegrationResult:
 
 
 _MAIN_INDEX_ANCHOR = "int srk_wramh_index = -1;\n"
-_MAIN_INDEX_PATCH = _MAIN_INDEX_ANCHOR + "int srk_ingame_entry_index = -1;\n"
+_MAIN_INDEX_PATCH = _MAIN_INDEX_ANCHOR + "int srk_first_read_index = -1;\n"
 _MAIN_MENU_ANCHOR = '\tadd_menu_item(&main_menu, "SRK Capture WRAM-H");\n'
 _MAIN_MENU_PATCH = (
     _MAIN_MENU_ANCHOR
-    + "\tsrk_ingame_entry_index = main_menu.num;\n"
-    + '\tadd_menu_item(&main_menu, "SRK Arm Game-Entry Capture");\n'
+    + "\tsrk_first_read_index = main_menu.num;\n"
+    + '\tadd_menu_item(&main_menu, "SRK Arm 1st-Read Capture");\n'
 )
 _MAIN_HANDLER_ANCHOR = "\t}else if(index==update_index){\n"
-_MAIN_HANDLER_PATCH = r'''	}else if(index==srk_ingame_entry_index){
+_MAIN_HANDLER_PATCH = r'''	}else if(index==srk_first_read_index){
 		int retv;
-		retv = srk_arm_game_entry_capture();
+		retv = srk_arm_first_read_capture();
 		if(retv==SRK_CAPTURE_OK){
-			menu_status(&main_menu, "SRK: game-entry WRAM-H capture armed");
+			menu_status(&main_menu, "SRK: 1st-read WRAM-H capture armed");
 		}else{
 			char buf[64];
 			sprintf(buf, "SRK: arm failed: %d", retv);
@@ -61,77 +67,82 @@ _GAME_INCLUDE_PATCH = _GAME_INCLUDE_ANCHOR + '#include "srk_capture_helper.h"\n'
 _GAME_BREAK_ANCHOR = "\tif(game_break_pc){\n\t\tset_break_pc(game_break_pc, 0);\n"
 _GAME_BREAK_PATCH = (
     "\t{\n"
-    "\t\tint srk_prepare_ret = srk_prepare_game_entry_capture();\n"
+    "\t\tint srk_prepare_ret = srk_prepare_first_read_capture();\n"
     "\t\tif(srk_prepare_ret<0)\n"
-    ' \t\t\tprintk("SRK entry capture prepare failed: %d\\n", srk_prepare_ret);\n'
+    '\t\t\tprintk("SRK 1st-read capture prepare failed: %d\\n", srk_prepare_ret);\n'
     "\t}\n\n"
     + _GAME_BREAK_ANCHOR
 )
 
 _HELPER_HEADER_ANCHOR = "#endif\n"
 _HELPER_HEADER_PATCH = r'''
-/* One-shot, title-neutral in-game capture at the BIOS-provided game entry PC. */
-#define SRK_CAPTURE_ERR_GAME_ENTRY    -103
+/* One-shot, title-neutral execution capture at the IP.BIN 1st-read address. */
+#define SRK_CAPTURE_ERR_FIRST_READ    -103
 
-int srk_arm_game_entry_capture(void);
-int srk_prepare_game_entry_capture(void);
+int srk_arm_first_read_capture(void);
+int srk_prepare_first_read_capture(void);
 
 #endif
 '''
 
-_HELPER_SOURCE_MARKER = "/* SRK one-shot game-entry capture support. */"
+_HELPER_SOURCE_MARKER = "/* SRK one-shot 1st-read execution capture support. */"
 _HELPER_SOURCE_APPEND = r'''
 
-/* SRK one-shot game-entry capture support. */
-#define SRK_GAME_ENTRY_POINTER_ADDRESS 0x06000284u
-#define SRK_GAME_WRAMH_PATH "/SAROO/SRK_GAME_WRAMH.BIN"
+/* SRK one-shot 1st-read execution capture support. */
+#define SRK_IP_MEMORY_BASE          0x06002000u
+#define SRK_IP_FIRST_READ_OFFSET    0x000000f0u
+#define SRK_WRAMH_START             0x06000000u
+#define SRK_WRAMH_END_EXCLUSIVE     0x06100000u
+#define SRK_GAME_WRAMH_PATH         "/SAROO/SRK_GAME_WRAMH.BIN"
 
 extern void (*game_break_handle)(REGS *reg);
 
-static int srk_game_entry_capture_armed = 0;
+static int srk_first_read_capture_armed = 0;
 
-static void srk_game_entry_capture_handler(REGS *reg)
+static void srk_first_read_capture_handler(REGS *reg)
 {
     (void)reg;
 
-    /* One shot: disarm UBR before any SD I/O and before returning to the game. */
+    /* One shot: disarm UBR before SD I/O and before returning to the title. */
     set_break_pc(0, 0);
     game_break_pc = 0;
     game_break_handle = 0;
-    srk_game_entry_capture_armed = 0;
+    srk_first_read_capture_armed = 0;
 
     /*
-     * The exception entry itself necessarily uses the game's current stack, so
-     * a tiny part of WRAM-H reflects the paused debug context.  The capture is
-     * otherwise a direct 1 MiB read of canonical WRAM-H via the already
-     * hardware-validated 64 KiB SAROO write path.
+     * Exception entry necessarily uses the title's current stack, so a small
+     * portion of WRAM-H reflects the paused debug context. The rest is a direct
+     * 1 MiB snapshot through SRK's already hardware-validated 64 KiB SAROO
+     * write path.
      */
     srk_capture_work_ram_high(SRK_GAME_WRAMH_PATH);
 }
 
-int srk_arm_game_entry_capture(void)
+int srk_arm_first_read_capture(void)
 {
-    srk_game_entry_capture_armed = 1;
+    srk_first_read_capture_armed = 1;
     return SRK_CAPTURE_OK;
 }
 
-int srk_prepare_game_entry_capture(void)
+int srk_prepare_first_read_capture(void)
 {
-    unsigned int entry_pc;
+    unsigned int first_read_pc;
 
-    if(!srk_game_entry_capture_armed)
+    if(!srk_first_read_capture_armed)
         return 0;
 
-    entry_pc = *(volatile unsigned int*)SRK_GAME_ENTRY_POINTER_ADDRESS;
-    if(entry_pc==0 || entry_pc==0xffffffffu || (entry_pc&1u)!=0u){
-        srk_game_entry_capture_armed = 0;
+    first_read_pc = BE32((void*)(SRK_IP_MEMORY_BASE + SRK_IP_FIRST_READ_OFFSET));
+    if(first_read_pc<0x06002000u ||
+       first_read_pc>=SRK_WRAMH_END_EXCLUSIVE ||
+       (first_read_pc&1u)!=0u){
+        srk_first_read_capture_armed = 0;
         game_break_pc = 0;
         game_break_handle = 0;
-        return SRK_CAPTURE_ERR_GAME_ENTRY;
+        return SRK_CAPTURE_ERR_FIRST_READ;
     }
 
-    game_break_pc = (int)entry_pc;
-    game_break_handle = srk_game_entry_capture_handler;
+    game_break_pc = (int)first_read_pc;
+    game_break_handle = srk_first_read_capture_handler;
     return 1;
 }
 '''
@@ -177,7 +188,7 @@ def prepare_ingame_entry_capture_tree(
     capture_menu_source_root: os.PathLike[str] | str,
     output_root: os.PathLike[str] | str,
 ) -> SarooInGameEntryIntegrationResult:
-    """Copy the capture-menu tree and add a one-shot game-entry WRAM-H capture."""
+    """Copy the capture-menu tree and add a one-shot first-read WRAM-H capture."""
 
     source = _canonical(capture_menu_source_root)
     output = _canonical(output_root)
@@ -211,9 +222,9 @@ def prepare_ingame_entry_capture_tree(
         raise SarooInGameEntryIntegrationError(
             "source tree is not the validated controller capture-menu tree"
         )
-    if _HELPER_SOURCE_MARKER in helper_c or "SRK Arm Game-Entry Capture" in main_text:
+    if _HELPER_SOURCE_MARKER in helper_c or "SRK Arm 1st-Read Capture" in main_text:
         raise SarooInGameEntryIntegrationError(
-            "source tree already contains in-game entry capture support"
+            "source tree already contains first-read capture support"
         )
 
     patched_main = _replace_once(
@@ -268,12 +279,13 @@ def prepare_ingame_entry_capture_tree(
         marker = output / "SRK_INGAME_ENTRY_CAPTURE.txt"
         _write(
             marker,
-            "SRK title-neutral one-shot game-entry capture\n"
+            "SRK title-neutral one-shot 1st-read execution capture\n"
             f"Source capture-menu tree: {source}\n"
             "The source tree was not modified.\n"
-            "Menu action: SRK Arm Game-Entry Capture\n"
-            "Breakpoint: BIOS game-entry pointer read from 0x06000284 at load time\n"
-            "Trigger semantics: UBR handler runs after the first instruction at entry\n"
+            "Menu action: SRK Arm 1st-Read Capture\n"
+            "Breakpoint source: big-endian IP.BIN 1st-read address at 0x060020F0\n"
+            "Boot-spec note: 1st-read is loaded there, but not guaranteed to execute\n"
+            "Trigger semantics: UBR handler runs after the first instruction if reached\n"
             "Output: /SAROO/SRK_GAME_WRAMH.BIN (1 MiB, WRAM-H)\n"
             "Capture is one-shot and UBR is disarmed before SD I/O.\n",
         )
