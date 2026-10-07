@@ -17,6 +17,7 @@ from rikai_kotoba.hardware.saturn.saroo import (
     CaptureStore,
     build_firm_saturn_tree,
     import_raw_sd_dump,
+    inspect_saroo_sd_layout,
     prepare_firm_saturn_tree,
     verify_capture,
 )
@@ -197,6 +198,44 @@ def _cmd_import_saroo_dump(args: argparse.Namespace) -> int:
         print(f"Region file       : {path}")
     print("Integrity         : verified")
     return 0
+
+
+def _cmd_inspect_saroo_sd(args: argparse.Namespace) -> int:
+    report = inspect_saroo_sd_layout(args.path)
+
+    print("SAROO SD-card layout inspection")
+    print("-" * 44)
+    print(f"Card root       : {report.root}")
+    print(f"Layout          : {report.layout}")
+    print("Access policy   : read-only inspection")
+    print()
+
+    if report.firmware_files:
+        print("Recognised Saturn firmware:")
+        for firmware in report.firmware_files:
+            print(f"  {firmware.relative_path}")
+            print(f"    Size     : {firmware.size} bytes")
+            print(f"    SHA-256  : {firmware.sha256}")
+    else:
+        print("Recognised Saturn firmware: [none]")
+
+    print()
+    print("Companion layout evidence:")
+    print(f"  SAROO directory : {'present' if report.saroo_directory_present else 'missing'}")
+    print(f"  mcuapp.bin      : {'present' if report.mcuapp_present else 'missing'}")
+    print(f"  saroocfg.txt    : {'present' if report.config_present else 'missing'}")
+    print(f"  ISO directory   : {'present' if report.iso_directory_present else 'missing'}")
+    print(f"  update directory: {'present' if report.update_directory_present else 'missing'}")
+
+    if report.warnings:
+        print()
+        print("Warnings:")
+        for warning in report.warnings:
+            print(f"  - {warning}")
+
+    print()
+    print("No files were modified.")
+    return 0 if report.recognized else 2
 
 
 def _cmd_prepare_saroo_firmware(args: argparse.Namespace) -> int:
@@ -380,6 +419,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reject the import unless the raw file has exactly this many bytes",
     )
     import_parser.set_defaults(handler=_cmd_import_saroo_dump)
+
+    inspect_saroo_sd_parser = subparsers.add_parser(
+        "inspect-saroo-sd",
+        help="Read-only inspection of a mounted SAROO SD-card firmware layout",
+    )
+    inspect_saroo_sd_parser.add_argument(
+        "path",
+        help="Root directory of the mounted SAROO SD card",
+    )
+    inspect_saroo_sd_parser.set_defaults(handler=_cmd_inspect_saroo_sd)
 
     prepare_parser = subparsers.add_parser(
         "prepare-saroo-firmware",
