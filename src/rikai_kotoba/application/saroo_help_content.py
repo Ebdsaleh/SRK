@@ -1,6 +1,6 @@
 """Offline manual additions for SAROO capture and SD-card exchange.
 
-This module contains SRK product/domain documentation only.  Rendering remains
+This module contains SRK product/domain documentation only. Rendering remains
 owned by the Salix documentation framework/engine.
 """
 
@@ -39,7 +39,7 @@ GLOSSARY: tuple[GlossaryEntry, ...] = (
     ),
     GlossaryEntry(
         "Makefile",
-        "A text file describing how source files are compiled and linked into a program. SAROO's Firm_Saturn Makefile names the SH-ELF compiler, assembler, object tools, source objects, and build outputs used by the upstream project.",
+        "A text file describing how source files are compiled and linked into a program. SAROO's Firm_Saturn Makefile names the SH-ELF compiler, assembler, object tools, source objects, build outputs, and invokes support utilities such as touch, cat, and rm.",
         related=("toolchain", "cross-compiler"),
     ),
     GlossaryEntry(
@@ -61,7 +61,7 @@ GLOSSARY: tuple[GlossaryEntry, ...] = (
     ),
     GlossaryEntry(
         "Toolchain",
-        "The collection of programs used to turn source code into a target executable. For SAROO Firm_Saturn this includes sh-elf-gcc, sh-elf-as, sh-elf-objdump, sh-elf-objcopy, and a Make-compatible build driver.",
+        "The collection of programs used to turn source code into a target executable. For SAROO Firm_Saturn the upstream Makefile requires sh-elf-gcc, sh-elf-as, sh-elf-objdump, sh-elf-objcopy, a Make-compatible build driver, touch, cat, and rm.",
         related=("cross-compiler", "Makefile", "SaturnOrbit"),
     ),
     GlossaryEntry(
@@ -125,7 +125,7 @@ PAGES: dict[str, DocPage] = {
                 "Check the Firm_Saturn build toolchain",
                 (
                     DocParagraph(
-                        "Upstream SAROO documents Firm_Saturn as an SH-ELF build and its Makefile expects sh-elf-gcc, sh-elf-as, sh-elf-objdump, sh-elf-objcopy, plus a Make-compatible build driver. SRK can inspect the development PC before attempting any build."
+                        "Upstream SAROO documents Firm_Saturn as an SH-ELF build. The pinned Makefile invokes sh-elf-gcc, sh-elf-as, sh-elf-objdump, sh-elf-objcopy, a Make-compatible build driver, touch, cat, and rm. SRK checks that complete external-program surface before attempting any build."
                     ),
                     DocCodeBlock(
                         "srk-saroo-toolchain\n\n"
@@ -133,7 +133,10 @@ PAGES: dict[str, DocPage] = {
                         language="bat",
                     ),
                     DocParagraph(
-                        "The preflight is read-only. A supplied toolchain root is searched first, then the existing process PATH is checked as a fallback. PATH is not modified by SRK. A READY discovery result means every required executable was found; only an actual Firm_Saturn build proves that the installation works correctly."
+                        "The preflight is read-only. A supplied toolchain root is searched first, including historical SaturnOrbit SH_ELF, Other Utilities, and MinGW directories, then the existing process PATH is checked as a fallback. PATH is not modified by SRK. A READY discovery result means every required executable was found; only an actual Firm_Saturn build proves that the installation works correctly."
+                    ),
+                    DocParagraph(
+                        "The pinned upstream tree also contains MAKE_ELF.bat, but that historical helper contains machine-specific absolute F: drive paths. SRK does not use that batch file as its portable build entry point. The planned build uses the upstream Makefile from a separate generated source tree with an explicit process-local toolchain environment."
                     ),
                     DocCallout(
                         title="No firmware deployment occurs here",
