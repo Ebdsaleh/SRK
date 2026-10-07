@@ -17,7 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="srk-saroo-apply",
         description=(
-            "Explicitly replace modern SAROO/SAROO/ssfirm.bin only after "
+            "Explicitly replace modern SAROO/ssfirm.bin only after "
             "creating and SHA-256-verifying an off-card backup."
         ),
     )
