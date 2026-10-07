@@ -10,7 +10,7 @@ from rikai_kotoba.application.disc_workspace import (
     DiscWorkspaceService,
     DiscWorkspaceSnapshot,
 )
-from rikai_kotoba.runtime.workers import (
+from rikai_kotoba.application.workers import (
     BackgroundWorkerService,
     WorkerEvent,
     WorkerEventKind,
