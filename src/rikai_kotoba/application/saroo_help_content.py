@@ -1,0 +1,154 @@
+"""Offline manual additions for SAROO capture and SD-card exchange.
+
+This module contains SRK product/domain documentation only.  Rendering remains
+owned by the Salix documentation framework/engine.
+"""
+
+from __future__ import annotations
+
+from rikai_kotoba.application.help_content import GlossaryEntry
+from salix.framework.documentation import (
+    DocCallout,
+    DocCalloutKind,
+    DocCodeBlock,
+    DocIconKind,
+    DocIconLine,
+    DocPage,
+    DocParagraph,
+    DocSection,
+)
+
+
+GLOSSARY: tuple[GlossaryEntry, ...] = (
+    GlossaryEntry(
+        "Capture artifact",
+        "An immutable SRK directory containing one or more captured memory-region files plus capture.json metadata. The manifest records addresses, sizes, checkpoint information, timestamps, and SHA-256 hashes so the capture can be verified later.",
+        aliases=("capture",),
+        related=("RAM dump", "checkpoint", "SHA-256", "provenance"),
+    ),
+    GlossaryEntry(
+        "Checkpoint",
+        "A human-readable name for the moment or game state when a memory capture was taken, such as title-screen, before-dialogue, or after-load. A useful checkpoint describes runtime context without hardcoding one game's addresses into SRK.",
+        related=("capture artifact", "RAM dump", "provenance"),
+    ),
+    GlossaryEntry(
+        "SD capture",
+        "A workflow where Saturn-side code writes a requested memory range to a file on SAROO's SD card. SRK then imports that raw file on the PC into a verified capture artifact. This is useful before a live PC-to-SAROO transport exists.",
+        aliases=("SD-card capture", "offline capture"),
+        related=("SAROO", "capture artifact", "transport adapter"),
+    ),
+    GlossaryEntry(
+        "SHA-256",
+        "A cryptographic hash function SRK uses as an integrity fingerprint. If even one byte in a captured region changes, its SHA-256 value will almost certainly change, allowing capture verification to detect tampering or corruption.",
+        aliases=("SHA256", "hash"),
+        related=("capture artifact",),
+    ),
+    GlossaryEntry(
+        "Transport adapter",
+        "A presentation-neutral implementation that obtains Saturn memory bytes for SRK. The capture coordinator only asks for address ranges; the adapter may later use SAROO firmware commands, SD-card exchange, serial communication, or another verified mechanism without changing capture storage or analysis.",
+        related=("SAROO", "SD capture", "RAM dump"),
+    ),
+)
+
+
+PAGES: dict[str, DocPage] = {
+    "saroo-capture": DocPage(
+        title="SAROO memory capture and SD-card exchange",
+        lead="Capture runtime evidence from original Saturn hardware without inventing an unverified live transport protocol.",
+        blocks=(
+            DocCallout(
+                title="Current development stage",
+                body="SRK has a verified capture format, integrity checking, exact correlation tools, and an upstream-compatible Saturn-side SD writer helper. A stock/live PC-to-SAROO transport is not claimed yet. Until one is verified, SD-card exchange is the evidence-preserving bridge.",
+                kind=DocCalloutKind.INFO,
+                icon=DocIconKind.INFO,
+            ),
+        ),
+        sections=(
+            DocSection(
+                "Why capture RAM?",
+                (
+                    DocParagraph(
+                        "Static disc analysis can show that bytes exist in a file, but it cannot prove that the running program actually loaded, transformed, executed, or displayed those bytes. A RAM capture records what was present in the console at a known checkpoint so SRK can compare runtime state with disc content."
+                    ),
+                    DocIconLine(
+                        "A useful evidence chain is disc -> file/offset -> loader or transform -> RAM address -> execution or display.",
+                        DocIconKind.INFO,
+                    ),
+                ),
+            ),
+            DocSection(
+                "The verified SAROO primitive",
+                (
+                    DocParagraph(
+                        "Upstream SAROO's Saturn firmware exposes a write_file(name, offset, size, buffer) operation backed by its MCU file-write command. The upstream debug shell also demonstrates a 0x10000-byte (64 KiB) memory write. SRK therefore uses 64 KiB as the currently verified staging-write size instead of assuming that an entire 1 MiB Work RAM region is safe in one transfer."
+                    ),
+                    DocParagraph(
+                        "SRK's helper creates or truncates the destination on the first chunk, then writes later chunks at explicit file offsets. A 1 MiB Work RAM dump therefore becomes sixteen 64 KiB writes."
+                    ),
+                ),
+            ),
+            DocSection(
+                "Canonical Work RAM regions",
+                (
+                    DocCodeBlock(
+                        "Work RAM-L  0x00200000 - 0x002FFFFF  1 MiB\n"
+                        "Work RAM-H  0x06000000 - 0x060FFFFF  1 MiB",
+                        language="text",
+                    ),
+                    DocParagraph(
+                        "These are Saturn hardware regions, not game-specific constants. Future captures may request other caller-supplied ranges, but SRK does not embed commercial-title addresses in the reusable public layer."
+                    ),
+                ),
+            ),
+            DocSection(
+                "Import a raw SD dump",
+                (
+                    DocParagraph(
+                        "After copying a raw capture file from the SAROO SD card to the PC, import it rather than treating the loose file as the final research record. Importing creates an immutable capture directory with address metadata and SHA-256 integrity information."
+                    ),
+                    DocCodeBlock(
+                        "srk import-saroo-dump SRK_WRAMH.BIN ^\n"
+                        "    --base-address 0x06000000 ^\n"
+                        "    --expected-size 0x100000 ^\n"
+                        "    --checkpoint title-screen ^\n"
+                        "    --label work_ram_high",
+                        language="bat",
+                    ),
+                    DocParagraph(
+                        "By default the verified artifact is written beneath SRK-Workspace/Dumps/SAROO. The raw source dump is opened read-only and is not altered by the import."
+                    ),
+                ),
+            ),
+            DocSection(
+                "Correlate a disc file with RAM",
+                (
+                    DocCodeBlock(
+                        "srk correlate EXTRACTED.BIN 00_work_ram_high_06000000_00100000.bin ^\n"
+                        "    --base-address 0x06000000",
+                        language="bat",
+                    ),
+                    DocParagraph(
+                        "The first correlation engine reports only exact byte-for-byte evidence. It suppresses highly repeated chunks and coalesces adjacent matches that preserve the same source-to-memory displacement. A missing exact match does not prove that the data is unused; it may have been decompressed, decoded, relocated, byte-swapped, or otherwise transformed."
+                    ),
+                ),
+            ),
+            DocSection(
+                "What comes after SD exchange",
+                (
+                    DocParagraph(
+                        "The capture coordinator is deliberately transport-neutral. When a verified live SAROO adapter is available, the GUI can request the same MemoryRange objects and receive the same CaptureArtifact results. The storage, hashing, correlation, and documentation layers do not need to be rewritten."
+                    ),
+                    DocCallout(
+                        title="Do not confuse transport with evidence",
+                        body="A faster or more convenient transport changes how bytes arrive at SRK; it does not change what must be recorded to make the result reproducible. Addresses, sizes, checkpoint context, hashes, and source provenance remain essential.",
+                        kind=DocCalloutKind.NOTE,
+                        icon=DocIconKind.NOTE,
+                    ),
+                ),
+            ),
+        ),
+    ),
+}
+
+
+PAGE_ORDER: tuple[str, ...] = ("saroo-capture",)
