@@ -18,6 +18,14 @@ from .capture import (
     load_manifest,
     verify_capture,
 )
+from .transport import (
+    SarooCaptureCoordinator,
+    SarooTransport,
+    SarooTransportError,
+    SarooTransportStatus,
+    SarooTransportUnavailableError,
+    UnconfiguredSarooTransport,
+)
 
 __all__ = [
     "CAPTURE_SCHEMA",
@@ -29,6 +37,12 @@ __all__ = [
     "CaptureVerification",
     "CapturedRegion",
     "MemoryRange",
+    "SarooCaptureCoordinator",
+    "SarooTransport",
+    "SarooTransportError",
+    "SarooTransportStatus",
+    "SarooTransportUnavailableError",
+    "UnconfiguredSarooTransport",
     "load_manifest",
     "verify_capture",
 ]
