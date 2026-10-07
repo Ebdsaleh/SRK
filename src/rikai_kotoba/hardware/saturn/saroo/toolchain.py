@@ -1,9 +1,12 @@
-"""Read-only discovery for the upstream SAROO ``Firm_Saturn`` build tools.
+"""Read-only discovery for the external SAROO ``Firm_Saturn`` build tools.
 
-The upstream SAROO Makefile expects an SH-ELF cross toolchain plus a few Unix-
-style support utilities. SRK must not silently mutate the user's global PATH or
-pretend a build environment is ready when one of those programs is missing, so
-discovery is explicit and reports where every resolved executable came from.
+Upstream SAROO's historical Makefile uses an SH-ELF cross toolchain plus a few
+Unix-style file utilities. SRK-generated build trees replace those small file
+operations with the bundled Python ``srk_build_support.py`` helper, so preflight
+only requires the external compiler/object tools and a Make-compatible driver.
+SRK must not silently mutate the user's global PATH or pretend a build
+environment is ready when one of those programs is missing, so discovery is
+explicit and reports where every resolved executable came from.
 """
 
 from __future__ import annotations
@@ -57,22 +60,7 @@ SAROO_TOOL_REQUIREMENTS: tuple[SarooToolRequirement, ...] = (
             "mingw32-make",
             "mingw32-make.exe",
         ),
-        "Make-compatible build driver for the upstream Firm_Saturn Makefile",
-    ),
-    SarooToolRequirement(
-        "touch",
-        ("touch", "touch.exe"),
-        "File timestamp utility invoked by the upstream Firm_Saturn Makefile",
-    ),
-    SarooToolRequirement(
-        "cat",
-        ("cat", "cat.exe"),
-        "Binary concatenation utility invoked by the upstream Firm_Saturn Makefile",
-    ),
-    SarooToolRequirement(
-        "rm",
-        ("rm", "rm.exe"),
-        "File removal utility invoked by the upstream Firm_Saturn Makefile",
+        "Make-compatible build driver for the generated Firm_Saturn Makefile",
     ),
 )
 
@@ -215,12 +203,16 @@ def inspect_saroo_toolchain(
     *,
     path_env: str | None = None,
 ) -> SarooToolchainReport:
-    """Resolve every executable needed by upstream SAROO ``Firm_Saturn``.
+    """Resolve external executables needed by an SRK-generated ``Firm_Saturn`` build.
 
     When ``toolchain_root`` is supplied it is searched first, including nested
     SaturnOrbit-style ``bin`` and ``Other Utilities`` directories. The process
     PATH is only *read* as a fallback and is never changed. ``path_env`` exists
     primarily so tests or callers can supply an explicit PATH snapshot.
+
+    The generated Makefile uses SRK's Python build-support helper for upstream's
+    historical ``touch``, ``cat``, and ``rm`` recipes, so those programs are not
+    external preflight requirements.
     """
 
     root: Path | None = None
