@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dearpygui.dearpygui as dpg
 
-from rikai_kotoba.application import help_content
+from rikai_kotoba.application import help_catalog as help_content
 from salix.engine.documentation import DocumentationRenderer
 from salix.framework.documentation import (
     DOCUMENTATION_SCALE_LABELS,
@@ -104,6 +104,7 @@ class HelpView:
             "disc-images": "Disc Images and Filesystems",
             "mjolnir": "Mjölnir Utility",
             "saturn-saroo": "Saturn and SAROO",
+            "saroo-capture": "SAROO Capture & SD Workflow",
             "provenance": "Runtime Provenance",
         }
         for key in help_content.PAGE_ORDER:
