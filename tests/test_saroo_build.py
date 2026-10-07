@@ -6,7 +6,6 @@ from io import StringIO
 import os
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -28,8 +27,7 @@ class SarooBuildTests(unittest.TestCase):
         bin_dir = root / "toolchain" / "bin"
         bin_dir.mkdir(parents=True)
         for requirement in SAROO_TOOL_REQUIREMENTS:
-            name = "make.exe" if requirement.name == "make" else requirement.name + ".exe"
-            (bin_dir / name).write_bytes(b"synthetic-tool")
+            (bin_dir / (requirement.name + ".exe")).write_bytes(b"synthetic-tool")
         return bin_dir
 
     @staticmethod
@@ -37,9 +35,37 @@ class SarooBuildTests(unittest.TestCase):
         generated = root / "SAROO-SRK"
         firm = generated / "Firm_Saturn"
         firm.mkdir(parents=True)
-        (generated / "SRK_INTEGRATION.txt").write_text("synthetic\n", encoding="utf-8")
-        (firm / "Makefile").write_text("all:\n\t@echo synthetic\n", encoding="utf-8")
-        (firm / "srk_build_support.py").write_text("# synthetic\n", encoding="utf-8")
+        (generated / "SRK_INTEGRATION.txt").write_text(
+            "synthetic\n",
+            encoding="utf-8",
+        )
+        (firm / "Makefile").write_text(
+            "CC = sh-elf-gcc\n"
+            "AS = sh-elf-as\n"
+            "OBJDUMP = sh-elf-objdump\n"
+            "OBJCOPY = sh-elf-objcopy\n"
+            "LDFLAGS = -nostartfiles -T ldscript\n"
+            "FLAGS = -Wall -m2 -Os -fomit-frame-pointer -std=c99\n"
+            "LIBS = -lgcc\n"
+            "EXE = ssfirm.elf\n"
+            "OBJ = obj/crt0.o \\\n"
+            "      obj/main.o \\\n"
+            "      obj/srk_capture_helper.o\n",
+            encoding="utf-8",
+        )
+        (firm / "srk_build_support.py").write_text(
+            "# synthetic\n",
+            encoding="utf-8",
+        )
+        (firm / "crt0.S").write_text("synthetic\n", encoding="utf-8")
+        (firm / "main.c").write_text("synthetic\n", encoding="utf-8")
+        (firm / "srk_capture_helper.c").write_text(
+            "synthetic\n",
+            encoding="utf-8",
+        )
+        (firm / "version.c").write_text("synthetic\n", encoding="utf-8")
+        (firm / "font_cjk.bin").write_bytes(b"FONT")
+        (firm / "ldscript").write_text("synthetic\n", encoding="utf-8")
         return generated
 
     @staticmethod
@@ -67,15 +93,21 @@ class SarooBuildTests(unittest.TestCase):
             firm = generated / "Firm_Saturn"
             firm.mkdir(parents=True)
             (firm / "Makefile").write_text("all:\n", encoding="utf-8")
-            (firm / "srk_build_support.py").write_text("# synthetic\n", encoding="utf-8")
+            (firm / "srk_build_support.py").write_text(
+                "# synthetic\n",
+                encoding="utf-8",
+            )
             toolchain = root / "toolchain-root"
             self._populate_toolchain(toolchain)
 
             with self.assertRaisesRegex(SarooBuildError, "integration marker"):
-                build_firm_saturn_tree(generated, toolchain)
+                build_firm_saturn_tree(generated, toolchain, progress=None)
 
-    @patch("rikai_kotoba.hardware.saturn.saroo.build._run_make")
-    def test_controlled_build_uses_process_local_tools_and_hashes_artifacts(self, run_make) -> None:
+    @patch("rikai_kotoba.hardware.saturn.saroo.build._run_command")
+    def test_native_build_invokes_sh_elf_tools_directly_and_hashes_artifacts(
+        self,
+        run_command,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             toolchain = root / "toolchain-root"
@@ -84,94 +116,149 @@ class SarooBuildTests(unittest.TestCase):
             firm = generated / "Firm_Saturn"
             before_path = os.environ.get("PATH")
             before_shell = os.environ.get("SHELL")
+            progress: list[str] = []
 
-            payloads = {
-                "ssfirm.elf": b"ELF",
-                "ssfirm.bin": b"BIN",
-                "dump.txt": b"DUMP",
-            }
+            def fake_run(command, *, cwd, env, on_output=None):
+                tool = Path(command[0]).name.casefold()
+                if tool == "sh-elf-gcc.exe" and "-c" in command:
+                    output_name = command[command.index("-o") + 1]
+                    output_path = cwd / Path(
+                        *output_name.replace("\\", "/").split("/")
+                    )
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.write_bytes(("OBJ:" + output_name).encode("ascii"))
+                    if on_output is not None:
+                        on_output("synthetic compiler output")
+                    return subprocess.CompletedProcess(
+                        command,
+                        0,
+                        "synthetic compiler output\n",
+                    )
 
-            def fake_run(command, *, cwd, env):
-                if command[-1] == "clean":
-                    return subprocess.CompletedProcess(command, 0, "clean ok\n")
-                for name, data in payloads.items():
-                    (cwd / name).write_bytes(data)
-                return subprocess.CompletedProcess(command, 0, "build ok\n")
+                if tool == "sh-elf-as.exe":
+                    output_name = command[command.index("-o") + 1]
+                    output_path = cwd / Path(
+                        *output_name.replace("\\", "/").split("/")
+                    )
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.write_bytes(("OBJ:" + output_name).encode("ascii"))
+                    return subprocess.CompletedProcess(command, 0, "")
 
-            run_make.side_effect = fake_run
+                if tool == "sh-elf-gcc.exe":
+                    output_name = command[command.index("-o") + 1]
+                    (cwd / output_name).write_bytes(b"ELF")
+                    return subprocess.CompletedProcess(command, 0, "")
 
-            result = build_firm_saturn_tree(generated, toolchain)
+                if tool == "sh-elf-objdump.exe":
+                    return subprocess.CompletedProcess(command, 0, "DUMP\n")
+
+                if tool == "sh-elf-objcopy.exe":
+                    output_name = command[-1]
+                    (cwd / output_name).write_bytes(b"BIN")
+                    return subprocess.CompletedProcess(command, 0, "")
+
+                raise AssertionError(f"unexpected command: {command}")
+
+            run_command.side_effect = fake_run
+
+            result = build_firm_saturn_tree(
+                generated,
+                toolchain,
+                progress=progress.append,
+            )
 
             self.assertTrue(result.successful)
             self.assertEqual(result.clean_returncode, 0)
             self.assertEqual(result.build_returncode, 0)
-            self.assertEqual(run_make.call_count, 2)
+            self.assertEqual(run_command.call_count, 6)
             self.assertEqual(os.environ.get("PATH"), before_path)
             self.assertEqual(os.environ.get("SHELL"), before_shell)
 
-            clean_call = run_make.call_args_list[0]
-            child_path = clean_call.kwargs["env"]["PATH"]
-            child_entries = [Path(value) for value in child_path.split(os.pathsep) if value]
-            self.assertTrue(child_entries)
-            self.assertTrue(
-                child_entries[0].exists()
-                and os.path.samefile(Path(sys.executable).resolve().parent, child_entries[0])
-            )
-            self.assertTrue(
-                any(
-                    entry.exists() and os.path.samefile(tool_bin, entry)
-                    for entry in child_entries
+            for call in run_command.call_args_list:
+                child_path = call.kwargs["env"]["PATH"]
+                child_entries = [
+                    Path(value) for value in child_path.split(os.pathsep) if value
+                ]
+                self.assertTrue(
+                    any(
+                        entry.exists() and os.path.samefile(tool_bin, entry)
+                        for entry in child_entries
+                    )
                 )
-            )
+                self.assertEqual(call.kwargs["env"].get("SHELL"), before_shell)
+
+            command_tools = [
+                Path(call.args[0][0]).name.casefold()
+                for call in run_command.call_args_list
+            ]
             self.assertEqual(
-                clean_call.kwargs["env"]["PYTHON"],
-                Path(sys.executable).resolve().name,
+                command_tools,
+                [
+                    "sh-elf-as.exe",
+                    "sh-elf-gcc.exe",
+                    "sh-elf-gcc.exe",
+                    "sh-elf-gcc.exe",
+                    "sh-elf-objdump.exe",
+                    "sh-elf-objcopy.exe",
+                ],
             )
-            self.assertEqual(clean_call.kwargs["env"]["SHELL"], "cmd.exe")
-            self.assertTrue(clean_call.args[0][0].endswith("make.exe"))
-            self.assertIn("SHELL=cmd.exe", clean_call.args[0])
-            self.assertEqual(clean_call.args[0][-1], "clean")
 
-            build_call = run_make.call_args_list[1]
-            self.assertEqual(build_call.kwargs["env"]["SHELL"], "cmd.exe")
-            self.assertIn("SHELL=cmd.exe", build_call.args[0])
-
+            expected_payloads = {
+                "ssfirm.elf": b"ELF",
+                "ssfirm.bin": b"BINFONT",
+                "dump.txt": b"DUMP\n",
+            }
             artifacts = {artifact.path.name: artifact for artifact in result.artifacts}
-            self.assertEqual(set(artifacts), set(payloads))
-            for name, data in payloads.items():
+            self.assertEqual(set(artifacts), set(expected_payloads))
+            for name, data in expected_payloads.items():
+                self.assertEqual((firm / name).read_bytes(), data)
                 self.assertEqual(artifacts[name].size, len(data))
                 self.assertEqual(artifacts[name].sha256, sha256(data).hexdigest())
 
+            self.assertFalse((firm / "tmp.bin").exists())
             self.assertTrue(result.log_path.is_file())
             log_text = result.log_path.read_text(encoding="utf-8")
             self.assertIn(
-                f"Python recipe command: {Path(sys.executable).resolve().name}",
+                "Build driver: SRK Python native (GNU Make not required)",
                 log_text,
             )
-            self.assertIn("Make recipe shell: cmd.exe (explicit override)", log_text)
-            self.assertIn("SHELL=cmd.exe", log_text)
-            self.assertIn("clean ok", log_text)
-            self.assertIn("build ok", log_text)
+            self.assertIn("Shell mediation: none", log_text)
+            self.assertNotIn("make.exe", log_text.casefold())
+            self.assertIn("synthetic compiler output", log_text)
             self.assertIn("Build result: SUCCESS", log_text)
+            self.assertTrue(any("Compiling 3" in line for line in progress))
+            self.assertTrue(any("Build result: SUCCESS" in line for line in progress))
 
-    @patch("rikai_kotoba.hardware.saturn.saroo.build._run_make")
-    def test_failed_clean_is_logged_and_build_is_not_started(self, run_make) -> None:
+    @patch("rikai_kotoba.hardware.saturn.saroo.build._run_command")
+    def test_failed_compile_is_logged_and_later_build_steps_are_not_started(
+        self,
+        run_command,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             toolchain = root / "toolchain-root"
             self._populate_toolchain(toolchain)
             generated = self._generated_tree(root)
-            run_make.return_value = subprocess.CompletedProcess(
-                ["make", "clean"], 2, "clean failed\n"
+
+            run_command.return_value = subprocess.CompletedProcess(
+                ["sh-elf-as", "crt0.S"],
+                2,
+                "compile failed\n",
             )
 
-            result = build_firm_saturn_tree(generated, toolchain)
+            result = build_firm_saturn_tree(
+                generated,
+                toolchain,
+                progress=None,
+            )
 
             self.assertFalse(result.successful)
-            self.assertEqual(result.clean_returncode, 2)
-            self.assertIsNone(result.build_returncode)
-            self.assertEqual(run_make.call_count, 1)
-            self.assertIn("clean failed", result.log_path.read_text(encoding="utf-8"))
+            self.assertEqual(result.clean_returncode, 0)
+            self.assertEqual(result.build_returncode, 2)
+            self.assertEqual(run_command.call_count, 1)
+            log_text = result.log_path.read_text(encoding="utf-8")
+            self.assertIn("Compilation stopped at: crt0.S", log_text)
+            self.assertIn("Build result: FAILED", log_text)
 
     def test_cli_reports_success_without_deployment_language(self) -> None:
         result = self._successful_result()
