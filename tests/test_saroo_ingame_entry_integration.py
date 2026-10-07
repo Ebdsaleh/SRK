@@ -1,4 +1,4 @@
-"""Synthetic tests for title-neutral one-shot game-entry capture preparation."""
+"""Synthetic tests for title-neutral one-shot first-read capture preparation."""
 
 from pathlib import Path
 import tempfile
@@ -92,7 +92,7 @@ class SarooInGameEntryIntegrationTests(unittest.TestCase):
                 for path in (source / "Firm_Saturn").iterdir()
                 if path.is_file()
             }
-            output = root / "SAROO-SRK-INGAME-ENTRY"
+            output = root / "SAROO-SRK-INGAME-FIRSTREAD"
 
             result = prepare_ingame_entry_capture_tree(source, output)
 
@@ -107,21 +107,35 @@ class SarooInGameEntryIntegrationTests(unittest.TestCase):
             game = result.game_load_path.read_text(encoding="utf-8")
             helper = result.helper_source_path.read_text(encoding="utf-8")
             header = result.helper_header_path.read_text(encoding="utf-8")
-            self.assertIn("SRK Arm Game-Entry Capture", main)
-            self.assertIn("srk_arm_game_entry_capture", main)
-            self.assertIn("srk_prepare_game_entry_capture", game)
+            self.assertIn("SRK Arm 1st-Read Capture", main)
+            self.assertIn("srk_arm_first_read_capture", main)
+            self.assertIn("srk_prepare_first_read_capture", game)
             self.assertIn('#include "srk_capture_helper.h"', game)
-            self.assertIn("SRK_GAME_ENTRY_POINTER_ADDRESS 0x06000284u", helper)
+            self.assertIn("SRK_IP_MEMORY_BASE          0x06002000u", helper)
+            self.assertIn("SRK_IP_FIRST_READ_OFFSET    0x000000f0u", helper)
+            self.assertIn("BE32((void*)(SRK_IP_MEMORY_BASE + SRK_IP_FIRST_READ_OFFSET))", helper)
             self.assertIn('"/SAROO/SRK_GAME_WRAMH.BIN"', helper)
             self.assertIn("set_break_pc(0, 0);", helper)
             self.assertIn("game_break_handle = 0;", helper)
-            self.assertIn("SRK_CAPTURE_ERR_GAME_ENTRY", header)
+            self.assertIn("SRK_CAPTURE_ERR_FIRST_READ", header)
+
+    def test_generated_helper_rejects_invalid_or_out_of_wramh_first_read_address(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = self._source(root)
+            result = prepare_ingame_entry_capture_tree(source, root / "out")
+            helper = result.helper_source_path.read_text(encoding="utf-8")
+
+            self.assertIn("first_read_pc<0x06002000u", helper)
+            self.assertIn("first_read_pc>=SRK_WRAMH_END_EXCLUSIVE", helper)
+            self.assertIn("(first_read_pc&1u)!=0u", helper)
+            self.assertIn("game_break_pc = 0;", helper)
 
     def test_existing_output_is_refused_without_modifying_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = self._source(root)
-            output = root / "SAROO-SRK-INGAME-ENTRY"
+            output = root / "SAROO-SRK-INGAME-FIRSTREAD"
             output.mkdir()
             marker = output / "keep.txt"
             marker.write_text("keep", encoding="utf-8")
@@ -150,7 +164,7 @@ class SarooInGameEntryIntegrationTests(unittest.TestCase):
 
             self.assertFalse(output.exists())
 
-    def test_marker_documents_one_shot_entry_semantics(self):
+    def test_marker_documents_boot_spec_limit_and_one_shot_semantics(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = self._source(root)
@@ -159,7 +173,8 @@ class SarooInGameEntryIntegrationTests(unittest.TestCase):
             result = prepare_ingame_entry_capture_tree(source, output)
             marker = result.marker_path.read_text(encoding="utf-8")
 
-            self.assertIn("0x06000284", marker)
+            self.assertIn("0x060020F0", marker)
+            self.assertIn("not guaranteed to execute", marker)
             self.assertIn("after the first instruction", marker)
             self.assertIn("one-shot", marker)
             self.assertIn("SRK_GAME_WRAMH.BIN", marker)
