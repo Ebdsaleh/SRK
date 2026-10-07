@@ -46,6 +46,7 @@ class SarooBuildResult:
 _EXPECTED_ARTIFACTS = ("ssfirm.elf", "ssfirm.bin", "dump.txt")
 _INTEGRATION_MARKER = "SRK_INTEGRATION.txt"
 _BUILD_HELPER = "srk_build_support.py"
+_MAKE_SHELL = "cmd.exe"
 
 
 def _canonical(path: os.PathLike[str] | str) -> Path:
@@ -123,6 +124,11 @@ def _build_environment(report: SarooToolchainReport) -> dict[str, str]:
 
     python_path = Path(sys.executable).resolve().as_posix()
     env["PYTHON"] = f'"{python_path}"' if " " in python_path else python_path
+    # SaturnOrbit R1 bundles an ancient MSYS sh.exe beside make.exe. On modern
+    # Windows that shell can crash before a recipe command starts. The generated
+    # SRK Makefile no longer needs POSIX shell syntax, so make is explicitly
+    # directed to the native Windows command processor in the child environment.
+    env["SHELL"] = _MAKE_SHELL
     return env
 
 
@@ -196,18 +202,20 @@ def build_firm_saturn_tree(
         f"Toolchain root: {toolchain}",
         f"Make: {make_path}",
         f"Python: {sys.executable}",
+        f"Make recipe shell: {_MAKE_SHELL} (explicit override)",
         "Process-local PATH additions:",
     ]
     for probe in report.probes:
         lines.append(f"  {probe.requirement.name}: {probe.resolved_path}")
 
-    clean_command = [str(make_path), "-f", "Makefile", "clean"]
+    shell_assignment = f"SHELL={_MAKE_SHELL}"
+    clean_command = [str(make_path), "-f", "Makefile", shell_assignment, "clean"]
     clean_result = _run_make(clean_command, cwd=firm, env=env)
     _append_command_log(lines, "CLEAN", clean_command, clean_result)
 
     build_result: subprocess.CompletedProcess[str] | None = None
     if clean_result.returncode == 0:
-        build_command = [str(make_path), "-f", "Makefile"]
+        build_command = [str(make_path), "-f", "Makefile", shell_assignment]
         build_result = _run_make(build_command, cwd=firm, env=env)
         _append_command_log(lines, "BUILD", build_command, build_result)
 
