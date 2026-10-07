@@ -8,6 +8,7 @@ from typing import Optional, Sequence
 
 from rikai_kotoba.application.paths import default_saroo_dump_directory
 from rikai_kotoba.hardware.saturn.saroo.capture_ingest import (
+    import_saroo_game_work_ram_high_capture,
     import_saroo_work_ram_captures,
 )
 
@@ -16,8 +17,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="srk-saroo-capture-import",
         description=(
-            "Read SRK_WRAML.BIN and SRK_WRAMH.BIN from a mounted SAROO card and "
-            "publish a verified immutable capture artifact outside the card."
+            "Read SRK Work RAM capture files from a mounted SAROO card and publish "
+            "a verified immutable capture artifact outside the card."
         ),
     )
     parser.add_argument("card_root", help="Root directory of the mounted SAROO SD card")
@@ -28,13 +29,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--checkpoint",
-        default="saroo-menu",
+        default=None,
         help="Title-neutral checkpoint label stored in the capture manifest",
     )
     parser.add_argument(
         "--session-label",
         default="real-hardware",
         help="Optional session label stored in the capture manifest",
+    )
+    parser.add_argument(
+        "--game-wramh",
+        action="store_true",
+        help="Import only SAROO/SRK_GAME_WRAMH.BIN as an in-game WRAM-H capture",
     )
     return parser
 
@@ -49,12 +55,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     store_root = args.store_root or str(default_saroo_dump_directory())
 
     try:
-        result = import_saroo_work_ram_captures(
-            args.card_root,
-            store_root,
-            checkpoint=args.checkpoint,
-            session_label=args.session_label,
-        )
+        if args.game_wramh:
+            result = import_saroo_game_work_ram_high_capture(
+                args.card_root,
+                store_root,
+                checkpoint=args.checkpoint or "saroo-ingame",
+                session_label=args.session_label,
+            )
+        else:
+            result = import_saroo_work_ram_captures(
+                args.card_root,
+                store_root,
+                checkpoint=args.checkpoint or "saroo-menu",
+                session_label=args.session_label,
+            )
     except Exception as exc:
         print(f"srk-saroo-capture-import: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
