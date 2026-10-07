@@ -98,10 +98,20 @@ real Sega Saturn Work RAM
 It does not yet prove an in-game checkpoint. Both captures above were initiated
 from the SAROO boot menu.
 
-## Host-side ingestion
+## Host-side ingestion — physically accepted
 
-SRK can now import both raw card files into its immutable CaptureStore evidence
-format without modifying the mounted card:
+The ingestion tranche was physically validated on ERIDU after pulling commit
+`8a20db22794e52451a046e468f213e3b88374dc3`.
+
+Validation results:
+
+```text
+249 unittest tests passed
+249 pytest tests passed
+23 pytest subtests passed
+```
+
+The real mounted card was then imported with:
 
 ```bat
 python -m rikai_kotoba.tools.saroo_capture_import ^
@@ -110,26 +120,61 @@ python -m rikai_kotoba.tools.saroo_capture_import ^
   --session-label first-real-saturn-capture
 ```
 
-The command validates the exact 1 MiB size of both files, records their canonical
-Saturn address ranges and SHA-256 values, reports zero/non-zero distribution, and
-publishes one verified off-card capture artifact under the normal SAROO dump
-workspace.
+The published immutable artifact was:
 
-The source SD-card files are read-only inputs and remain untouched.
+```text
+C:\Users\Developer.ERIDU\SRK-Workspace\Dumps\SAROO\20261007T153710Z_saroo-menu
+```
+
+with manifest:
+
+```text
+C:\Users\Developer.ERIDU\SRK-Workspace\Dumps\SAROO\20261007T153710Z_saroo-menu\capture.json
+```
+
+The real import reproduced the physical source hashes and statistics exactly:
+
+```text
+WRAM-L
+  range:          0x00200000-0x002FFFFF
+  size:           1048576
+  SHA-256:        30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58
+  non-zero bytes: 0
+
+WRAM-H
+  range:          0x06000000-0x060FFFFF
+  size:           1048576
+  SHA-256:        a546912eb7eb1b16f4ea45e3074f795c3be6085af1a9ac095164ce4dc900f04c
+  non-zero bytes: 17475
+  first non-zero: 0x06000000
+  last non-zero:  0x06005FFF
+```
+
+SRK reported that the mounted SD card was read only and not modified, and then
+re-read/SHA-256-verified the off-card CaptureStore artifact after publication.
+
+This closes the first full evidence loop from real Saturn memory to an immutable
+host-side SRK artifact.
 
 ## Research-output mutation boundary
 
-After capture validation, the two known SRK research files are:
+After capture validation, the known SRK research files include:
 
 ```text
 SAROO/SRK_WRAML.BIN
 SAROO/SRK_WRAMH.BIN
 ```
 
-Future guarded firmware transitions may permit these exact paths to differ from
-the original card baseline, but only when each present file is an ordinary file
-of exactly 1 MiB. All other unrelated card content remains protected by the
-original whole-card manifest.
+The first in-game experiment will additionally use:
+
+```text
+SAROO/SRK_GAME_WRAMH.BIN
+```
+
+Future guarded research-firmware transitions may permit these exact paths to
+differ from the original card baseline, but only when each present file is an
+ordinary file of exactly 1 MiB. All other unrelated card content remains
+protected by the original whole-card manifest.
 
 This keeps generated research evidence separate from the protected game library,
 configuration, MCU/FPGA firmware, and all unrelated files.
