@@ -16,6 +16,7 @@ from rikai_kotoba.formats.saturn.ip_bin import parse_ip_bin
 from rikai_kotoba.hardware.saturn.saroo import (
     CaptureStore,
     import_raw_sd_dump,
+    prepare_firm_saturn_tree,
     verify_capture,
 )
 
@@ -197,6 +198,19 @@ def _cmd_import_saroo_dump(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_prepare_saroo_firmware(args: argparse.Namespace) -> int:
+    result = prepare_firm_saturn_tree(args.source, args.output)
+    print(f"Source SAROO tree : {result.source_root}")
+    print(f"Generated tree    : {result.output_root}")
+    print(f"Firm_Saturn       : {result.firm_saturn_directory}")
+    print(f"Patched Makefile  : {result.makefile_path}")
+    print(f"Patched shell     : {result.shell_path}")
+    print(f"Capture helper    : {result.helper_source_path}")
+    print("Original SAROO source was not modified.")
+    print("Development shell commands: srkwl, srkwh")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="srk",
@@ -324,6 +338,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reject the import unless the raw file has exactly this many bytes",
     )
     import_parser.set_defaults(handler=_cmd_import_saroo_dump)
+
+    prepare_parser = subparsers.add_parser(
+        "prepare-saroo-firmware",
+        help="Create a separate SRK-enabled copy of SAROO's Firm_Saturn source",
+    )
+    prepare_parser.add_argument(
+        "source",
+        help="Root of an upstream SAROO checkout containing Firm_Saturn/",
+    )
+    prepare_parser.add_argument(
+        "output",
+        help="New output directory; must not already exist or be inside the source checkout",
+    )
+    prepare_parser.set_defaults(handler=_cmd_prepare_saroo_firmware)
 
     return parser
 
