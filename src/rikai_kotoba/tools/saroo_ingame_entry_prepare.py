@@ -1,4 +1,4 @@
-"""Prepare a separate SAROO tree for one-shot game-entry WRAM-H capture."""
+"""Prepare a separate SAROO tree for one-shot first-read WRAM-H capture."""
 
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="srk-saroo-ingame-entry-prepare",
         description=(
             "Copy an existing SRK capture-menu SAROO tree to a new directory and "
-            "add one-shot title-neutral game-entry WRAM-H capture support."
+            "add one-shot title-neutral capture when execution reaches the IP.BIN "
+            "1st-read transfer address."
         ),
     )
     parser.add_argument(
@@ -39,8 +40,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"srk-saroo-ingame-entry-prepare: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
 
-    print("SRK SAROO in-game entry-capture tree prepared")
-    print("-" * 52)
+    print("SRK SAROO first-read execution-capture tree prepared")
+    print("-" * 56)
     print(f"Source tree      : {result.source_root}")
     print(f"Output tree      : {result.output_root}")
     print(f"Patched main.c   : {result.main_path}")
@@ -49,10 +50,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"Marker           : {result.marker_path}")
     print()
     print("Source capture-menu tree was not modified.")
-    print("New menu action  : SRK Arm Game-Entry Capture")
-    print("Trigger          : BIOS game-entry pointer at load time (title-neutral)")
+    print("New menu action  : SRK Arm 1st-Read Capture")
+    print("Breakpoint source: big-endian IP.BIN 1st-read address at 0x060020F0")
+    print("Boot-spec note   : loaded there; execution is title-dependent")
     print("Output           : /SAROO/SRK_GAME_WRAMH.BIN (1 MiB WRAM-H)")
-    print("Behavior         : one-shot; UBR disarmed before SD I/O; game resumes")
+    print("Behavior         : one-shot; UBR disarmed before SD I/O; title resumes")
     return 0
 
 
