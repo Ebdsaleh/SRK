@@ -4,7 +4,7 @@ import threading
 import time
 import unittest
 
-from rikai_kotoba.runtime.workers import (
+from rikai_kotoba.application.workers import (
     BackgroundWorkerService,
     WorkerEventKind,
 )
