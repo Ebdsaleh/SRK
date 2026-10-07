@@ -34,11 +34,13 @@ class SarooToolchainTests(unittest.TestCase):
 
             self.assertTrue(report.ready)
             self.assertEqual(report.missing, ())
-            self.assertEqual(report.search_root, root.resolve())
+            self.assertIsNotNone(report.search_root)
+            self.assertTrue(os.path.samefile(report.search_root, root))
             for probe in report.probes:
                 self.assertTrue(probe.available)
                 self.assertEqual(probe.source, "toolchain-root")
-                self.assertEqual(probe.resolved_path.parent, bin_dir.resolve())
+                self.assertIsNotNone(probe.resolved_path)
+                self.assertTrue(os.path.samefile(probe.resolved_path.parent, bin_dir))
 
     def test_missing_tools_are_reported_explicitly(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
