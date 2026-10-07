@@ -111,7 +111,8 @@ class HelpView:
             dpg.add_button(
                 label=labels.get(key, help_content.PAGES[key].title),
                 width=-1,
-                callback=lambda _s, _a, target=key: self.open_page(target),
+                callback=self._page_button_clicked,
+                user_data=key,
             )
 
     def _build_glossary_index(self) -> None:
@@ -125,7 +126,8 @@ class HelpView:
                 dpg.add_button(
                     label=letter,
                     width=28,
-                    callback=lambda _s, _a, value=letter: self.open_glossary_letter(value),
+                    callback=self._glossary_letter_clicked,
+                    user_data=letter,
                 )
         dpg.add_button(
             label="All terms",
@@ -143,6 +145,27 @@ class HelpView:
     def _set_scale(self, label: object) -> None:
         if self.renderer is not None:
             self.renderer.set_scale(documentation_scale_from_label(label))
+
+    def _page_button_clicked(self, sender=None, app_data=None, user_data=None) -> None:
+        """Open one Contents entry using Dear PyGui's explicit user-data channel."""
+
+        del sender, app_data
+        if user_data is not None:
+            self.open_page(str(user_data))
+
+    def _glossary_letter_clicked(self, sender=None, app_data=None, user_data=None) -> None:
+        """Open one A-Z glossary bucket without relying on lambda argument capture."""
+
+        del sender, app_data
+        if user_data is not None:
+            self.open_glossary_letter(str(user_data))
+
+    def _search_result_clicked(self, sender=None, app_data=None, user_data=None) -> None:
+        """Dispatch a search result target supplied through Dear PyGui user_data."""
+
+        del sender, app_data
+        if user_data is not None:
+            self._open_search_result(str(user_data))
 
     def _open_target(self, target: str) -> None:
         if target.startswith("glossary:"):
@@ -207,14 +230,18 @@ class HelpView:
                 label=label,
                 parent=group,
                 width=-1,
-                callback=lambda _s, _a, value=target: self._open_search_result(value),
+                callback=self._search_result_clicked,
+                user_data=target,
             )
 
-    def _open_search_result(self, target: str) -> None:
+    def _open_search_result(self, target: object) -> bool:
+        if not isinstance(target, str):
+            return False
         if target.startswith("page:"):
-            self.open_page(target.split(":", 1)[1])
-        elif target.startswith("glossary:"):
-            self.open_glossary_term(target.split(":", 1)[1])
+            return self.open_page(target.split(":", 1)[1])
+        if target.startswith("glossary:"):
+            return self.open_glossary_term(target.split(":", 1)[1])
+        return False
 
     def on_show(self, **_kwargs) -> None:
         if self.renderer is not None:
