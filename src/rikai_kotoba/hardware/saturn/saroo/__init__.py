@@ -56,6 +56,10 @@ from .firmware_integration import (
     default_helper_root,
     prepare_firm_saturn_tree,
 )
+from .firmware_transition import (
+    SarooGuardedTransitionResult,
+    transition_saroo_firmware_guarded,
+)
 from .guarded_deployment import (
     SarooGuardedApplyResult,
     SarooGuardedDeploymentError,
@@ -138,6 +142,7 @@ __all__ = [
     "SarooGuardedApplyResult",
     "SarooGuardedDeploymentError",
     "SarooGuardedRestoreResult",
+    "SarooGuardedTransitionResult",
     "SarooSdFileInfo",
     "SarooSdLayoutError",
     "SarooSdLayoutReport",
@@ -167,6 +172,7 @@ __all__ = [
     "restore_saroo_firmware",
     "restore_saroo_firmware_guarded",
     "total_planned_bytes",
+    "transition_saroo_firmware_guarded",
     "verify_capture",
     "verify_saroo_card_inventory",
 ]
