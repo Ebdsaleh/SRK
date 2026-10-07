@@ -5,6 +5,12 @@ capture, memory dumps, patching, and correlation remain parameterized by caller-
 supplied addresses/data rather than commercial-game-specific constants.
 """
 
+from .build import (
+    SarooBuildArtifact,
+    SarooBuildError,
+    SarooBuildResult,
+    build_firm_saturn_tree,
+)
 from .capture import (
     CAPTURE_SCHEMA,
     CAPTURE_SCHEMA_VERSION,
@@ -60,6 +66,9 @@ __all__ = [
     "CaptureVerification",
     "CapturedRegion",
     "MemoryRange",
+    "SarooBuildArtifact",
+    "SarooBuildError",
+    "SarooBuildResult",
     "SarooCaptureCoordinator",
     "SarooFirmwareIntegrationError",
     "SarooFirmwareIntegrationResult",
@@ -73,6 +82,7 @@ __all__ = [
     "SarooTransportStatus",
     "SarooTransportUnavailableError",
     "UnconfiguredSarooTransport",
+    "build_firm_saturn_tree",
     "default_helper_root",
     "import_raw_sd_dump",
     "inspect_saroo_toolchain",
