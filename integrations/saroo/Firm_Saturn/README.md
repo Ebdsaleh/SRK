@@ -1,7 +1,7 @@
 # SRK SAROO `Firm_Saturn` capture helper
 
 This directory contains **SRK-authored, title-neutral integration code** for the
-Saturn-side firmware in the upstream SAROO project.  It does not contain a copy
+Saturn-side firmware in the upstream SAROO project. It does not contain a copy
 of SAROO firmware source.
 
 The first integration target was researched against upstream SAROO commit:
@@ -30,7 +30,7 @@ The MCU-side `SSCMD_FILEWR` handler supports two useful behaviors:
 - a non-negative offset opens the file and writes at that explicit position.
 
 Upstream `sci_shell.c` also contains an `fwt` diagnostic that writes `0x10000`
-(64 KiB) of Saturn memory through `write_file()`.  SRK therefore treats 64 KiB
+(64 KiB) of Saturn memory through `write_file()`. SRK therefore treats 64 KiB
 as the **currently verified staging-write size** instead of assuming that a
 1 MiB Work RAM region can safely be handed to the shared staging buffer in one
 operation.
@@ -47,8 +47,8 @@ A canonical 1 MiB Work RAM capture therefore uses sixteen writes.
 
 ## What the helper does *not* decide
 
-The helper deliberately does not choose how a capture is triggered.  That is a
-separate policy layer.  A future integration may use a debug-shell command,
+The helper deliberately does not choose how a capture is triggered. That is a
+separate policy layer. A future integration may use a debug-shell command,
 breakpoint/debug hook, controller hotkey, or another mechanism that has been
 verified against the user's actual SAROO firmware.
 
@@ -76,26 +76,62 @@ Work RAM-L  0x00200000 - 0x002FFFFF  (1 MiB)
 Work RAM-H  0x06000000 - 0x060FFFFF  (1 MiB)
 ```
 
-## Minimal upstream integration for development
+## Recommended integration: generate a separate build tree
 
-This is a development integration, not a claim that stock SAROO firmware already
-ships SRK commands.
+Do **not** edit your known-good SAROO checkout in place. SRK includes a source
+preparation command that copies only upstream `Firm_Saturn/` to a new directory,
+adds the helper, patches the Makefile object list, and adds two development
+shell commands:
 
-1. Use a local SAROO checkout that you are prepared to rebuild.
-2. Copy `srk_capture_helper.c` and `srk_capture_helper.h` into its
-   `Firm_Saturn/` directory.
-3. Add `obj/srk_capture_helper.o` to the `OBJ` list in SAROO's
-   `Firm_Saturn/Makefile`.
-4. Include `srk_capture_helper.h` from the Saturn-side command/debug source that
-   will trigger captures.
-5. Trigger one of the helper functions with a path that already has a valid
-   parent directory on the SAROO SD card.  The upstream README documents
-   `/SAROO/` as a normal SD-card directory, so development captures can use
-   names such as `/SAROO/SRK_WRAML.BIN` and `/SAROO/SRK_WRAMH.BIN` without
-   requiring directory creation support.
+```text
+srkwl   -> /SAROO/SRK_WRAML.BIN
+srkwh   -> /SAROO/SRK_WRAMH.BIN
+```
 
-For an upstream `sci_shell.c` development build, conceptually the command bodies
-can be as small as:
+Example:
+
+```bat
+srk prepare-saroo-firmware C:\path\to\SAROO C:\path\to\SAROO-SRK
+```
+
+Safety behavior:
+
+- the upstream source checkout is read-only from SRK's perspective;
+- the output directory must not already exist;
+- the output directory must not be inside the source checkout;
+- expected Makefile and `sci_shell.c` anchors are validated **before** the
+  output directory is created;
+- an incompatible SAROO revision fails explicitly rather than applying a fuzzy
+  or guessed patch;
+- a failed integration removes its incomplete generated output.
+
+The generated tree contains:
+
+```text
+SAROO-SRK/
+├── SRK_INTEGRATION.txt
+└── Firm_Saturn/
+    ├── ... upstream Saturn firmware files ...
+    ├── srk_capture_helper.c
+    └── srk_capture_helper.h
+```
+
+You can inspect this tree, then build it with the same SH-ELF toolchain used by
+upstream SAROO. Preparing source is **not** the same as flashing firmware; SRK
+does not automatically flash a cartridge.
+
+## Manual integration reference
+
+If you are reviewing the integration by hand, the generated copy performs these
+small source changes:
+
+1. adds `obj/srk_capture_helper.o` to the `OBJ` list in
+   `Firm_Saturn/Makefile`;
+2. includes `srk_capture_helper.h` from `sci_shell.c`;
+3. adds `srkwl` and `srkwh` debug-shell commands;
+4. leaves every other upstream source file unchanged.
+
+The development command bodies are equivalent to:
 
 ```c
 CMD(srkwl) {
@@ -108,19 +144,19 @@ CMD(srkwh) {
 }
 ```
 
-Do not add these commands blindly to a different SAROO revision.  Confirm the
-relevant command dispatcher and `write_file()` contract first.
+Do not transplant these commands blindly into a different SAROO revision.
+Confirm the relevant command dispatcher and `write_file()` contract first.
 
 ## PC-side import
 
 After a raw dump is copied from the SAROO SD card to the PC, import it into an
 immutable SRK capture artifact:
 
-```text
-srk import-saroo-dump SRK_WRAMH.BIN \
-    --base-address 0x06000000 \
-    --expected-size 0x100000 \
-    --checkpoint title-screen \
+```bat
+srk import-saroo-dump SRK_WRAMH.BIN ^
+    --base-address 0x06000000 ^
+    --expected-size 0x100000 ^
+    --checkpoint title-screen ^
     --label work_ram_high
 ```
 
@@ -130,13 +166,13 @@ Unless `--capture-root` is supplied, the verified artifact is written beneath:
 SRK-Workspace/Dumps/SAROO/
 ```
 
-The original raw SD dump is never modified.  SRK creates a new capture directory
+The original raw SD dump is never modified. SRK creates a new capture directory
 containing the region bytes plus `capture.json` with addresses, sizes, timestamp,
 and SHA-256 integrity metadata.
 
 ## Licensing boundary
 
-The files in this directory are SRK-authored integration code.  Upstream SAROO
+The files in this directory are SRK-authored integration code. Upstream SAROO
 `Firm_Saturn` source files identify their own licensing terms in their headers.
 If you redistribute a modified SAROO firmware build, review and comply with the
 upstream project's applicable license terms.
