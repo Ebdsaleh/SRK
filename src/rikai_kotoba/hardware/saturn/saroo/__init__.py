@@ -37,6 +37,16 @@ from .sd_exchange import (
     plan_sd_write_chunks,
     total_planned_bytes,
 )
+from .sd_layout import (
+    SAROO_SD_LAYOUT_LEGACY,
+    SAROO_SD_LAYOUT_MIXED,
+    SAROO_SD_LAYOUT_MODERN,
+    SAROO_SD_LAYOUT_UNRECOGNIZED,
+    SarooSdFileInfo,
+    SarooSdLayoutError,
+    SarooSdLayoutReport,
+    inspect_saroo_sd_layout,
+)
 from .toolchain import (
     SAROO_TOOL_REQUIREMENTS,
     SarooToolProbe,
@@ -57,6 +67,10 @@ from .transport import (
 __all__ = [
     "CAPTURE_SCHEMA",
     "CAPTURE_SCHEMA_VERSION",
+    "SAROO_SD_LAYOUT_LEGACY",
+    "SAROO_SD_LAYOUT_MIXED",
+    "SAROO_SD_LAYOUT_MODERN",
+    "SAROO_SD_LAYOUT_UNRECOGNIZED",
     "SAROO_SD_WRITE_CHUNK_SIZE",
     "SAROO_TOOL_REQUIREMENTS",
     "CaptureArtifact",
@@ -72,6 +86,9 @@ __all__ = [
     "SarooCaptureCoordinator",
     "SarooFirmwareIntegrationError",
     "SarooFirmwareIntegrationResult",
+    "SarooSdFileInfo",
+    "SarooSdLayoutError",
+    "SarooSdLayoutReport",
     "SarooSdWriteChunk",
     "SarooToolProbe",
     "SarooToolRequirement",
@@ -85,6 +102,7 @@ __all__ = [
     "build_firm_saturn_tree",
     "default_helper_root",
     "import_raw_sd_dump",
+    "inspect_saroo_sd_layout",
     "inspect_saroo_toolchain",
     "load_manifest",
     "plan_sd_write_chunks",
