@@ -37,9 +37,14 @@ SRK is currently alpha software. The public repository intentionally contains no
 - Title-neutral SAROO memory-range capture contracts.
 - Atomic SAROO capture artifacts containing raw region files plus SHA-256 `capture.json` metadata.
 - Capture verification that detects size/hash changes after a dump is recorded.
+- Import of raw SAROO SD-card dump files into verified capture artifacts.
+- A title-neutral Saturn-side helper that writes Work RAM to SAROO SD in verified 64 KiB chunks.
+- A safe source-preparation command that creates a separate SRK-enabled `Firm_Saturn` build tree without modifying the upstream SAROO checkout.
 - Saturn-specific code lives under `rikai_kotoba.formats.saturn` and `rikai_kotoba.hardware.saturn` rather than in the generic core.
 
-The real SAROO communication adapter is intentionally **not guessed**. The desktop exposes the capture pipeline and keeps capture buttons disabled until a verified transport implementation reports itself available.
+The real live SAROO communication adapter is intentionally **not guessed**. The desktop exposes the capture pipeline and keeps live capture buttons disabled until a verified transport implementation reports itself available. The current hardware bridge uses upstream-compatible SD-file capture and explicit PC-side import.
+
+See [`docs/SAROO-CAPTURE.md`](docs/SAROO-CAPTURE.md).
 
 ### Salix RAD desktop foundation
 
@@ -141,7 +146,7 @@ srk-gui /path/to/disc.cue --output-dir /path/to/SRK-Workspace/Output
 
 The GUI never requires images to live inside the Git repository. Use the Disc Workspace file chooser to select media from any location.
 
-The Help scene is designed to function offline. It explains the application workflow and terms such as CUE, BIN, track, sector, LBA, ISO-9660, `IP.BIN`, SAROO, RAM dumps, correlation, and provenance without assuming that the reader already knows optical-disc or reverse-engineering terminology.
+The Help scene is designed to function offline. It explains the application workflow and terms such as CUE, BIN, track, sector, LBA, ISO-9660, `IP.BIN`, SAROO, RAM dumps, SD capture, capture artifacts, SHA-256, transport adapters, correlation, and provenance without assuming that the reader already knows optical-disc or reverse-engineering terminology.
 
 ## CLI examples
 
@@ -174,6 +179,24 @@ Extract one ISO path:
 ```bash
 srk extract /path/to/disc.cue /path/to/output --file /EXAMPLE.BIN
 ```
+
+Import a raw Work RAM-H dump copied from a SAROO SD card:
+
+```bash
+srk import-saroo-dump SRK_WRAMH.BIN \
+    --base-address 0x06000000 \
+    --expected-size 0x100000 \
+    --checkpoint title-screen \
+    --label work_ram_high
+```
+
+Create a separate SRK-enabled copy of an upstream SAROO `Firm_Saturn` source tree:
+
+```bash
+srk prepare-saroo-firmware /path/to/SAROO /path/to/SAROO-SRK
+```
+
+The preparation command refuses an existing output directory, refuses output inside the source checkout, validates source anchors before creating output, and never edits the upstream checkout in place.
 
 Search a raw Saturn RAM capture for exact chunks from an extracted disc file:
 
@@ -232,6 +255,14 @@ A successful capture is published as a new timestamped directory under `Dumps/SA
 
 Capture files are first written to a temporary sibling directory and are published only after every region and the manifest succeed. `verify_capture()` can later confirm size and SHA-256 integrity.
 
+For the current SD exchange bridge, upstream-compatible Saturn-side helper code lives under:
+
+```text
+integrations/saroo/Firm_Saturn/
+```
+
+The helper uses 64 KiB writes because that transfer size is demonstrated by upstream SAROO's own Saturn-side diagnostic. It does not assume a larger staging transfer without evidence.
+
 The transport boundary is deliberately small: a concrete adapter reports status, reads an explicit `MemoryRange`, and closes. Capture persistence, worker-thread orchestration, GUI state, and correlation are therefore independent of how a verified SAROO firmware ultimately moves bytes off the Saturn.
 
 ## Source-image safety policy
@@ -247,6 +278,13 @@ Future patch/rebuild tooling must create a separate output image and preserve th
 ## Architecture
 
 ```text
+integrations/
+└── saroo/
+    └── Firm_Saturn/
+        ├── srk_capture_helper.c
+        ├── srk_capture_helper.h
+        └── README.md
+
 src/
 ├── salix/
 │   ├── runtime/
@@ -279,7 +317,9 @@ src/
     │   ├── saroo_capture.py
     │   ├── workers.py
     │   ├── paths.py
-    │   └── help_content.py
+    │   ├── help_content.py
+    │   ├── saroo_help_content.py
+    │   └── help_catalog.py
     ├── views/
     │   ├── main_viewport.py
     │   ├── disc_workspace.py
@@ -296,6 +336,8 @@ src/
             ├── memory_map.py
             └── saroo/
                 ├── capture.py
+                ├── sd_exchange.py
+                ├── firmware_integration.py
                 └── transport.py
 ```
 
