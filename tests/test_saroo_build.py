@@ -82,6 +82,7 @@ class SarooBuildTests(unittest.TestCase):
             generated = self._generated_tree(root)
             firm = generated / "Firm_Saturn"
             before_path = os.environ.get("PATH")
+            before_shell = os.environ.get("SHELL")
 
             payloads = {
                 "ssfirm.elf": b"ELF",
@@ -105,6 +106,7 @@ class SarooBuildTests(unittest.TestCase):
             self.assertEqual(result.build_returncode, 0)
             self.assertEqual(run_make.call_count, 2)
             self.assertEqual(os.environ.get("PATH"), before_path)
+            self.assertEqual(os.environ.get("SHELL"), before_shell)
 
             clean_call = run_make.call_args_list[0]
             child_path = clean_call.kwargs["env"]["PATH"]
@@ -115,8 +117,14 @@ class SarooBuildTests(unittest.TestCase):
                     for entry in child_entries
                 )
             )
+            self.assertEqual(clean_call.kwargs["env"]["SHELL"], "cmd.exe")
             self.assertTrue(clean_call.args[0][0].endswith("make.exe"))
+            self.assertIn("SHELL=cmd.exe", clean_call.args[0])
             self.assertEqual(clean_call.args[0][-1], "clean")
+
+            build_call = run_make.call_args_list[1]
+            self.assertEqual(build_call.kwargs["env"]["SHELL"], "cmd.exe")
+            self.assertIn("SHELL=cmd.exe", build_call.args[0])
 
             artifacts = {artifact.path.name: artifact for artifact in result.artifacts}
             self.assertEqual(set(artifacts), set(payloads))
@@ -126,6 +134,8 @@ class SarooBuildTests(unittest.TestCase):
 
             self.assertTrue(result.log_path.is_file())
             log_text = result.log_path.read_text(encoding="utf-8")
+            self.assertIn("Make recipe shell: cmd.exe (explicit override)", log_text)
+            self.assertIn("SHELL=cmd.exe", log_text)
             self.assertIn("clean ok", log_text)
             self.assertIn("build ok", log_text)
             self.assertIn("Build result: SUCCESS", log_text)
