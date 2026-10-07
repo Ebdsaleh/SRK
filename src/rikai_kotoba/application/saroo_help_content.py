@@ -39,7 +39,7 @@ GLOSSARY: tuple[GlossaryEntry, ...] = (
     ),
     GlossaryEntry(
         "Makefile",
-        "A text file describing how source files are compiled and linked into a program. SAROO's Firm_Saturn Makefile names the SH-ELF compiler, assembler, object tools, source objects, build outputs, and invokes support utilities such as touch, cat, and rm.",
+        "A text file describing how source files are compiled and linked into a program. The historical SAROO Firm_Saturn Makefile also used touch, cat, and rm; SRK-generated trees replace those file operations with srk_build_support.py while preserving the SH-ELF compile/link commands.",
         related=("toolchain", "cross-compiler"),
     ),
     GlossaryEntry(
@@ -61,7 +61,7 @@ GLOSSARY: tuple[GlossaryEntry, ...] = (
     ),
     GlossaryEntry(
         "Toolchain",
-        "The collection of programs used to turn source code into a target executable. For SAROO Firm_Saturn the upstream Makefile requires sh-elf-gcc, sh-elf-as, sh-elf-objdump, sh-elf-objcopy, a Make-compatible build driver, touch, cat, and rm.",
+        "The external programs needed to build generated SAROO Firm_Saturn source. SRK currently requires sh-elf-gcc, sh-elf-as, sh-elf-objdump, sh-elf-objcopy, and a Make-compatible driver; Python handles the historical touch, cat, and rm file operations inside the generated tree.",
         related=("cross-compiler", "Makefile", "SaturnOrbit"),
     ),
     GlossaryEntry(
@@ -125,7 +125,7 @@ PAGES: dict[str, DocPage] = {
                 "Check the Firm_Saturn build toolchain",
                 (
                     DocParagraph(
-                        "Upstream SAROO documents Firm_Saturn as an SH-ELF build. The pinned Makefile invokes sh-elf-gcc, sh-elf-as, sh-elf-objdump, sh-elf-objcopy, a Make-compatible build driver, touch, cat, and rm. SRK checks that complete external-program surface before attempting any build."
+                        "The SRK-generated Firm_Saturn build requires five external build programs: sh-elf-gcc, sh-elf-as, sh-elf-objdump, sh-elf-objcopy, and a Make-compatible build driver. Physical inspection of SaturnOrbit R1 confirmed those tools are present in its SH_ELF tree."
                     ),
                     DocCodeBlock(
                         "srk-saroo-toolchain\n\n"
@@ -133,10 +133,13 @@ PAGES: dict[str, DocPage] = {
                         language="bat",
                     ),
                     DocParagraph(
-                        "The preflight is read-only. A supplied toolchain root is searched first, including historical SaturnOrbit SH_ELF, Other Utilities, and MinGW directories, then the existing process PATH is checked as a fallback. PATH is not modified by SRK. A READY discovery result means every required executable was found; only an actual Firm_Saturn build proves that the installation works correctly."
+                        "The historical upstream Makefile also invokes touch, cat, and rm. SRK-generated trees replace those three file operations with srk_build_support.py, using the Python runtime SRK already requires. They are therefore not external preflight requirements."
                     ),
                     DocParagraph(
-                        "The pinned upstream tree also contains MAKE_ELF.bat, but that historical helper contains machine-specific absolute F: drive paths. SRK does not use that batch file as its portable build entry point. The planned build uses the upstream Makefile from a separate generated source tree with an explicit process-local toolchain environment."
+                        "The preflight is read-only. A supplied toolchain root is searched first, including historical SaturnOrbit SH_ELF and Other Utilities directories, then the existing process PATH is checked as a fallback. PATH is not modified by SRK. A READY discovery result means the five external build programs were found; only an actual Firm_Saturn build proves that the installation works correctly."
+                    ),
+                    DocParagraph(
+                        "The pinned upstream tree also contains MAKE_ELF.bat, but that historical helper contains machine-specific absolute F: drive paths. SRK does not use that batch file as its portable build entry point. The build uses a separate generated source tree, a process-local toolchain environment, the upstream SH-ELF compiler commands, and SRK's portable file-operation helper."
                     ),
                     DocCallout(
                         title="No firmware deployment occurs here",
