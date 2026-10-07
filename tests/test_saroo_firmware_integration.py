@@ -45,6 +45,10 @@ $(EXE)\t: $(OBJ)
 \t$(call ECHO_CMD, \"OBJCOPY\", tmp.bin, $(OBJCOPY) -O binary $(EXE) tmp.bin)
 \t$(call ECHO_CMD, \"CAT    \" , ssfirm.bin, cat tmp.bin font_cjk.bin >ssfirm.bin)
 \t$(call ECHO_CMD, \"RM     \" , tmp.bin,  rm -f tmp.bin)
+
+clean\t:
+\t\trm -f obj/*.o
+\t\trm -f $(EXE) ssfirm.bin dump.txt
 """.replace('"MKDIR  " ,', '"MKDIR  ",').replace('"TOUCH  " ,', '"TOUCH  ",').replace('"CAT    " ,', '"CAT    ",').replace('"RM     " ,', '"RM     ",')
 
 SHELL = """#include \"main.h\"\n#include \"smpc.h\"\n\nvoid sci_shell(void)\n{\n\tchar *cmd = 0;\n\tif(0){}\n\t\tCMD(q) {\n\t\t\tbreak;\n\t\t}\n}\n"""
@@ -114,9 +118,16 @@ class SarooFirmwareIntegrationTests(unittest.TestCase):
                 patched,
             )
             self.assertIn("srk_build_support.py remove tmp.bin", patched)
+            self.assertIn("srk_build_support.py remove obj/*.o", patched)
+            self.assertIn(
+                "srk_build_support.py remove $(EXE) ssfirm.bin dump.txt",
+                patched,
+            )
             self.assertNotIn("version.c, touch version.c)", patched)
             self.assertNotIn("cat tmp.bin font_cjk.bin >ssfirm.bin", patched)
             self.assertNotIn("rm -f tmp.bin", patched)
+            self.assertNotIn("\t\trm -f obj/*.o", patched)
+            self.assertNotIn("\t\trm -f $(EXE) ssfirm.bin dump.txt", patched)
 
             firm = result.firm_saturn_directory
             first = firm / "first.bin"
@@ -145,6 +156,29 @@ class SarooFirmwareIntegrationTests(unittest.TestCase):
                 check=True,
             )
             self.assertFalse(joined.exists())
+
+            obj_dir = firm / "obj"
+            obj_dir.mkdir()
+            object_a = obj_dir / "a.o"
+            object_b = obj_dir / "b.o"
+            extra = firm / "extra.bin"
+            object_a.write_bytes(b"A")
+            object_b.write_bytes(b"B")
+            extra.write_bytes(b"extra")
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(result.build_support_path),
+                    "remove",
+                    "obj/*.o",
+                    extra.name,
+                    "missing.bin",
+                ],
+                cwd=firm,
+                check=True,
+            )
+            self.assertEqual(list(obj_dir.glob("*.o")), [])
+            self.assertFalse(extra.exists())
 
             version = firm / "version.c"
             self.assertFalse(version.exists())

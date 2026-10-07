@@ -1,17 +1,18 @@
 """Small cross-platform file operations for an SRK-generated Firm_Saturn tree.
 
-Upstream SAROO's historical Makefile uses ``touch``, ``cat`` and ``rm``.  The
+Upstream SAROO's historical Makefile uses ``touch``, ``cat`` and ``rm``. The
 SaturnOrbit R1 SH-ELF bundle supplies the compiler and Make driver but does not
-ship every one of those Unix-style utilities.  SRK-generated trees use this
+ship every one of those Unix-style utilities. SRK-generated trees use this
 helper instead so the build does not depend on unrelated third-party coreutils.
 
-This module is copied into the generated tree.  It is a build helper only; it
+This module is copied into the generated tree. It is a build helper only; it
 does not install or flash firmware.
 """
 
 from __future__ import annotations
 
 import argparse
+import glob
 from pathlib import Path
 import shutil
 
@@ -36,11 +37,19 @@ def _concat(destination: str, sources: list[str]) -> None:
                 shutil.copyfileobj(input_file, output)
 
 
-def _remove(path: str) -> None:
-    try:
-        Path(path).unlink()
-    except FileNotFoundError:
-        pass
+def _remove(paths: list[str]) -> None:
+    if not paths:
+        raise ValueError("remove requires at least one path or glob")
+
+    for pattern in paths:
+        matches = glob.glob(pattern)
+        if not matches and not glob.has_magic(pattern):
+            matches = [pattern]
+        for match in matches:
+            try:
+                Path(match).unlink()
+            except FileNotFoundError:
+                pass
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -57,7 +66,7 @@ def _parser() -> argparse.ArgumentParser:
     concat_parser.add_argument("sources", nargs="+")
 
     remove_parser = subparsers.add_parser("remove")
-    remove_parser.add_argument("path")
+    remove_parser.add_argument("paths", nargs="+")
 
     return parser
 
@@ -70,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.operation == "concat":
         _concat(args.destination, args.sources)
     elif args.operation == "remove":
-        _remove(args.path)
+        _remove(args.paths)
     else:  # pragma: no cover - argparse owns the operation choices.
         raise AssertionError(f"unhandled operation: {args.operation}")
 

@@ -1,10 +1,10 @@
 """Generate an SRK-enabled copy of upstream SAROO's Firm_Saturn tree.
 
-The source SAROO checkout is never edited in place.  SRK copies only the
+The source SAROO checkout is never edited in place. SRK copies only the
 ``Firm_Saturn`` directory to a new destination, adds the SRK-authored capture
 helper, and applies small anchor-validated build/shell integrations there.
 
-This is intentionally source preparation, not firmware flashing.  The user can
+This is intentionally source preparation, not firmware flashing. The user can
 inspect and build the generated tree with the upstream SH-ELF toolchain.
 """
 
@@ -57,6 +57,14 @@ _MAKEFILE_RM_ANCHOR = (
 _MAKEFILE_RM_REPLACEMENT = (
     '\t$(call ECHO_CMD, "RM     ", tmp.bin,  '
     '$(PYTHON) srk_build_support.py remove tmp.bin)\n'
+)
+_MAKEFILE_CLEAN_OBJECTS_ANCHOR = "\t\trm -f obj/*.o\n"
+_MAKEFILE_CLEAN_OBJECTS_REPLACEMENT = (
+    "\t\t$(PYTHON) srk_build_support.py remove obj/*.o\n"
+)
+_MAKEFILE_CLEAN_OUTPUTS_ANCHOR = "\t\trm -f $(EXE) ssfirm.bin dump.txt\n"
+_MAKEFILE_CLEAN_OUTPUTS_REPLACEMENT = (
+    "\t\t$(PYTHON) srk_build_support.py remove $(EXE) ssfirm.bin dump.txt\n"
 )
 _SHELL_INCLUDE_ANCHOR = '#include "smpc.h"\n'
 _SHELL_HELPER_INCLUDE = '#include "srk_capture_helper.h"\n'
@@ -115,6 +123,8 @@ def _portable_build_rewrite_required(makefile_text: str) -> bool:
         "touch version.c",
         "cat tmp.bin font_cjk.bin >ssfirm.bin",
         "rm -f tmp.bin",
+        "rm -f obj/*.o",
+        "rm -f $(EXE) ssfirm.bin dump.txt",
     )
     return any(marker in makefile_text for marker in upstream_markers)
 
@@ -124,6 +134,8 @@ def _validate_portable_build_anchors(makefile_text: str) -> None:
         (_MAKEFILE_TOUCH_ANCHOR, "Makefile touch recipe"),
         (_MAKEFILE_CAT_ANCHOR, "Makefile concatenation recipe"),
         (_MAKEFILE_RM_ANCHOR, "Makefile remove recipe"),
+        (_MAKEFILE_CLEAN_OBJECTS_ANCHOR, "Makefile clean object recipe"),
+        (_MAKEFILE_CLEAN_OUTPUTS_ANCHOR, "Makefile clean output recipe"),
     ):
         if makefile_text.count(anchor) != 1:
             raise SarooFirmwareIntegrationError(
@@ -147,24 +159,22 @@ def _apply_portable_build_rewrite(makefile_text: str) -> str:
             _MAKEFILE_PYTHON_ANCHOR + _MAKEFILE_PYTHON_LINE,
             label="Makefile OBJCOPY",
         )
-    patched = _replace_once(
-        patched,
-        _MAKEFILE_TOUCH_ANCHOR,
-        _MAKEFILE_TOUCH_REPLACEMENT,
-        label="Makefile touch recipe",
-    )
-    patched = _replace_once(
-        patched,
-        _MAKEFILE_CAT_ANCHOR,
-        _MAKEFILE_CAT_REPLACEMENT,
-        label="Makefile concatenation recipe",
-    )
-    patched = _replace_once(
-        patched,
-        _MAKEFILE_RM_ANCHOR,
-        _MAKEFILE_RM_REPLACEMENT,
-        label="Makefile remove recipe",
-    )
+    for anchor, replacement, label in (
+        (_MAKEFILE_TOUCH_ANCHOR, _MAKEFILE_TOUCH_REPLACEMENT, "Makefile touch recipe"),
+        (_MAKEFILE_CAT_ANCHOR, _MAKEFILE_CAT_REPLACEMENT, "Makefile concatenation recipe"),
+        (_MAKEFILE_RM_ANCHOR, _MAKEFILE_RM_REPLACEMENT, "Makefile remove recipe"),
+        (
+            _MAKEFILE_CLEAN_OBJECTS_ANCHOR,
+            _MAKEFILE_CLEAN_OBJECTS_REPLACEMENT,
+            "Makefile clean object recipe",
+        ),
+        (
+            _MAKEFILE_CLEAN_OUTPUTS_ANCHOR,
+            _MAKEFILE_CLEAN_OUTPUTS_REPLACEMENT,
+            "Makefile clean output recipe",
+        ),
+    ):
+        patched = _replace_once(patched, anchor, replacement, label=label)
     return patched
 
 
@@ -176,8 +186,8 @@ def prepare_firm_saturn_tree(
 ) -> SarooFirmwareIntegrationResult:
     """Create a separate SRK-enabled ``Firm_Saturn`` build tree.
 
-    ``saroo_source_root`` must be the root of an upstream SAROO checkout.  The
-    original checkout remains untouched.  ``output_root`` must not already
+    ``saroo_source_root`` must be the root of an upstream SAROO checkout. The
+    original checkout remains untouched. ``output_root`` must not already
     exist; refusing replacement makes repeated experiments explicit and keeps a
     known-good upstream source tree available for comparison.
     """
