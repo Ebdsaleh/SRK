@@ -8,6 +8,7 @@ on the application thread during the normal Salix runtime update cycle.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Iterable
 
 from rikai_kotoba.application.workers import (
@@ -55,6 +56,10 @@ class SarooCaptureController:
     @property
     def is_busy(self) -> bool:
         return self._active_job_id is not None
+
+    @property
+    def capture_root(self) -> Path:
+        return self.coordinator.store.root
 
     def subscribe(
         self,
