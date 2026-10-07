@@ -1,11 +1,11 @@
 # SAROO `Firm_Saturn` Toolchain Preflight
 
 SRK prepares and researches a title-neutral Saturn-side memory-capture helper for
-upstream SAROO.  Before attempting a firmware build, SRK can perform a **read-only
-preflight** for the build programs named by upstream SAROO's `Firm_Saturn`
+upstream SAROO. Before attempting a firmware build, SRK can perform a **read-only
+preflight** for the build programs invoked by upstream SAROO's `Firm_Saturn`
 Makefile.
 
-This document describes discovery only.  Nothing here flashes SAROO hardware or
+This document describes discovery only. Nothing here flashes SAROO hardware or
 modifies a known-good SAROO checkout.
 
 ## Upstream build contract
@@ -19,9 +19,18 @@ sh-elf-objdump
 sh-elf-objcopy
 ```
 
-A Make-compatible build driver is also required.  SRK recognizes `make`, `gmake`,
-or `mingw32-make` as possible drivers and records the exact executable that was
-resolved.
+It also invokes a Make-compatible build driver plus the Unix-style support
+utilities used directly by the Makefile:
+
+```text
+make
+touch
+cat
+rm
+```
+
+SRK recognizes `make`, `gmake`, or `mingw32-make` as possible Make-compatible
+drivers and records the exact executable that was resolved.
 
 Upstream SAROO's README states that `Firm_Saturn` is built with the SH-ELF
 compiler distributed with SaturnOrbit.
@@ -31,6 +40,49 @@ The SRK integration was researched against upstream SAROO commit:
 ```text
 c31bf6192eff59533d7268dfdf6c791f11a1f7c9
 ```
+
+## Historical SaturnOrbit layout
+
+Older SaturnOrbit distributions commonly place the required programs beneath
+separate directories. SRK's explicit-root search understands layouts including:
+
+```text
+SaturnOrbit\
+├── SH_ELF\
+│   ├── sh-elf\bin\
+│   │   ├── sh-elf-gcc.exe
+│   │   ├── sh-elf-as.exe
+│   │   ├── sh-elf-objdump.exe
+│   │   └── sh-elf-objcopy.exe
+│   └── Other Utilities\
+│       ├── touch.exe
+│       ├── cat.exe
+│       └── rm.exe
+└── MinGW\bin\
+    └── make.exe
+```
+
+The exact installed package may differ, so preflight reports the actual path used
+for each executable rather than assuming a fixed installation directory.
+
+## Do not use upstream `MAKE_ELF.bat` as the SRK build entry point
+
+The pinned upstream SAROO tree also contains `Firm_Saturn/MAKE_ELF.bat`, but that
+historical helper contains machine-specific absolute paths such as
+`F:\SaturnOrbit\SET_ELF.BAT` and another unrelated `F:` output destination.
+
+SRK therefore does **not** treat that batch file as the portable build contract.
+The intended build path is:
+
+```text
+separate generated Firm_Saturn tree
++
+explicit process-local toolchain environment
++
+upstream Makefile
+```
+
+This keeps the user's global `PATH` and known-good upstream checkout untouched.
 
 ## Run the preflight
 
@@ -42,16 +94,16 @@ srk-saroo-toolchain
 
 With no argument, SRK inspects the existing process `PATH` without changing it.
 
-If the SH-ELF tools are bundled somewhere beneath a SaturnOrbit or toolchain
+If the required tools are bundled somewhere beneath a SaturnOrbit or toolchain
 directory, point SRK at the containing root:
 
 ```bat
 srk-saroo-toolchain --toolchain-root "C:\path\to\SaturnOrbit"
 ```
 
-The explicit root is searched first.  SRK understands common nested `bin`,
-`sh-elf/bin`, `toolchain/bin`, and similar layouts and performs a bounded
-recursive search beneath the directory.
+The explicit root is searched first. SRK understands common nested `bin`,
+`sh-elf/bin`, `toolchain/bin`, historical SaturnOrbit directories, and performs a
+bounded recursive search beneath the directory.
 
 Example successful report:
 
@@ -66,6 +118,9 @@ PATH policy   : read-only fallback; PATH is not modified
 [OK]      sh-elf-objdump   C:\SaturnOrbit\...\sh-elf-objdump.exe (toolchain-root)
 [OK]      sh-elf-objcopy   C:\SaturnOrbit\...\sh-elf-objcopy.exe (toolchain-root)
 [OK]      make             C:\SaturnOrbit\...\make.exe (toolchain-root)
+[OK]      touch            C:\SaturnOrbit\...\touch.exe (toolchain-root)
+[OK]      cat              C:\SaturnOrbit\...\cat.exe (toolchain-root)
+[OK]      rm               C:\SaturnOrbit\...\rm.exe (toolchain-root)
 
 Discovery result: READY - every required executable was resolved.
 ```
