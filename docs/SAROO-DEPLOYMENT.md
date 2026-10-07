@@ -10,15 +10,16 @@ card is valuable recovery evidence.
 
 ## Deployment stages
 
-SRK separates deployment into three explicit stages:
+SRK separates deployment into four explicit stages:
 
 1. **plan** — read-only comparison of existing card firmware and a candidate;
-2. **apply** — backup-first, hash-gated replacement of modern `SAROO/ssfirm.bin`;
-3. **restore** — verified return to an off-card baseline backup.
+2. **backup** — create and verify an off-card copy while leaving the card unchanged;
+3. **apply** — backup-first, hash-gated replacement of modern `SAROO/ssfirm.bin`;
+4. **restore** — verified return to an off-card baseline backup.
 
-Planning never writes. Apply and restore are separate commands and require full
-SHA-256 values from a previously reviewed state plus an explicit confirmation
-token.
+Planning never writes. Backup writes only to the off-card preservation directory.
+Apply and restore are separate commands and require full SHA-256 values from a
+previously reviewed state plus an explicit confirmation token.
 
 SRK does not deploy or modify MCU firmware, FPGA firmware, configuration files,
 game images, or the SAROO update directory as part of this workflow.
@@ -56,9 +57,9 @@ SRK-Workspace/Backups/SAROO/ssfirm_d93c2c91e958a3bf.bin
 ```
 
 and completed with no backup creation and no SD-card modification. This physical
-checkpoint is the evidence used to permit development of the explicit apply and
-restore stages; it is not itself evidence that write-capable deployment has yet
-been physically exercised.
+checkpoint is the evidence used to permit development of backup/apply/restore;
+it is not itself evidence that write-capable deployment has yet been physically
+exercised.
 
 ## Modern layout gate
 
@@ -71,7 +72,7 @@ Automatic deployment is currently gated to the unambiguous modern layout:
 ```
 
 Legacy root `ramimage.bin`, mixed layouts, and unrecognised layouts are reported
-but are not authorised for apply or restore.
+but are not authorised for backup/apply/restore.
 
 This is intentional. SRK must not guess which Saturn-side firmware file a real
 cartridge boots.
@@ -123,6 +124,27 @@ Planning ends with:
 No backup was created. No SD-card file was modified.
 ```
 
+## Standalone verified backup checkpoint
+
+Before the first physical apply, SRK can create the baseline backup in a separate
+checkpoint while leaving the SD card unchanged. This is intentionally available
+as a module command even when console-script metadata has not been reinstalled:
+
+```bat
+python -m rikai_kotoba.tools.saroo_backup ^
+  D:\ ^
+  --backup-root "C:\path\to\safe\off-card\backups" ^
+  --expected-existing-sha256 <64-character-existing-hash>
+```
+
+The command re-inspects the modern card layout, requires the full reviewed
+existing-firmware hash, creates or reuses the deterministic content-addressed
+backup, verifies the backup SHA-256, then re-hashes the card source again. It
+ends by stating that the SAROO SD card was not modified.
+
+This checkpoint is recommended before the first real write to a previously
+working independent SAROO card.
+
 ## Explicit apply
 
 Apply requires the full existing-card and candidate SHA-256 values from the
@@ -133,7 +155,7 @@ Before `SAROO/ssfirm.bin` is replaced, SRK:
 
 1. re-inspects the card and requires exactly one modern firmware file;
 2. re-hashes existing card firmware and candidate firmware;
-3. creates the off-card backup if it does not already exist;
+3. creates or re-verifies the off-card backup;
 4. re-reads and SHA-256-verifies that backup;
 5. stages the candidate beside the destination on the SD card;
 6. verifies the staged candidate hash;
@@ -219,12 +241,18 @@ card itself later has to be repaired or recreated.
 
 ## Console entry points
 
-Fresh package installation exposes:
+Fresh package installation exposes the existing planner/apply/restore scripts:
 
 ```text
 srk-saroo-deployment
 srk-saroo-apply
 srk-saroo-restore
+```
+
+The standalone baseline backup is currently invoked directly as:
+
+```text
+python -m rikai_kotoba.tools.saroo_backup
 ```
 
 During development, `python -m rikai_kotoba.tools.<module>` is preferred after a
