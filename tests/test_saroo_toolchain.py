@@ -35,6 +35,19 @@ class SarooToolchainTests(unittest.TestCase):
             tuple(requirement.name for requirement in SAROO_TOOL_REQUIREMENTS),
         )
 
+    def test_legacy_make_is_not_resolved_or_required(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._populate_toolchain(root)
+            legacy_utility = root / "SH_ELF" / "Other Utilities"
+            legacy_utility.mkdir(parents=True)
+            (legacy_utility / "make.exe").write_bytes(b"legacy-make")
+
+            report = inspect_saroo_toolchain(root, path_env="")
+
+            self.assertTrue(report.ready)
+            self.assertIsNone(report.path_for("make"))
+
     def test_explicit_saturnorbit_root_resolves_every_required_tool(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
