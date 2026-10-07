@@ -2,7 +2,9 @@
 
 from contextlib import redirect_stderr, redirect_stdout
 import io
+import json
 import os
+from pathlib import Path
 import tempfile
 import unittest
 
@@ -153,6 +155,45 @@ class CLITests(unittest.TestCase):
             self.assertIn("0x06000004", rendered)
             self.assertIn("0x00000010", rendered)
             self.assertIn("2 matched", rendered)
+
+    def test_import_saroo_dump_creates_verified_capture(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            source = temp / "raw.bin"
+            capture_root = temp / "captures"
+            payload = bytes(range(64))
+            source.write_bytes(payload)
+            output = io.StringIO()
+
+            with redirect_stdout(output), redirect_stderr(io.StringIO()):
+                result = main(
+                    [
+                        "import-saroo-dump",
+                        str(source),
+                        "--base-address",
+                        "0x06000000",
+                        "--checkpoint",
+                        "synthetic",
+                        "--capture-root",
+                        str(capture_root),
+                        "--label",
+                        "work_ram_high",
+                        "--expected-size",
+                        "0x40",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            self.assertIn("Integrity         : verified", output.getvalue())
+            capture_dirs = [path for path in capture_root.iterdir() if path.is_dir()]
+            self.assertEqual(len(capture_dirs), 1)
+            manifest = json.loads(
+                (capture_dirs[0] / "capture.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["checkpoint"], "synthetic")
+            self.assertEqual(manifest["regions"][0]["start_address"], 0x06000000)
+            self.assertEqual(manifest["regions"][0]["size"], len(payload))
+            self.assertEqual(source.read_bytes(), payload)
 
 
 if __name__ == "__main__":
