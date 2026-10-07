@@ -12,7 +12,9 @@ from rikai_kotoba.hardware.saturn.saroo import (
 )
 
 
-MAKEFILE = """OBJ\t=\tobj/main.o  \\\n\t\tobj/sci_shell.o  \\\n\t\tobj/version.o\n"""
+MAKEFILE = """OBJ\t=\tobj/main.o  \\
+\t\tobj/sci_shell.o  \\
+\t\tobj/version.o\n"""
 
 MAKEFILE_WITH_SUPPORT = """CC\t=\tsh-elf-gcc
 AS\t=\tsh-elf-as
@@ -112,7 +114,7 @@ class SarooFirmwareIntegrationTests(unittest.TestCase):
                 patched,
             )
             self.assertIn("srk_build_support.py remove tmp.bin", patched)
-            self.assertNotIn("touch version.c)", patched)
+            self.assertNotIn("version.c, touch version.c)", patched)
             self.assertNotIn("cat tmp.bin font_cjk.bin >ssfirm.bin", patched)
             self.assertNotIn("rm -f tmp.bin", patched)
 
