@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from rikai_kotoba.cli import main as srk_cli_main
 from rikai_kotoba.hardware.saturn.saroo import (
     SAROO_TOOL_REQUIREMENTS,
     SarooBuildArtifact,
@@ -39,6 +40,24 @@ class SarooBuildTests(unittest.TestCase):
         (firm / "Makefile").write_text("all:\n\t@echo synthetic\n", encoding="utf-8")
         (firm / "srk_build_support.py").write_text("# synthetic\n", encoding="utf-8")
         return generated
+
+    @staticmethod
+    def _successful_result() -> SarooBuildResult:
+        artifact = SarooBuildArtifact(
+            path=Path("ssfirm.bin"),
+            size=3,
+            sha256="abc123",
+        )
+        return SarooBuildResult(
+            generated_root=Path("SAROO-SRK"),
+            firm_saturn_directory=Path("SAROO-SRK/Firm_Saturn"),
+            toolchain_root=Path("SaturnOrbit"),
+            log_path=Path("SAROO-SRK/SRK_BUILD_LOG.txt"),
+            clean_returncode=0,
+            build_returncode=0,
+            artifacts=(artifact,),
+            successful=True,
+        )
 
     def test_refuses_arbitrary_saroo_tree_without_integration_marker(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -131,21 +150,7 @@ class SarooBuildTests(unittest.TestCase):
             self.assertIn("clean failed", result.log_path.read_text(encoding="utf-8"))
 
     def test_cli_reports_success_without_deployment_language(self) -> None:
-        artifact = SarooBuildArtifact(
-            path=Path("ssfirm.bin"),
-            size=3,
-            sha256="abc123",
-        )
-        result = SarooBuildResult(
-            generated_root=Path("SAROO-SRK"),
-            firm_saturn_directory=Path("SAROO-SRK/Firm_Saturn"),
-            toolchain_root=Path("SaturnOrbit"),
-            log_path=Path("SAROO-SRK/SRK_BUILD_LOG.txt"),
-            clean_returncode=0,
-            build_returncode=0,
-            artifacts=(artifact,),
-            successful=True,
-        )
+        result = self._successful_result()
         output = StringIO()
         with patch(
             "rikai_kotoba.tools.saroo_build.build_firm_saturn_tree",
@@ -153,6 +158,28 @@ class SarooBuildTests(unittest.TestCase):
         ), redirect_stdout(output):
             code = build_cli_main(
                 ["SAROO-SRK", "--toolchain-root", "SaturnOrbit"]
+            )
+
+        self.assertEqual(code, 0)
+        text = output.getvalue()
+        self.assertIn("Build result: SUCCESS", text)
+        self.assertIn("No firmware was copied to SD or flashed.", text)
+        self.assertIn("abc123", text)
+
+    def test_existing_srk_cli_exposes_controlled_saroo_build_without_reinstall(self) -> None:
+        result = self._successful_result()
+        output = StringIO()
+        with patch(
+            "rikai_kotoba.cli.build_firm_saturn_tree",
+            return_value=result,
+        ), redirect_stdout(output):
+            code = srk_cli_main(
+                [
+                    "build-saroo-firmware",
+                    "SAROO-SRK",
+                    "--toolchain-root",
+                    "SaturnOrbit",
+                ]
             )
 
         self.assertEqual(code, 0)
