@@ -2,8 +2,8 @@
 
 The first guarded apply starts from the exact whole-card baseline. Later SRK
 research builds necessarily start from a card whose ``SAROO/ssfirm.bin`` already
-differs from that original baseline and may also contain SRK's two known Work
-RAM capture outputs. This module permits only those reviewed research paths while
+differs from that original baseline and may also contain SRK's reviewed Work RAM
+capture outputs. This module permits only those narrow research paths while
 continuing to require every unrelated card entry to match the baseline.
 
 Before replacement, the currently installed firmware is preserved off-card by
@@ -33,6 +33,7 @@ from .sd_layout import SAROO_SD_LAYOUT_MODERN, inspect_saroo_sd_layout
 SAROO_TRANSITION_RESEARCH_OUTPUTS = (
     "SAROO/SRK_WRAML.BIN",
     "SAROO/SRK_WRAMH.BIN",
+    "SAROO/SRK_GAME_WRAMH.BIN",
 )
 _RESEARCH_CAPTURE_SIZE = 0x00100000
 _ALLOWED_TRANSITION_PATHS = (_AUTHORISED_FIRMWARE_PATH,) + SAROO_TRANSITION_RESEARCH_OUTPUTS
@@ -76,7 +77,7 @@ def _require_card_firmware_hash(
 
 
 def _validate_research_outputs(card_root: os.PathLike[str] | str) -> None:
-    """Validate any SRK-created capture files before exempting them from baseline diffing."""
+    """Validate SRK-created capture files before exempting them from baseline diffing."""
 
     card = Path(card_root).expanduser().resolve(strict=False)
     for relative in SAROO_TRANSITION_RESEARCH_OUTPUTS:
@@ -113,9 +114,9 @@ def transition_saroo_firmware_guarded(
     """Replace one accepted research firmware with another under the card guard.
 
     The original whole-card manifest remains authoritative for every path except
-    ``SAROO/ssfirm.bin`` and the two exact SRK Work RAM output paths. The caller
-    must provide the exact hash of the currently accepted firmware. Any present
-    SRK Work RAM output must also be exactly 1 MiB before it is exempted.
+    ``SAROO/ssfirm.bin`` and the exact reviewed SRK Work RAM output paths. The
+    caller must provide the exact hash of the currently accepted firmware. Any
+    present SRK Work RAM output must also be exactly 1 MiB before exemption.
     """
 
     current_expected = _validated_sha256(
