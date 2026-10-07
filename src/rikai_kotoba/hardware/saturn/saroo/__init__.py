@@ -18,6 +18,12 @@ from .capture import (
     load_manifest,
     verify_capture,
 )
+from .firmware_integration import (
+    SarooFirmwareIntegrationError,
+    SarooFirmwareIntegrationResult,
+    default_helper_root,
+    prepare_firm_saturn_tree,
+)
 from .sd_exchange import (
     SAROO_SD_WRITE_CHUNK_SIZE,
     SarooSdWriteChunk,
@@ -46,15 +52,19 @@ __all__ = [
     "CapturedRegion",
     "MemoryRange",
     "SarooCaptureCoordinator",
+    "SarooFirmwareIntegrationError",
+    "SarooFirmwareIntegrationResult",
     "SarooSdWriteChunk",
     "SarooTransport",
     "SarooTransportError",
     "SarooTransportStatus",
     "SarooTransportUnavailableError",
     "UnconfiguredSarooTransport",
+    "default_helper_root",
     "import_raw_sd_dump",
     "load_manifest",
     "plan_sd_write_chunks",
+    "prepare_firm_saturn_tree",
     "total_planned_bytes",
     "verify_capture",
 ]
