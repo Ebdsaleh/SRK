@@ -1,8 +1,8 @@
 # SRK — Salix Rikai Kotoba
 
-SRK is a modular retro-disc localization and reverse-engineering toolkit written in Python. The project begins with Sega Saturn support, while keeping the core disc, ISO-9660, extraction, hex, application, and runtime layers platform- and game-agnostic.
+SRK is a modular retro-disc localization and reverse-engineering toolkit written in Python. The project begins with Sega Saturn support while keeping reusable disc, ISO-9660, extraction, hexadecimal, application, and Salix RAD layers platform- and game-agnostic.
 
-SRK is currently alpha software. The public repository intentionally contains no game-specific offsets, patches, extracted game data, or disc images.
+SRK is currently alpha software. The public repository intentionally contains no game-specific offsets, patches, extracted commercial game data, or disc images.
 
 ## Core goals
 
@@ -12,8 +12,9 @@ SRK is currently alpha software. The public repository intentionally contains no
 - Surface unsupported/non-data extents explicitly instead of silently creating partial or zero-byte output.
 - Keep platform-specific format knowledge separate from generic disc infrastructure.
 - Keep title-specific research outside the reusable public core.
-- Keep application/runtime logic independent of the GUI toolkit.
-- Keep Dear PyGui on the main thread and route background results through explicit worker events.
+- Build the desktop as an SRK application **on the Salix RAD framework**, rather than maintaining an SRK-specific GUI framework.
+- Keep Dear PyGui on the presentation/owner thread and route background results through explicit worker events supervised by the Salix runtime.
+- Ship a detailed offline Help/Glossary so the application remains usable and educational without Internet access.
 
 ## Current capabilities
 
@@ -33,21 +34,31 @@ SRK is currently alpha software. The public repository intentionally contains no
 - Saturn-specific code lives under `rikai_kotoba.formats.saturn` rather than in the generic core.
 - `hardware/saturn/saroo/` is reserved for generic original-hardware capture/debug tooling.
 
-### Desktop application
+### Salix RAD desktop foundation
 
-SRK includes a Dear PyGui desktop shell built around backend-neutral runtime/application contracts:
+SRK's GUI is a product application built on the reusable Salix architecture extracted from the Salix application family. The public tree separates:
 
-- **Disc Workspace** — open and index a CUE or standalone disc without blocking the UI thread;
+- `salix.runtime` — backend-neutral application metadata, lifecycle supervision, presentation capabilities, scenes, diagnostics, and path policy;
+- `salix.framework` — property cascade, geometry, responsive coordination, semantic components, interactions, command menus, and documentation contracts;
+- `salix.engine` — concrete Dear PyGui application hosts, renderers, layout/scene/menu adapters, typography, and documentation rendering;
+- `rikai_kotoba` — SRK's disc, Saturn, SAROO, localization/research workflows, application services, and product views.
+
+SRK deliberately does **not** maintain a parallel `rikai_kotoba.runtime` or `rikai_kotoba.engine` framework.
+
+The desktop currently provides:
+
+- **Disc Workspace** — open and index a CUE or standalone disc without running the scan on the UI thread;
 - **Saturn / SAROO** — presentation shell for the upcoming flight-recorder/capture toolchain;
-- **Diagnostics** — runtime state, worker-pool state, queue depth, and UI error-log location.
+- **Diagnostics** — Salix runtime state, SRK worker-pool state, queue depth, and UI error-log location;
+- **Offline Help & Glossary** — searchable novice-oriented documentation with Contents navigation, A-Z glossary navigation, scalable documentation text, and cross-linked semantic pages.
 
-Dear PyGui 2.2+ manual callback management is enabled so toolkit callbacks, worker-event delivery, scene updates, and rendering are serialized on the same owner thread. Background workers never manipulate Dear PyGui widgets directly.
+Only the Dear PyGui owner thread may touch Dear PyGui widgets. SRK background workers publish immutable events through a thread-safe queue; the worker service is updated by Salix `ApplicationRuntime` on the application thread before product views consume those events.
 
 See [`docs/DESKTOP-ARCHITECTURE.md`](docs/DESKTOP-ARCHITECTURE.md).
 
-### Mjolnir
+### Mjölnir
 
-Mjolnir is SRK's interactive disc/hex research utility. It can:
+Mjölnir is SRK's interactive disc/hex research utility. It can:
 
 - discover CUE sheets and standalone images;
 - prefer a CUE over the physical track files it references;
@@ -58,7 +69,7 @@ Mjolnir is SRK's interactive disc/hex research utility. It can:
 - create portable ZIP dumps;
 - resolve output conflicts with **Cancel / Auto-rename / Overwrite** behavior.
 
-Mjolnir accepts an image file or a directory supplied by the user. It does not assume a repository-local game directory.
+Mjölnir accepts an image file or a directory supplied by the user. It does not assume a repository-local game directory.
 
 ## Installation
 
@@ -111,6 +122,8 @@ srk-gui /path/to/disc.cue --output-dir /path/to/SRK-Workspace/Output
 
 The GUI never requires images to live inside the Git repository. Use the Disc Workspace file chooser to select media from any location.
 
+The Help scene is designed to function offline. It explains the application workflow and terms such as CUE, BIN, track, sector, LBA, ISO-9660, `IP.BIN`, SAROO, RAM dumps, correlation, and provenance without assuming that the reader already knows optical-disc or reverse-engineering terminology.
+
 ## CLI examples
 
 List the complete reachable ISO-9660 tree:
@@ -143,7 +156,7 @@ Extract one ISO path:
 srk extract /path/to/disc.cue /path/to/output --file /EXAMPLE.BIN
 ```
 
-## Mjolnir examples
+## Mjölnir examples
 
 Open one disc immediately:
 
@@ -165,6 +178,21 @@ srk-mjolnir
 
 Generated structured dumps and portable ZIPs are placed beneath `extracted_output/` inside the selected output workspace.
 
+## Suggested workspace separation
+
+Keep media and generated research outside the source-code repository, for example:
+
+```text
+SRK-Workspace/
+├── Images/
+│   └── Saturn/
+├── Output/
+└── Dumps/
+    └── SAROO/
+```
+
+This keeps original media, generated analysis, hardware captures, and public source code clearly separated.
+
 ## Source-image safety policy
 
 SRK's reusable readers open source media read-only. APIs that create outputs reject known source-image/CUE/track collisions. Extraction writes only beneath a caller-provided destination and validates output path components before writing.
@@ -178,45 +206,84 @@ Future patch/rebuild tooling must create a separate output image and preserve th
 ## Architecture
 
 ```text
-rikai_kotoba/
-├── cli.py
-├── desktop.py
-├── core/
-│   ├── disc_source.py
-│   ├── disc_image.py
-│   ├── cue_disc.py
-│   ├── iso9660.py
-│   ├── safe_extractor.py
-│   └── hex_dump.py
-├── application/
-│   ├── controller.py
-│   └── disc_workspace.py
-├── runtime/
-│   ├── application.py
-│   ├── lifecycle.py
-│   ├── workers.py
-│   ├── scenes.py
-│   ├── diagnostics.py
-│   └── paths.py
-├── engine/
-│   ├── gui_engine.py
-│   └── scene_host.py
-├── views/
-│   ├── main_viewport.py
-│   ├── disc_workspace.py
-│   ├── saroo.py
-│   └── diagnostics.py
-├── formats/
-│   └── saturn/
-│       └── ip_bin.py
-├── tools/
-│   └── mjolnir.py
-└── hardware/
-    └── saturn/
-        └── saroo/
+src/
+├── salix/
+│   ├── runtime/
+│   ├── framework/
+│   │   ├── components/
+│   │   └── documentation/
+│   └── engine/
+│       ├── application_hosts/
+│       ├── component_renderers/
+│       ├── layout_hosts/
+│       ├── scene_hosts/
+│       ├── command_menu_hosts/
+│       ├── presentation_backends/
+│       └── documentation/
+│
+└── rikai_kotoba/
+    ├── cli.py
+    ├── desktop.py
+    ├── core/
+    │   ├── disc_source.py
+    │   ├── disc_image.py
+    │   ├── cue_disc.py
+    │   ├── iso9660.py
+    │   ├── safe_extractor.py
+    │   └── hex_dump.py
+    ├── application/
+    │   ├── controller.py
+    │   ├── disc_workspace.py
+    │   ├── workers.py
+    │   ├── paths.py
+    │   └── help_content.py
+    ├── views/
+    │   ├── main_viewport.py
+    │   ├── disc_workspace.py
+    │   ├── saroo.py
+    │   ├── diagnostics.py
+    │   └── help.py
+    ├── formats/
+    │   └── saturn/
+    │       └── ip_bin.py
+    ├── tools/
+    │   └── mjolnir.py
+    └── hardware/
+        └── saturn/
+            └── saroo/
 ```
 
-Dependency direction is deliberate: core/domain code does not import Dear PyGui. GUI callbacks submit application work; background jobs publish immutable events; those events are consumed by the application runtime on the Dear PyGui owner thread before the live widget tree is updated.
+The dependency direction is deliberate. SRK core/application code does not import Dear PyGui; Salix framework/runtime code does not import Dear PyGui or SRK product code; concrete toolkit adapters live under `salix.engine`.
+
+## Thread model
+
+```text
+Dear PyGui action
+      |
+      v
+SRK controller
+      |
+      v
+SRK BackgroundWorkerService
+      |
+      +---- worker thread ----> core/application/hardware work
+      |                              |
+      |                         WorkerEvent
+      |                              |
+      +-------- thread-safe queue <--+
+                     |
+                     v
+Salix ApplicationRuntime.update()
+          on application thread
+                     |
+                     v
+controller/view subscribers
+                     |
+                     v
+Dear PyGui presentation
+```
+
+The worker pool belongs to the SRK product because its jobs are product-specific; lifecycle supervision belongs to Salix.
 
 ## Testing
 
@@ -234,7 +301,7 @@ Or, with development extras installed:
 pytest
 ```
 
-Architecture tests explicitly guard the rule that `core`, `application`, and `runtime` do not import Dear PyGui.
+Architecture tests guard the Salix-first boundary: backend-neutral SRK layers cannot import Dear PyGui, Salix framework/runtime cannot depend on SRK or Dear PyGui, and SRK cannot reintroduce parallel runtime/engine packages.
 
 ## Current CUE limitations
 
