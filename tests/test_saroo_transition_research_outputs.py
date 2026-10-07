@@ -42,6 +42,7 @@ class SarooTransitionResearchOutputTests(unittest.TestCase):
             (saroo / "ssfirm.bin").write_bytes(accepted)
             (saroo / "SRK_WRAML.BIN").write_bytes(bytes(0x100000))
             (saroo / "SRK_WRAMH.BIN").write_bytes(b"\x01" + bytes(0x0fffff))
+            (saroo / "SRK_GAME_WRAMH.BIN").write_bytes(b"\x02" + bytes(0x0fffff))
             candidate = root / "candidate.bin"
             candidate.write_bytes(candidate_data)
 
@@ -60,6 +61,7 @@ class SarooTransitionResearchOutputTests(unittest.TestCase):
             self.assertEqual((saroo / "ssfirm.bin").read_bytes(), candidate_data)
             self.assertEqual((saroo / "SRK_WRAML.BIN").stat().st_size, 0x100000)
             self.assertEqual((saroo / "SRK_WRAMH.BIN").stat().st_size, 0x100000)
+            self.assertEqual((saroo / "SRK_GAME_WRAMH.BIN").stat().st_size, 0x100000)
 
     def test_wrong_sized_capture_output_blocks_transition(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -72,7 +74,7 @@ class SarooTransitionResearchOutputTests(unittest.TestCase):
             manifest_result = create_saroo_card_inventory(card, manifest, hash_max_bytes=64)
             saroo = card / "SAROO"
             (saroo / "ssfirm.bin").write_bytes(accepted)
-            (saroo / "SRK_WRAMH.BIN").write_bytes(b"short")
+            (saroo / "SRK_GAME_WRAMH.BIN").write_bytes(b"short")
             candidate = root / "candidate.bin"
             candidate.write_bytes(candidate_data)
 
