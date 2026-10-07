@@ -1,20 +1,16 @@
-"""Create a separate SAROO tree for one-shot first-read execution capture.
+"""Create a separate SAROO tree for one-shot in-game execution capture.
 
 The source tree is expected to be the already hardware-validated SRK capture-menu
 build tree. A new output tree is created and patched; the source tree is never
 edited in place.
 
-The first in-game checkpoint deliberately avoids title-specific addresses. When
-the user arms the feature from the SAROO menu, the Saturn-side helper reads the
-1st-read transfer address from the in-memory Saturn System ID/IP header at
-0x060020F0 (IP offset 0xF0), then uses SAROO's existing SH-2 UBR support to stop
-if/when execution reaches that address. The handler writes one 1 MiB WRAM-H
-snapshot, disarms itself, and returns to the game.
+By default the generated firmware reads the 1st-read transfer address from the
+in-memory Saturn System ID/IP header at 0x060020F0 (IP offset 0xF0). Callers may
+instead supply an explicit even SH-2 PC in WRAM-H. The address is configuration
+data supplied to the generator; no title-specific PC is embedded in public SRK.
 
-Saturn's boot specification only guarantees that the 1st-read file is loaded to
-this address; it does not guarantee that every title executes it. Therefore this
-is called a first-read execution checkpoint rather than a universal game-entry
-checkpoint. Later SRK stages can accept an explicit caller-supplied PC.
+The generated handler uses SAROO's existing SH-2 UBR support, writes one 1 MiB
+WRAM-H snapshot, disarms itself, and returns to the game.
 """
 
 from __future__ import annotations
@@ -26,7 +22,7 @@ import shutil
 
 
 class SarooInGameEntryIntegrationError(RuntimeError):
-    """Raised when the first-read capture tree cannot be prepared safely."""
+    """Raised when an in-game capture tree cannot be prepared safely."""
 
 
 @dataclass(frozen=True)
@@ -38,6 +34,7 @@ class SarooInGameEntryIntegrationResult:
     helper_source_path: Path
     helper_header_path: Path
     marker_path: Path
+    capture_pc: int | None
 
 
 _MAIN_INDEX_ANCHOR = "int srk_wramh_index = -1;\n"
@@ -49,17 +46,17 @@ _MAIN_MENU_PATCH = (
     + '\tadd_menu_item(&main_menu, "SRK Arm 1st-Read Capture");\n'
 )
 _MAIN_HANDLER_ANCHOR = "\t}else if(index==update_index){\n"
-_MAIN_HANDLER_PATCH = r'''	}else if(index==srk_first_read_index){
-		int retv;
-		retv = srk_arm_first_read_capture();
-		if(retv==SRK_CAPTURE_OK){
-			menu_status(&main_menu, "SRK: 1st-read WRAM-H capture armed");
-		}else{
-			char buf[64];
-			sprintf(buf, "SRK: arm failed: %d", retv);
-			menu_status(&main_menu, buf);
-		}
-		return 0;
+_MAIN_HANDLER_PATCH = r'''\t}else if(index==srk_first_read_index){
+\t\tint retv;
+\t\tretv = srk_arm_first_read_capture();
+\t\tif(retv==SRK_CAPTURE_OK){
+\t\t\tmenu_status(&main_menu, "SRK: 1st-read WRAM-H capture armed");
+\t\t}else{
+\t\t\tchar buf[64];
+\t\t\tsprintf(buf, "SRK: arm failed: %d", retv);
+\t\t\tmenu_status(&main_menu, buf);
+\t\t}
+\t\treturn 0;
 '''
 
 _GAME_INCLUDE_ANCHOR = '#include "smpc.h"\n'
@@ -76,7 +73,7 @@ _GAME_BREAK_PATCH = (
 
 _HELPER_HEADER_ANCHOR = "#endif\n"
 _HELPER_HEADER_PATCH = r'''
-/* One-shot, title-neutral execution capture at the IP.BIN 1st-read address. */
+/* One-shot title-neutral execution capture. */
 #define SRK_CAPTURE_ERR_FIRST_READ    -103
 
 int srk_arm_first_read_capture(void);
@@ -94,6 +91,7 @@ _HELPER_SOURCE_APPEND = r'''
 #define SRK_WRAMH_START             0x06000000u
 #define SRK_WRAMH_END_EXCLUSIVE     0x06100000u
 #define SRK_GAME_WRAMH_PATH         "/SAROO/SRK_GAME_WRAMH.BIN"
+#define SRK_EXPLICIT_CAPTURE_PC     0x00000000u
 
 extern void (*game_break_handle)(REGS *reg);
 
@@ -184,12 +182,34 @@ def _replace_once(text: str, anchor: str, replacement: str, *, label: str) -> st
     return text.replace(anchor, replacement, 1)
 
 
+def _validated_capture_pc(value: int | None) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SarooInGameEntryIntegrationError("capture PC must be an integer")
+    if value < 0x06000000 or value >= 0x06100000:
+        raise SarooInGameEntryIntegrationError(
+            "capture PC must be inside Saturn WRAM-H (0x06000000-0x060FFFFF)"
+        )
+    if value & 1:
+        raise SarooInGameEntryIntegrationError("capture PC must be even for SH-2 execution")
+    return value
+
+
 def prepare_ingame_entry_capture_tree(
     capture_menu_source_root: os.PathLike[str] | str,
     output_root: os.PathLike[str] | str,
+    *,
+    capture_pc: int | None = None,
 ) -> SarooInGameEntryIntegrationResult:
-    """Copy the capture-menu tree and add a one-shot first-read WRAM-H capture."""
+    """Copy the capture-menu tree and add a one-shot WRAM-H execution capture.
 
+    With no ``capture_pc`` the trigger remains the IP.BIN 1st-read transfer
+    address. When ``capture_pc`` is supplied, that caller-provided even WRAM-H
+    address is compiled into the generated local tree instead.
+    """
+
+    explicit_pc = _validated_capture_pc(capture_pc)
     source = _canonical(capture_menu_source_root)
     output = _canonical(output_root)
     firm = source / "Firm_Saturn"
@@ -224,7 +244,7 @@ def prepare_ingame_entry_capture_tree(
         )
     if _HELPER_SOURCE_MARKER in helper_c or "SRK Arm 1st-Read Capture" in main_text:
         raise SarooInGameEntryIntegrationError(
-            "source tree already contains first-read capture support"
+            "source tree already contains in-game capture support"
         )
 
     patched_main = _replace_once(
@@ -269,6 +289,29 @@ def prepare_ingame_entry_capture_tree(
     )
     patched_c = helper_c.rstrip() + _HELPER_SOURCE_APPEND + "\n"
 
+    if explicit_pc is not None:
+        patched_main = patched_main.replace(
+            "SRK Arm 1st-Read Capture",
+            "SRK Arm PC Capture",
+        ).replace(
+            "SRK: 1st-read WRAM-H capture armed",
+            "SRK: PC WRAM-H capture armed",
+        )
+        patched_game = patched_game.replace(
+            "SRK 1st-read capture prepare failed",
+            "SRK PC capture prepare failed",
+        )
+        patched_c = patched_c.replace(
+            "#define SRK_EXPLICIT_CAPTURE_PC     0x00000000u",
+            f"#define SRK_EXPLICIT_CAPTURE_PC     0x{explicit_pc:08X}u",
+        ).replace(
+            "first_read_pc = BE32((void*)(SRK_IP_MEMORY_BASE + SRK_IP_FIRST_READ_OFFSET));",
+            "first_read_pc = SRK_EXPLICIT_CAPTURE_PC;",
+        ).replace(
+            "first_read_pc<0x06002000u",
+            "first_read_pc<SRK_WRAMH_START",
+        )
+
     try:
         shutil.copytree(source, output)
         target_firm = output / "Firm_Saturn"
@@ -277,18 +320,31 @@ def prepare_ingame_entry_capture_tree(
         _write(target_firm / "srk_capture_helper.c", patched_c)
         _write(target_firm / "srk_capture_helper.h", patched_h)
         marker = output / "SRK_INGAME_ENTRY_CAPTURE.txt"
-        _write(
-            marker,
-            "SRK title-neutral one-shot 1st-read execution capture\n"
-            f"Source capture-menu tree: {source}\n"
-            "The source tree was not modified.\n"
-            "Menu action: SRK Arm 1st-Read Capture\n"
-            "Breakpoint source: big-endian IP.BIN 1st-read address at 0x060020F0\n"
-            "Boot-spec note: 1st-read is loaded there, but not guaranteed to execute\n"
-            "Trigger semantics: UBR handler runs after the first instruction if reached\n"
-            "Output: /SAROO/SRK_GAME_WRAMH.BIN (1 MiB, WRAM-H)\n"
-            "Capture is one-shot and UBR is disarmed before SD I/O.\n",
-        )
+        if explicit_pc is None:
+            marker_text = (
+                "SRK title-neutral one-shot 1st-read execution capture\n"
+                f"Source capture-menu tree: {source}\n"
+                "The source tree was not modified.\n"
+                "Menu action: SRK Arm 1st-Read Capture\n"
+                "Breakpoint source: big-endian IP.BIN 1st-read address at 0x060020F0\n"
+                "Boot-spec note: 1st-read is loaded there, but not guaranteed to execute\n"
+                "Trigger semantics: UBR handler runs after the first instruction if reached\n"
+                "Output: /SAROO/SRK_GAME_WRAMH.BIN (1 MiB, WRAM-H)\n"
+                "Capture is one-shot and UBR is disarmed before SD I/O.\n"
+            )
+        else:
+            marker_text = (
+                "SRK title-neutral one-shot caller-supplied-PC execution capture\n"
+                f"Source capture-menu tree: {source}\n"
+                "The source tree was not modified.\n"
+                "Menu action: SRK Arm PC Capture\n"
+                f"Breakpoint source: caller-supplied SH-2 PC 0x{explicit_pc:08X}\n"
+                "Public SRK contains no commercial-title-specific breakpoint constant.\n"
+                "Trigger semantics: UBR handler runs after the matched instruction\n"
+                "Output: /SAROO/SRK_GAME_WRAMH.BIN (1 MiB, WRAM-H)\n"
+                "Capture is one-shot and UBR is disarmed before SD I/O.\n"
+            )
+        _write(marker, marker_text)
     except Exception:
         shutil.rmtree(output, ignore_errors=True)
         raise
@@ -301,4 +357,5 @@ def prepare_ingame_entry_capture_tree(
         helper_source_path=output / "Firm_Saturn" / "srk_capture_helper.c",
         helper_header_path=output / "Firm_Saturn" / "srk_capture_helper.h",
         marker_path=output / "SRK_INGAME_ENTRY_CAPTURE.txt",
+        capture_pc=explicit_pc,
     )
