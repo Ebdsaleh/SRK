@@ -10,12 +10,13 @@ path. Later research sessions may legitimately differ at these exact SRK paths:
 SAROO/ssfirm.bin
 SAROO/SRK_WRAML.BIN
 SAROO/SRK_WRAMH.BIN
+SAROO/SRK_GAME_WRAMH.BIN
 ```
 
 `SAROO/ssfirm.bin` must always match the exact reviewed currently accepted
-firmware SHA-256 before a transition. If either Work RAM capture file exists, it
-must be an ordinary file of exactly 1 MiB before SRK exempts that path from the
-original baseline comparison.
+firmware SHA-256 before a transition. If any reviewed Work RAM capture file
+exists, it must be an ordinary file of exactly 1 MiB before SRK exempts that
+path from the original baseline comparison.
 
 ## Physically accepted starting firmware
 
@@ -66,8 +67,9 @@ SRK Capture WRAM-H
 ```
 
 Both menu actions were physically exercised successfully and produced exact
-1 MiB SD-card files. See `SAROO-HARDWARE-CAPTURE.md` for the recorded hashes and
-content observations.
+1 MiB SD-card files. The files were then imported read-only into an immutable
+off-card SRK CaptureStore artifact and SHA-256 verified after publication. See
+`SAROO-HARDWARE-CAPTURE.md` for the recorded evidence.
 
 ## Transition safety contract
 
@@ -86,6 +88,7 @@ Before and after a transition, SRK may exempt only:
 SAROO/ssfirm.bin
 SAROO/SRK_WRAML.BIN
 SAROO/SRK_WRAMH.BIN
+SAROO/SRK_GAME_WRAMH.BIN
 ```
 
 The capture-output exemptions are conditional: any present WRAM file must still
@@ -134,14 +137,22 @@ baseline.
 
 ## Capture files remain separate research evidence
 
-Allowing the two exact Work RAM filenames through a later firmware-transition
+Allowing the exact reviewed Work RAM filenames through a later firmware-transition
 guard does not make them firmware. They remain runtime evidence produced by
 explicit capture actions.
 
-Host-side ingestion should copy them into SRK's immutable off-card CaptureStore:
+The boot-menu outputs are imported with:
 
 ```bat
 python -m rikai_kotoba.tools.saroo_capture_import D:\
 ```
 
-The mounted card remains read-only during ingestion.
+The first in-game experiment uses the distinct raw slot:
+
+```text
+SAROO/SRK_GAME_WRAMH.BIN
+```
+
+so its presence cannot be confused with the already imported boot-menu
+`SRK_WRAMH.BIN`. A later importer will publish that file into the same immutable
+off-card evidence model after the in-game trigger is physically validated.
