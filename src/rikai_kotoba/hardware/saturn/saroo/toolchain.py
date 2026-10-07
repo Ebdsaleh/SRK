@@ -107,7 +107,17 @@ _MAX_SEARCH_DEPTH = 6
 
 
 def _canonical(path: os.PathLike[str] | str) -> Path:
-    return Path(os.path.abspath(os.path.expanduser(os.fspath(path))))
+    """Return one stable absolute filesystem spelling for a path.
+
+    On Windows, environment variables such as TEMP may use an 8.3 short-name
+    spelling (for example ``DEVELO~1.ERI``) while callers hold the equivalent
+    long path. ``Path.resolve()`` asks Windows for the resolved filesystem path
+    and prevents the same directory being reported under two spellings.
+    ``strict=False`` also keeps this helper usable for paths that are validated
+    immediately after canonicalisation.
+    """
+
+    return Path(path).expanduser().resolve(strict=False)
 
 
 def _matching_file(directory: Path, aliases: Iterable[str]) -> Path | None:
