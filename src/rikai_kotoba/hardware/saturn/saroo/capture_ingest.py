@@ -1,6 +1,6 @@
 """Import controller-generated SAROO Work RAM captures into SRK evidence storage.
 
-The mounted SD card is treated as read-only input.  Known SRK capture files are
+The mounted SD card is treated as read-only input. Known SRK capture files are
 validated against their canonical Saturn ranges, summarized, copied into one
 immutable CaptureStore artifact, and then verified from the off-card copy.
 """
@@ -70,6 +70,20 @@ def _inside(path: Path, parent: Path) -> bool:
         return False
 
 
+def _payload_nonzero_summary(payload: bytes) -> tuple[int, int | None, int | None]:
+    count = 0
+    first: int | None = None
+    last: int | None = None
+    for index, value in enumerate(payload):
+        if value == 0:
+            continue
+        count += 1
+        if first is None:
+            first = index
+        last = index
+    return count, first, last
+
+
 def _read_capture(
     card_root: Path,
     relative_path: str,
@@ -88,8 +102,7 @@ def _read_capture(
             f"({len(payload)} != {memory_range.size})"
         )
 
-    nonzero_offsets = [index for index, value in enumerate(payload) if value != 0]
-    nonzero_count = len(nonzero_offsets)
+    nonzero_count, first_nonzero, last_nonzero = _payload_nonzero_summary(payload)
     summary = SarooRawCaptureSummary(
         relative_path=relative_path,
         source_path=source,
@@ -98,8 +111,8 @@ def _read_capture(
         sha256=sha256(payload).hexdigest(),
         zero_bytes=len(payload) - nonzero_count,
         nonzero_bytes=nonzero_count,
-        first_nonzero_offset=nonzero_offsets[0] if nonzero_offsets else None,
-        last_nonzero_offset=nonzero_offsets[-1] if nonzero_offsets else None,
+        first_nonzero_offset=first_nonzero,
+        last_nonzero_offset=last_nonzero,
     )
     return summary, CapturedRegion(memory_range, payload)
 
