@@ -24,6 +24,12 @@ from .capture import (
     load_manifest,
     verify_capture,
 )
+from .deployment import (
+    SarooDeploymentCandidate,
+    SarooDeploymentPlan,
+    SarooDeploymentPlanError,
+    plan_saroo_firmware_deployment,
+)
 from .firmware_integration import (
     SarooFirmwareIntegrationError,
     SarooFirmwareIntegrationResult,
@@ -84,6 +90,9 @@ __all__ = [
     "SarooBuildError",
     "SarooBuildResult",
     "SarooCaptureCoordinator",
+    "SarooDeploymentCandidate",
+    "SarooDeploymentPlan",
+    "SarooDeploymentPlanError",
     "SarooFirmwareIntegrationError",
     "SarooFirmwareIntegrationResult",
     "SarooSdFileInfo",
@@ -105,6 +114,7 @@ __all__ = [
     "inspect_saroo_sd_layout",
     "inspect_saroo_toolchain",
     "load_manifest",
+    "plan_saroo_firmware_deployment",
     "plan_sd_write_chunks",
     "prepare_firm_saturn_tree",
     "total_planned_bytes",
