@@ -54,7 +54,7 @@ class DiscWorkspaceView:
         self._built = True
         dpg.add_text("DISC WORKSPACE", parent=parent, color=(80, 220, 160))
         dpg.add_text(
-            "Read-only disc inspection. Opening and ISO-9660 indexing run on SRK background workers; Dear PyGui remains on the main thread.",
+            "Read-only disc inspection. Opening and ISO-9660 indexing run on SRK background workers supervised by the Salix runtime; Dear PyGui remains on the application thread.",
             parent=parent,
             wrap=1050,
             color=(180, 180, 180),
@@ -240,8 +240,8 @@ class DiscWorkspaceView:
             self._table_rows.append(row_tag)
 
     def _on_controller_event(self, event: DiscControllerEvent) -> None:
-        # Worker events are dispatched by BackgroundWorkerService.update(),
-        # which GuiEngine invokes on the Dear PyGui owner thread.
+        # BackgroundWorkerService.update() is invoked by the Salix application
+        # runtime on the Dear PyGui owner thread, so UI mutation is serialized.
         if not self._built:
             return
         if event.kind == "opening":
