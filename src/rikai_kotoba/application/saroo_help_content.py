@@ -32,6 +32,22 @@ GLOSSARY: tuple[GlossaryEntry, ...] = (
         related=("capture artifact", "RAM dump", "provenance"),
     ),
     GlossaryEntry(
+        "Cross-compiler",
+        "A compiler that runs on one computer but produces machine code for another target processor. SAROO's Firm_Saturn build uses an SH-ELF cross-compiler on the development PC to create code for the Saturn's SuperH processor family.",
+        aliases=("cross compiler",),
+        related=("toolchain", "SaturnOrbit", "SAROO"),
+    ),
+    GlossaryEntry(
+        "Makefile",
+        "A text file describing how source files are compiled and linked into a program. SAROO's Firm_Saturn Makefile names the SH-ELF compiler, assembler, object tools, source objects, and build outputs used by the upstream project.",
+        related=("toolchain", "cross-compiler"),
+    ),
+    GlossaryEntry(
+        "SaturnOrbit",
+        "A Sega Saturn development environment/tool distribution referenced by upstream SAROO for building Firm_Saturn. SRK can search a user-supplied SaturnOrbit or SH-ELF directory for the required build executables without modifying the system PATH.",
+        related=("cross-compiler", "toolchain", "SAROO"),
+    ),
+    GlossaryEntry(
         "SD capture",
         "A workflow where Saturn-side code writes a requested memory range to a file on SAROO's SD card. SRK then imports that raw file on the PC into a verified capture artifact. This is useful before a live PC-to-SAROO transport exists.",
         aliases=("SD-card capture", "offline capture"),
@@ -42,6 +58,11 @@ GLOSSARY: tuple[GlossaryEntry, ...] = (
         "A cryptographic hash function SRK uses as an integrity fingerprint. If even one byte in a captured region changes, its SHA-256 value will almost certainly change, allowing capture verification to detect tampering or corruption.",
         aliases=("SHA256", "hash"),
         related=("capture artifact",),
+    ),
+    GlossaryEntry(
+        "Toolchain",
+        "The collection of programs used to turn source code into a target executable. For SAROO Firm_Saturn this includes sh-elf-gcc, sh-elf-as, sh-elf-objdump, sh-elf-objcopy, and a Make-compatible build driver.",
+        related=("cross-compiler", "Makefile", "SaturnOrbit"),
     ),
     GlossaryEntry(
         "Transport adapter",
@@ -58,7 +79,7 @@ PAGES: dict[str, DocPage] = {
         blocks=(
             DocCallout(
                 title="Current development stage",
-                body="SRK has a verified capture format, integrity checking, exact correlation tools, and an upstream-compatible Saturn-side SD writer helper. A stock/live PC-to-SAROO transport is not claimed yet. Until one is verified, SD-card exchange is the evidence-preserving bridge.",
+                body="SRK has a verified capture format, integrity checking, exact correlation tools, an upstream-compatible Saturn-side SD writer helper, and a read-only SH-ELF toolchain preflight. A stock/live PC-to-SAROO transport is not claimed yet. Until one is verified, SD-card exchange is the evidence-preserving bridge.",
                 kind=DocCalloutKind.INFO,
                 icon=DocIconKind.INFO,
             ),
@@ -97,6 +118,28 @@ PAGES: dict[str, DocPage] = {
                     ),
                     DocParagraph(
                         "These are Saturn hardware regions, not game-specific constants. Future captures may request other caller-supplied ranges, but SRK does not embed commercial-title addresses in the reusable public layer."
+                    ),
+                ),
+            ),
+            DocSection(
+                "Check the Firm_Saturn build toolchain",
+                (
+                    DocParagraph(
+                        "Upstream SAROO documents Firm_Saturn as an SH-ELF build and its Makefile expects sh-elf-gcc, sh-elf-as, sh-elf-objdump, sh-elf-objcopy, plus a Make-compatible build driver. SRK can inspect the development PC before attempting any build."
+                    ),
+                    DocCodeBlock(
+                        "srk-saroo-toolchain\n\n"
+                        "srk-saroo-toolchain --toolchain-root C:\\path\\to\\SaturnOrbit",
+                        language="bat",
+                    ),
+                    DocParagraph(
+                        "The preflight is read-only. A supplied toolchain root is searched first, then the existing process PATH is checked as a fallback. SRK does not edit the global PATH. A READY discovery result means every required executable was found; only an actual Firm_Saturn build proves that the installation works correctly."
+                    ),
+                    DocCallout(
+                        title="No firmware deployment occurs here",
+                        body="Toolchain preflight only discovers build programs. It does not compile, patch a known-good SAROO checkout, copy firmware to an SD card, or flash hardware.",
+                        kind=DocCalloutKind.NOTE,
+                        icon=DocIconKind.NOTE,
                     ),
                 ),
             ),
