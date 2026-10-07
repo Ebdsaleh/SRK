@@ -1,6 +1,34 @@
 """SAROO-assisted Sega Saturn runtime/debug tooling.
 
-This package is intentionally empty of title-specific addresses or signatures.
-Runtime capture, memory dump, patch, and correlation primitives will be added
-here as generic hardware tooling.
+This package contains only title-neutral hardware-research primitives. Runtime
+capture, memory dumps, patching, and correlation remain parameterized by caller-
+supplied addresses/data rather than commercial-game-specific constants.
 """
+
+from .capture import (
+    CAPTURE_SCHEMA,
+    CAPTURE_SCHEMA_VERSION,
+    CaptureArtifact,
+    CaptureError,
+    CaptureIntegrityError,
+    CaptureStore,
+    CaptureVerification,
+    CapturedRegion,
+    MemoryRange,
+    load_manifest,
+    verify_capture,
+)
+
+__all__ = [
+    "CAPTURE_SCHEMA",
+    "CAPTURE_SCHEMA_VERSION",
+    "CaptureArtifact",
+    "CaptureError",
+    "CaptureIntegrityError",
+    "CaptureStore",
+    "CaptureVerification",
+    "CapturedRegion",
+    "MemoryRange",
+    "load_manifest",
+    "verify_capture",
+]
