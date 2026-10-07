@@ -108,6 +108,17 @@ def _build_environment(report: SarooToolchainReport) -> dict[str, str]:
     env = dict(os.environ)
     directories: list[str] = []
     seen: set[str] = set()
+
+    # Keep the exact Python interpreter running SRK available to Make without
+    # embedding its absolute path in a recipe. SaturnOrbit R1's old GNU Make /
+    # cmd.exe combination mangles forward-slash absolute command paths. Putting
+    # this interpreter directory first and using only the executable basename
+    # avoids that legacy parser edge case while still selecting this venv.
+    python_executable = Path(sys.executable).resolve()
+    python_directory = str(python_executable.parent)
+    directories.append(python_directory)
+    seen.add(os.path.normcase(python_directory))
+
     for probe in report.probes:
         if probe.resolved_path is None:
             continue
@@ -121,9 +132,8 @@ def _build_environment(report: SarooToolchainReport) -> dict[str, str]:
     if existing_path:
         directories.append(existing_path)
     env["PATH"] = os.pathsep.join(directories)
+    env["PYTHON"] = python_executable.name
 
-    python_path = Path(sys.executable).resolve().as_posix()
-    env["PYTHON"] = f'"{python_path}"' if " " in python_path else python_path
     # SaturnOrbit R1 bundles an ancient MSYS sh.exe beside make.exe. On modern
     # Windows that shell can crash before a recipe command starts. The generated
     # SRK Makefile no longer needs POSIX shell syntax, so make is explicitly
@@ -202,6 +212,7 @@ def build_firm_saturn_tree(
         f"Toolchain root: {toolchain}",
         f"Make: {make_path}",
         f"Python: {sys.executable}",
+        f"Python recipe command: {env['PYTHON']} (active interpreter directory first on child PATH)",
         f"Make recipe shell: {_MAKE_SHELL} (explicit override)",
         "Process-local PATH additions:",
     ]
