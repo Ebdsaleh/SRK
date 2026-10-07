@@ -1,4 +1,4 @@
-"""Desktop entry point for the SRK Dear PyGui application."""
+"""Desktop entry point for the SRK application built on Salix + Dear PyGui."""
 
 from __future__ import annotations
 
@@ -9,11 +9,11 @@ from typing import Sequence
 from rikai_kotoba import __version__
 from rikai_kotoba.application.controller import DiscWorkspaceController
 from rikai_kotoba.application.disc_workspace import DiscWorkspaceService
-from rikai_kotoba.runtime.application import ApplicationSpec
-from rikai_kotoba.runtime.diagnostics import ExceptionReporter
-from rikai_kotoba.runtime.lifecycle import ApplicationRuntime
-from rikai_kotoba.runtime.paths import state_directory
-from rikai_kotoba.runtime.workers import BackgroundWorkerService
+from rikai_kotoba.application.paths import state_directory
+from rikai_kotoba.application.workers import BackgroundWorkerService
+from salix.runtime.application import ApplicationSpec
+from salix.runtime.diagnostics import ExceptionReporter
+from salix.runtime.lifecycle import ApplicationRuntime, CallbackService
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -52,14 +52,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     runtime = ApplicationRuntime(
         error_handler=lambda context, exc: reporter.report(context, exc)
     )
+
     workers = BackgroundWorkerService(max_workers=2)
-    runtime.services.register("background workers", workers)
+    runtime.services.register("SRK background workers", workers)
 
     disc_service = DiscWorkspaceService()
     disc_controller = DiscWorkspaceController(disc_service, workers)
 
     try:
-        from rikai_kotoba.engine.gui_engine import GuiEngine
+        from salix.engine.application_hosts import DearPyGuiApplicationHost
         from rikai_kotoba.views.main_viewport import MainViewport
     except ModuleNotFoundError as exc:
         if exc.name and exc.name.startswith("dearpygui"):
@@ -79,16 +80,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         minimum_height=640,
         target_fps=60,
     )
-    engine = GuiEngine(spec, runtime=runtime, error_reporter=reporter)
-    MainViewport(
-        engine,
+    host = DearPyGuiApplicationHost(spec, runtime=runtime)
+    viewport = MainViewport(
+        host,
         disc_controller,
         workers,
         reporter,
         initial_source=source,
         output_dir=output_dir,
     )
-    return engine.run()
+    runtime.services.register(
+        "SRK active view",
+        CallbackService(
+            on_update=viewport.update,
+            on_stop=viewport.dispose,
+        ),
+    )
+    return host.run()
 
 
 if __name__ == "__main__":
