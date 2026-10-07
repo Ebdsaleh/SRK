@@ -1,9 +1,9 @@
 """Read-only discovery for the upstream SAROO ``Firm_Saturn`` build tools.
 
-The upstream SAROO Makefile expects an SH-ELF cross toolchain.  SRK must not
-silently mutate the user's global PATH or pretend a build environment is ready
-when one of those programs is missing, so discovery is explicit and reports
-where every resolved executable came from.
+The upstream SAROO Makefile expects an SH-ELF cross toolchain plus a few Unix-
+style support utilities. SRK must not silently mutate the user's global PATH or
+pretend a build environment is ready when one of those programs is missing, so
+discovery is explicit and reports where every resolved executable came from.
 """
 
 from __future__ import annotations
@@ -59,6 +59,21 @@ SAROO_TOOL_REQUIREMENTS: tuple[SarooToolRequirement, ...] = (
         ),
         "Make-compatible build driver for the upstream Firm_Saturn Makefile",
     ),
+    SarooToolRequirement(
+        "touch",
+        ("touch", "touch.exe"),
+        "File timestamp utility invoked by the upstream Firm_Saturn Makefile",
+    ),
+    SarooToolRequirement(
+        "cat",
+        ("cat", "cat.exe"),
+        "Binary concatenation utility invoked by the upstream Firm_Saturn Makefile",
+    ),
+    SarooToolRequirement(
+        "rm",
+        ("rm", "rm.exe"),
+        "File removal utility invoked by the upstream Firm_Saturn Makefile",
+    ),
 )
 
 
@@ -82,7 +97,7 @@ class SarooToolchainReport:
     def ready(self) -> bool:
         """Whether every required executable was resolved.
 
-        This is a *discovery* result.  A later build is still the authoritative
+        This is a *discovery* result. A later build is still the authoritative
         proof that the compiler/linker installation is operational.
         """
 
@@ -112,9 +127,9 @@ def _canonical(path: os.PathLike[str] | str) -> Path:
     On Windows, environment variables such as TEMP may use an 8.3 short-name
     spelling (for example ``DEVELO~1.ERI``) while callers hold the equivalent
     long path. ``Path.resolve()`` asks Windows for the resolved filesystem path
-    and prevents the same directory being reported under two spellings.
-    ``strict=False`` also keeps this helper usable for paths that are validated
-    immediately after canonicalisation.
+    and prevents the same directory being reported under two spellings where
+    Windows exposes the long form. Tests still compare filesystem identity
+    rather than relying on one textual spelling.
     """
 
     return Path(path).expanduser().resolve(strict=False)
@@ -147,6 +162,8 @@ def _search_explicit_root(
         root / "sh-elf" / "bin",
         root / "toolchain" / "bin",
         root / "tools" / "bin",
+        root / "SH_ELF" / "sh-elf" / "bin",
+        root / "SH_ELF" / "Other Utilities",
     )
     checked: set[Path] = set()
     for directory in preferred:
@@ -200,9 +217,9 @@ def inspect_saroo_toolchain(
     """Resolve every executable needed by upstream SAROO ``Firm_Saturn``.
 
     When ``toolchain_root`` is supplied it is searched first, including nested
-    SaturnOrbit-style ``bin`` directories.  The process PATH is only *read* as
-    a fallback and is never changed.  ``path_env`` exists primarily so tests or
-    callers can supply an explicit PATH snapshot.
+    SaturnOrbit-style ``bin`` and ``Other Utilities`` directories. The process
+    PATH is only *read* as a fallback and is never changed. ``path_env`` exists
+    primarily so tests or callers can supply an explicit PATH snapshot.
     """
 
     root: Path | None = None
