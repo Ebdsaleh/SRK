@@ -78,6 +78,11 @@ from .guarded_deployment import (
     apply_saroo_firmware_guarded,
     restore_saroo_firmware_guarded,
 )
+from .ingame_entry_integration import (
+    SarooInGameEntryIntegrationError,
+    SarooInGameEntryIntegrationResult,
+    prepare_ingame_entry_capture_tree,
+)
 from .sd_exchange import (
     SAROO_SD_WRITE_CHUNK_SIZE,
     SarooSdWriteChunk,
@@ -161,6 +166,8 @@ __all__ = [
     "SarooGuardedDeploymentError",
     "SarooGuardedRestoreResult",
     "SarooGuardedTransitionResult",
+    "SarooInGameEntryIntegrationError",
+    "SarooInGameEntryIntegrationResult",
     "SarooRawCaptureSummary",
     "SarooSdFileInfo",
     "SarooSdLayoutError",
@@ -189,6 +196,7 @@ __all__ = [
     "plan_saroo_firmware_deployment",
     "plan_sd_write_chunks",
     "prepare_firm_saturn_tree",
+    "prepare_ingame_entry_capture_tree",
     "restore_saroo_firmware",
     "restore_saroo_firmware_guarded",
     "total_planned_bytes",
