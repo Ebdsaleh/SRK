@@ -76,5 +76,11 @@ def default_saroo_dump_directory(paths: RuntimePaths | None = None) -> Path:
     return workspace_directory(paths) / "Dumps" / "SAROO"
 
 
+def default_saroo_backup_directory(paths: RuntimePaths | None = None) -> Path:
+    """Return the default off-card backup root for SAROO firmware evidence."""
+
+    return workspace_directory(paths) / "Backups" / "SAROO"
+
+
 def resource_path(relative_path: str | Path) -> Path:
     return runtime_paths().resource_path(relative_path)
