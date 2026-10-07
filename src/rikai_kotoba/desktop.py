@@ -73,7 +73,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     spec = ApplicationSpec(
         name="SRK",
-        title="SRK — Salix Rikai Kotoba",
+        title="SRK - Salix Rikai Kotoba",
         width=1180,
         height=760,
         minimum_width=1000,
