@@ -8,34 +8,24 @@ build.
 This distinction matters because a working third-party or previously prepared
 card is valuable recovery evidence.
 
-## Current stage: planning only
+## Deployment stages
 
-The current deployment workflow is deliberately read-only.
+SRK separates deployment into three explicit stages:
 
-Given:
+1. **plan** — read-only comparison of existing card firmware and a candidate;
+2. **apply** — backup-first, hash-gated replacement of modern `SAROO/ssfirm.bin`;
+3. **restore** — verified return to an off-card baseline backup.
 
-- a mounted SAROO SD-card root;
-- a newly built candidate Saturn-side firmware file;
-- an off-card backup directory;
+Planning never writes. Apply and restore are separate commands and require full
+SHA-256 values from a previously reviewed state plus an explicit confirmation
+token.
 
-SRK can compare the existing card firmware and the candidate, then print the
-exact backup/destination plan that a later explicit apply operation would need.
-
-It does **not** currently:
-
-- create the backup directory;
-- copy the existing firmware;
-- replace `ssfirm.bin`;
-- rename card files;
-- touch MCU firmware;
-- touch FPGA firmware;
-- use the SAROO update directory;
-- flash cartridge hardware.
+SRK does not deploy or modify MCU firmware, FPGA firmware, configuration files,
+game images, or the SAROO update directory as part of this workflow.
 
 ## Modern layout gate
 
-Automatic future deployment design is currently gated to the unambiguous modern
-layout:
+Automatic deployment is currently gated to the unambiguous modern layout:
 
 ```text
 <SAROO SD root>/
@@ -44,97 +34,161 @@ layout:
 ```
 
 Legacy root `ramimage.bin`, mixed layouts, and unrecognised layouts are reported
-but are not authorised for an apply path.
+but are not authorised for apply or restore.
 
 This is intentional. SRK must not guess which Saturn-side firmware file a real
 cartridge boots.
 
-## Off-card backup policy
+## Read-only planning
 
-Before a future apply operation can replace `SAROO/ssfirm.bin`, SRK must first
-preserve the existing file outside the mounted SD card.
+Given:
 
-The read-only planner proposes a deterministic content-addressed filename:
+- a mounted SAROO SD-card root;
+- a newly built candidate Saturn-side firmware file;
+- an off-card backup directory;
 
-```text
-SRK-Workspace/Backups/SAROO/ssfirm_<first-16-hash-chars>.bin
-```
-
-The full SHA-256 is still recorded and checked; the shortened hash is used only
-in the filename.
-
-If the proposed backup already exists:
-
-- matching content is recognised as an already-valid backup;
-- different content blocks the future apply gate;
-- SRK never overwrites the conflicting file during planning.
-
-## Candidate policy
-
-The candidate firmware must be outside the mounted SAROO SD card. This prevents
-the planner from accidentally treating a card-resident file as an independent
-build artifact.
-
-The planner records:
+SRK records:
 
 - existing card firmware path, size, and SHA-256;
 - candidate path, size, and SHA-256;
 - whether replacement is actually needed;
 - proposed off-card backup path;
 - whether a matching backup already exists;
-- whether the evidence is sufficient to design a later explicit apply action.
+- whether the evidence is sufficient for an explicit apply.
 
-If the candidate is byte-identical to the existing firmware, replacement is
-reported as unnecessary.
+The planner proposes a deterministic content-addressed backup filename:
 
-## Command
+```text
+SRK-Workspace/Backups/SAROO/ssfirm_<first-16-hash-chars>.bin
+```
 
-After pulling the current source, the module can always be run directly from an
-active editable SRK environment:
+The full SHA-256 is still checked; the shortened hash is used only in the
+filename.
+
+If the proposed backup already exists:
+
+- matching content is recognised as an already-valid backup;
+- different content blocks the apply gate;
+- SRK never overwrites the conflicting file.
+
+Plan command:
 
 ```bat
 python -m rikai_kotoba.tools.saroo_deployment ^
   D:\ ^
-  "C:\path\to\SAROO-SRK\Firm_Saturn\ssfirm.bin"
-```
-
-Replace `D:` with the mounted SAROO card drive.
-
-A fresh editable install also exposes:
-
-```bat
-srk-saroo-deployment D:\ "C:\path\to\ssfirm.bin"
-```
-
-Optional backup-root override:
-
-```bat
-srk-saroo-deployment D:\ "C:\path\to\ssfirm.bin" ^
+  "C:\path\to\SAROO-SRK\Firm_Saturn\ssfirm.bin" ^
   --backup-root "C:\path\to\safe\off-card\backups"
 ```
 
-The command ends by stating:
+Planning ends with:
 
 ```text
 No backup was created. No SD-card file was modified.
 ```
 
-## Future apply requirements
+## Explicit apply
 
-A write-capable deployment command should not be added until the planner has
-been physically validated against the user's real card and candidate build.
+Apply requires the full existing-card and candidate SHA-256 values from the
+reviewed plan. If either file has changed since planning, apply fails before
+creating a backup or modifying the card.
 
-When implemented, the apply path should require all of the following:
+Before `SAROO/ssfirm.bin` is replaced, SRK:
 
-1. unambiguous modern layout;
-2. existing firmware hash still matches the plan;
-3. candidate hash still matches the plan;
-4. backup location is outside the card;
-5. existing firmware is copied to backup first;
-6. backup size/hash are verified before replacement;
-7. replacement is explicit, never implicit;
-8. written card firmware is re-read and hash-verified;
-9. MCU/FPGA firmware remains untouched;
-10. restore remains possible from the verified backup.
+1. re-inspects the card and requires exactly one modern firmware file;
+2. re-hashes existing card firmware and candidate firmware;
+3. creates the off-card backup if it does not already exist;
+4. re-reads and SHA-256-verifies that backup;
+5. stages the candidate beside the destination on the SD card;
+6. verifies the staged candidate hash;
+7. re-checks the live destination hash immediately before replacement;
+8. replaces only `SAROO/ssfirm.bin`;
+9. re-reads the installed file and verifies the candidate SHA-256.
 
-Until then, SRK remains at the read-only planning gate.
+If post-write verification fails, SRK attempts to restore the verified baseline
+backup immediately and reports whether rollback could be verified.
+
+The write-capable command requires the exact confirmation token
+`APPLY-SSFIRM`:
+
+```bat
+python -m rikai_kotoba.tools.saroo_apply ^
+  D:\ ^
+  "C:\path\to\SAROO-SRK\Firm_Saturn\ssfirm.bin" ^
+  --backup-root "C:\path\to\safe\off-card\backups" ^
+  --expected-existing-sha256 <64-character-existing-hash> ^
+  --expected-candidate-sha256 <64-character-candidate-hash> ^
+  --confirm-write APPLY-SSFIRM
+```
+
+The confirmation token is deliberately separate from the hash gates. A command
+copied from an older plan still fails closed if the current bytes no longer
+match.
+
+## Explicit restore
+
+Restore uses the verified off-card baseline backup. Before returning that
+baseline to the card, SRK preserves the currently installed firmware off-card as
+another content-addressed archive:
+
+```text
+ssfirm_pre_restore_<first-16-current-hash-chars>.bin
+```
+
+Restore then stages and verifies the baseline, replaces only
+`SAROO/ssfirm.bin`, and verifies the final card hash.
+
+The restore command requires the exact confirmation token `RESTORE-SSFIRM`:
+
+```bat
+python -m rikai_kotoba.tools.saroo_restore ^
+  D:\ ^
+  "C:\path\to\safe\off-card\backups\ssfirm_<hash-prefix>.bin" ^
+  --expected-current-sha256 <64-character-current-hash> ^
+  --expected-backup-sha256 <64-character-baseline-hash> ^
+  --confirm-restore RESTORE-SSFIRM
+```
+
+An optional `--archive-root` can place the pre-restore current-firmware archive
+in another off-card directory.
+
+## Off-card preservation policy
+
+Candidate firmware, baseline backups, and pre-restore archives must all live
+outside the mounted SAROO SD card. SRK rejects card-resident candidate or backup
+locations.
+
+Backup and archive files are never silently overwritten. Existing files are
+reused only if their SHA-256 exactly matches the bytes that SRK intends to
+preserve.
+
+## Failure model
+
+The workflow is designed to fail closed:
+
+- unexpected layout -> no write;
+- stale existing-card hash -> no write;
+- stale candidate hash -> no write;
+- conflicting backup -> no write;
+- stale staging file -> no write;
+- backup verification failure -> no card modification;
+- destination changes between validation and replacement -> no replacement;
+- post-write candidate verification failure -> verified-baseline rollback is
+  attempted immediately.
+
+Removing the SD card, losing power, filesystem/media failure, or hardware failure
+can never be made completely risk-free by software. The verified off-card backup
+exists specifically so the original working bytes remain recoverable even if the
+card itself later has to be repaired or recreated.
+
+## Console entry points
+
+Fresh package installation exposes:
+
+```text
+srk-saroo-deployment
+srk-saroo-apply
+srk-saroo-restore
+```
+
+During development, `python -m rikai_kotoba.tools.<module>` is preferred after a
+pull because it does not depend on reinstalling console-script metadata.
