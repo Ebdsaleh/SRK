@@ -5,13 +5,14 @@ from __future__ import annotations
 import dearpygui.dearpygui as dpg
 
 from rikai_kotoba.application.controller import DiscWorkspaceController
+from rikai_kotoba.application.saroo_capture import SarooCaptureController
 from rikai_kotoba.application.workers import BackgroundWorkerService
 from rikai_kotoba.views.diagnostics import DiagnosticsView
 from rikai_kotoba.views.disc_workspace import DiscWorkspaceView
 from rikai_kotoba.views.help import HelpView
 from rikai_kotoba.views.saroo import SarooView
 from salix.engine.application_hosts import DearPyGuiApplicationHost
-from salix.framework.components import Button, ComponentEvent, Label
+from salix.framework.components import Button, Label
 from salix.runtime.diagnostics import ExceptionReporter
 
 
@@ -22,6 +23,7 @@ class MainViewport:
         self,
         host: DearPyGuiApplicationHost,
         disc_controller: DiscWorkspaceController,
+        saroo_controller: SarooCaptureController,
         workers: BackgroundWorkerService,
         reporter: ExceptionReporter,
         *,
@@ -34,7 +36,7 @@ class MainViewport:
             initial_source=initial_source,
             output_dir=output_dir,
         )
-        self.saroo_view = SarooView()
+        self.saroo_view = SarooView(saroo_controller)
         self.diagnostics_view = DiagnosticsView(host.runtime, workers, reporter)
         self.help_view = HelpView(host.layout)
         self._build()
@@ -137,7 +139,7 @@ class MainViewport:
             width=560,
             height=250,
         ):
-            dpg.add_text("SRK — Salix Rikai Kotoba", color=(80, 220, 160))
+            dpg.add_text("SRK - Salix Rikai Kotoba", color=(80, 220, 160))
             dpg.add_text(
                 "Retro-disc localization, reverse-engineering, and original-hardware research framework built on the Salix RAD architecture.",
                 wrap=510,
