@@ -17,6 +17,7 @@ from .capture import CaptureArtifact, CaptureStore, CapturedRegion, MemoryRange,
 
 SAROO_WRAML_RELATIVE_PATH = "SAROO/SRK_WRAML.BIN"
 SAROO_WRAMH_RELATIVE_PATH = "SAROO/SRK_WRAMH.BIN"
+SAROO_GAME_WRAMH_RELATIVE_PATH = "SAROO/SRK_GAME_WRAMH.BIN"
 SAROO_WORK_RAM_SIZE = 0x00100000
 SAROO_WRAML_RANGE = MemoryRange(0x00200000, SAROO_WORK_RAM_SIZE, "work-ram-low")
 SAROO_WRAMH_RANGE = MemoryRange(0x06000000, SAROO_WORK_RAM_SIZE, "work-ram-high")
@@ -117,17 +118,14 @@ def _read_capture(
     return summary, CapturedRegion(memory_range, payload)
 
 
-def import_saroo_work_ram_captures(
-    card_root: os.PathLike[str] | str,
-    store_root: os.PathLike[str] | str,
+def _publish_capture(
+    card: Path,
+    store_path: Path,
+    captures: tuple[tuple[str, MemoryRange], ...],
     *,
-    checkpoint: str = "saroo-menu",
-    session_label: str = "real-hardware",
+    checkpoint: str,
+    session_label: str,
 ) -> SarooCaptureIngestResult:
-    """Import both SRK Work RAM files without modifying the mounted card."""
-
-    card = _canonical(card_root)
-    store_path = _canonical(store_root)
     if not card.is_dir():
         raise SarooCaptureIngestError(f"SAROO card root is not a directory: {card}")
     if _inside(store_path, card):
@@ -135,10 +133,7 @@ def import_saroo_work_ram_captures(
 
     summaries: list[SarooRawCaptureSummary] = []
     regions: list[CapturedRegion] = []
-    for relative_path, memory_range in (
-        (SAROO_WRAML_RELATIVE_PATH, SAROO_WRAML_RANGE),
-        (SAROO_WRAMH_RELATIVE_PATH, SAROO_WRAMH_RANGE),
-    ):
+    for relative_path, memory_range in captures:
         summary, region = _read_capture(card, relative_path, memory_range)
         summaries.append(summary)
         regions.append(region)
@@ -159,4 +154,43 @@ def import_saroo_work_ram_captures(
         card_root=card,
         artifact=artifact,
         summaries=tuple(summaries),
+    )
+
+
+def import_saroo_work_ram_captures(
+    card_root: os.PathLike[str] | str,
+    store_root: os.PathLike[str] | str,
+    *,
+    checkpoint: str = "saroo-menu",
+    session_label: str = "real-hardware",
+) -> SarooCaptureIngestResult:
+    """Import both menu-generated SRK Work RAM files without modifying the card."""
+
+    return _publish_capture(
+        _canonical(card_root),
+        _canonical(store_root),
+        (
+            (SAROO_WRAML_RELATIVE_PATH, SAROO_WRAML_RANGE),
+            (SAROO_WRAMH_RELATIVE_PATH, SAROO_WRAMH_RANGE),
+        ),
+        checkpoint=checkpoint,
+        session_label=session_label,
+    )
+
+
+def import_saroo_game_work_ram_high_capture(
+    card_root: os.PathLike[str] | str,
+    store_root: os.PathLike[str] | str,
+    *,
+    checkpoint: str = "saroo-ingame",
+    session_label: str = "real-hardware",
+) -> SarooCaptureIngestResult:
+    """Import the one-shot in-game WRAM-H capture without modifying the card."""
+
+    return _publish_capture(
+        _canonical(card_root),
+        _canonical(store_root),
+        ((SAROO_GAME_WRAMH_RELATIVE_PATH, SAROO_WRAMH_RANGE),),
+        checkpoint=checkpoint,
+        session_label=session_label,
     )
