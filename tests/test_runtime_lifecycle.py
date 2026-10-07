@@ -1,9 +1,9 @@
-"""Tests for SRK's backend-neutral application lifecycle."""
+"""Tests for the backend-neutral Salix application lifecycle used by SRK."""
 
 import unittest
 
-from rikai_kotoba.runtime.application import ApplicationSpec
-from rikai_kotoba.runtime.lifecycle import (
+from salix.runtime.application import ApplicationSpec
+from salix.runtime.lifecycle import (
     ApplicationRuntime,
     RuntimeState,
     ServiceRegistry,
