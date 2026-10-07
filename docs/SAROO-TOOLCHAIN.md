@@ -1,16 +1,20 @@
-# SAROO `Firm_Saturn` Toolchain Preflight
+# SAROO `Firm_Saturn` Toolchain and Native Build
 
 SRK prepares and researches a title-neutral Saturn-side memory-capture helper for
-upstream SAROO. Before attempting a firmware build, SRK can perform a **read-only
-preflight** for the external build programs still required by the separate
-SRK-generated `Firm_Saturn` tree.
+upstream SAROO. The source-preparation and build workflows operate only on a
+**separate generated `Firm_Saturn` tree**; the known-good upstream SAROO checkout
+is never edited in place.
 
-This document describes discovery only. Nothing here flashes SAROO hardware or
-modifies a known-good SAROO checkout.
+Nothing in this workflow automatically copies firmware to an SD card or flashes
+SAROO hardware.
 
-## Upstream and generated build contracts
+## External tools actually required
 
-The pinned upstream `Firm_Saturn/Makefile` uses these SH-ELF programs:
+The generated `Firm_Saturn/Makefile` describes the SH-ELF compiler flags, object
+order, linker flags, and libraries used by upstream SAROO. SRK reads that build
+contract, but it does **not** execute GNU Make.
+
+The only external programs required by SRK's controlled build are:
 
 ```text
 sh-elf-gcc
@@ -19,31 +23,22 @@ sh-elf-objdump
 sh-elf-objcopy
 ```
 
-It also invokes a Make-compatible build driver and historically uses the
-Unix-style file commands `touch`, `cat`, and `rm`.
-
-Physical inspection of SaturnOrbit R1 showed that its SH-ELF payload provides
-all four SH-ELF programs and `make.exe`, but does **not** provide `touch.exe` or
-`cat.exe`. Rather than add unrelated utility packages, SRK rewrites those three
-small file-operation recipes only in the **separate generated build tree** and
-supplies `srk_build_support.py`, which implements the equivalent operations with
-Python's standard library.
-
-Therefore the external programs required by an SRK-generated build are:
+Python performs the orchestration directly:
 
 ```text
-sh-elf-gcc
-sh-elf-as
-sh-elf-objdump
-sh-elf-objcopy
-make
+SRK Python build driver
+        |
+        +--> clean previous generated outputs
+        +--> sh-elf-as / sh-elf-gcc for every object
+        +--> sh-elf-gcc link
+        +--> sh-elf-objdump -> dump.txt
+        +--> sh-elf-objcopy -> temporary binary
+        +--> Python concatenation -> ssfirm.bin
+        +--> SHA-256 artifact verification
 ```
 
-SRK recognizes `make`, `gmake`, or `mingw32-make` as possible Make-compatible
-drivers and records the exact executable that was resolved.
-
-Upstream SAROO's README states that `Firm_Saturn` is built with the SH-ELF
-compiler distributed with SaturnOrbit.
+GNU Make, MSYS `sh.exe`, CMake, Ninja, `touch`, `cat`, and `rm` are not required
+by this controlled path.
 
 The SRK integration was researched against upstream SAROO commit:
 
@@ -53,127 +48,146 @@ c31bf6192eff59533d7268dfdf6c791f11a1f7c9
 
 ## Verified SaturnOrbit R1 layout
 
-The user's SaturnOrbit R1 package was inspected without executing its legacy
-installer. The extracted payload contained:
+Physical inspection of SaturnOrbit R1 found the required SH-ELF programs beneath:
 
 ```text
 SaturnOrbit\
 └── SH_ELF\
-    ├── sh-elf\bin\
-    │   ├── sh-elf-gcc.exe
-    │   ├── sh-elf-as.exe
-    │   ├── sh-elf-objdump.exe
-    │   └── sh-elf-objcopy.exe
-    └── Other Utilities\
-        ├── make.exe
-        └── rm.exe
+    └── sh-elf\bin\
+        ├── sh-elf-gcc.exe
+        ├── sh-elf-as.exe
+        ├── sh-elf-objdump.exe
+        └── sh-elf-objcopy.exe
 ```
 
-The inspected R1 payload did not contain `touch.exe`, `cat.exe`, or
-`mingw32-make.exe`. SRK does not require those missing executables for its
-generated build because the generated Makefile uses the bundled Python helper
-for `touch`, concatenation, and removal.
+SaturnOrbit also contains historical Make/MSYS utilities, but SRK deliberately
+does not depend on them. This avoids legacy shell/parser behavior on modern
+Windows while retaining SaturnOrbit's actual SuperH compiler and object tools.
 
-The explicit-root search still understands several common nested toolchain
-layouts and performs a bounded recursive search, so another compatible SH-ELF
-distribution does not need to reproduce this exact directory tree.
+The explicit-root search understands common nested toolchain layouts and
+performs a bounded recursive search, so another compatible SH-ELF distribution
+does not need to reproduce this exact directory tree.
 
-## Do not use upstream `MAKE_ELF.bat` as the SRK build entry point
+## Toolchain preflight
 
-The pinned upstream SAROO tree also contains `Firm_Saturn/MAKE_ELF.bat`, but that
-historical helper contains machine-specific absolute paths such as
-`F:\SaturnOrbit\SET_ELF.BAT` and another unrelated `F:` output destination.
-
-SRK therefore does **not** treat that batch file as the portable build contract.
-The intended build path is:
-
-```text
-separate generated Firm_Saturn tree
-+
-explicit process-local toolchain environment
-+
-generated portable Makefile recipes
-```
-
-The known-good upstream checkout, the user's global `PATH`, and the extracted
-SaturnOrbit source package remain untouched by source preparation.
-
-## Run the preflight
-
-After installing the current SRK editable package:
-
-```bat
-srk-saroo-toolchain
-```
-
-With no argument, SRK inspects the existing process `PATH` without changing it.
-
-If the required tools are bundled somewhere beneath a SaturnOrbit or toolchain
-directory, point SRK at the containing root:
+Run the read-only preflight with:
 
 ```bat
 srk-saroo-toolchain --toolchain-root "C:\path\to\SaturnOrbit"
 ```
 
-The explicit root is searched first. SRK understands common nested `bin`,
-`sh-elf/bin`, `toolchain/bin`, and historical SaturnOrbit directories, then
-performs a bounded recursive search beneath the directory.
+A successful report resolves the four SH-ELF programs. The command does not
+modify the process/global `PATH`, invoke the compiler, write into the toolchain,
+or touch an SD card.
 
-Example successful report:
+`READY` means discovery succeeded. A real build is still the authoritative proof
+that the compiler installation works.
 
-```text
-SAROO Firm_Saturn toolchain preflight
---------------------------------------------
-Explicit root : C:\SaturnOrbit
-PATH policy   : read-only fallback; PATH is not modified
+## Controlled native build
 
-[OK]      sh-elf-gcc       C:\SaturnOrbit\...\sh-elf-gcc.exe (toolchain-root)
-[OK]      sh-elf-as        C:\SaturnOrbit\...\sh-elf-as.exe (toolchain-root)
-[OK]      sh-elf-objdump   C:\SaturnOrbit\...\sh-elf-objdump.exe (toolchain-root)
-[OK]      sh-elf-objcopy   C:\SaturnOrbit\...\sh-elf-objcopy.exe (toolchain-root)
-[OK]      make             C:\SaturnOrbit\...\make.exe (toolchain-root)
-
-Discovery result: READY - every required executable was resolved.
-```
-
-## What `READY` means
-
-`READY` means only that every external executable required by the generated
-build could be resolved.
-
-It does **not** yet prove that:
-
-- the compiler binaries execute correctly on this Windows installation;
-- headers/libraries expected by the Makefile are complete;
-- the generated SRK-enabled `Firm_Saturn` tree compiles or links;
-- the resulting firmware is correct for the user's SAROO hardware;
-- any firmware has been installed or flashed.
-
-The next evidence step after a successful preflight is a real build of a
-**separate generated source tree**.
-
-## Safety policy
-
-The preflight:
-
-- does not modify the process or global `PATH`;
-- does not write into the supplied toolchain directory;
-- does not modify a SAROO checkout;
-- does not invoke a compiler;
-- does not build firmware;
-- does not copy files to an SD card;
-- does not flash hardware.
-
-If an explicit `--toolchain-root` does not exist, SRK reports an error rather than
-silently searching an unrelated location.
-
-## Related commands
-
-Prepare a separate SRK-enabled copy of upstream `Firm_Saturn` source:
+Prepare a separate SRK-enabled source tree once:
 
 ```bat
 srk prepare-saroo-firmware C:\path\to\SAROO C:\path\to\SAROO-SRK
 ```
+
+Then build it with:
+
+```bat
+srk build-saroo-firmware ^
+  "C:\path\to\SAROO-SRK" ^
+  --toolchain-root "C:\path\to\SaturnOrbit"
+```
+
+The native builder streams progress to the console and simultaneously writes a
+unique `SRK_BUILD_LOG*.txt` beside the generated tree. Each SH-ELF command and
+its output are retained in the log.
+
+Expected build artifacts are:
+
+```text
+Firm_Saturn/ssfirm.elf
+Firm_Saturn/ssfirm.bin
+Firm_Saturn/dump.txt
+```
+
+A successful result requires clean/build exit `0` and all three artifacts. SRK
+records their sizes and SHA-256 hashes.
+
+## Physical validation — 2026-10-07
+
+The Python-native driver at SRK commit:
+
+```text
+7e4703da1c1501b57902130ac6066bf3b87a873b
+```
+
+was physically validated on Windows with Python 3.13.3 and the installed
+SaturnOrbit R1 SH-ELF toolchain.
+
+Repository validation before the physical build:
+
+```text
+unittest: 190 passed
+pytest:   190 passed, 23 subtests passed
+```
+
+The real generated `Firm_Saturn` build compiled all 17 objects, linked, and
+published the expected outputs with clean/build exit `0`:
+
+```text
+ssfirm.elf   89,518 bytes
+SHA-256 fd9adc19c4991c51bae3e8cc65e5f94161b8ee7a411db5e459748b99a2bc2837
+
+ssfirm.bin  484,246 bytes
+SHA-256 7f30e1a58ff1a26cd70af1d36a85129fad132016b2b7c47626e3c2fb04a90686
+
+dump.txt    837,322 bytes
+SHA-256 e102d97ca8dfd29d9e206ee4537f71ce1d552a313a9b86e24a5b6d367a7eaf40
+```
+
+No firmware was copied to SD and no hardware was flashed during this validation.
+
+## Inspect the real SD card before any deployment
+
+SAROO has used more than one Saturn-firmware filename/location across its
+history. SRK therefore does not infer an installation path from the build output
+alone.
+
+Use the read-only inspector on the mounted SD-card root first:
+
+```bat
+srk inspect-saroo-sd E:\
+```
+
+It recognizes:
+
+```text
+modern layout: SAROO/ssfirm.bin
+legacy layout: ramimage.bin at the SD-card root
+```
+
+It hashes any recognized existing Saturn firmware and reports companion layout
+evidence (`mcuapp.bin`, `saroocfg.txt`, `ISO`, `update`). If both known firmware
+locations are present, SRK reports a mixed/ambiguous layout instead of guessing.
+
+The inspector never writes to the card. A later staging/deployment workflow must
+use this evidence before proposing a replacement path.
+
+## Safety policy
+
+The controlled SAROO workflow currently guarantees that:
+
+- the original SAROO source checkout is not edited in place;
+- the original commercial game image is unrelated to and untouched by firmware
+  preparation/build operations;
+- tool discovery does not modify global/process `PATH`;
+- the build driver does not execute historical Make/MSYS shell tooling;
+- numbered build logs and artifact hashes preserve build evidence;
+- SD-card layout inspection is read-only;
+- firmware is never copied to SD or flashed implicitly.
+
+## Related commands
 
 Import a raw Work RAM file copied from the SAROO SD card:
 
@@ -185,5 +199,5 @@ srk import-saroo-dump SRK_WRAMH.BIN ^
     --label work_ram_high
 ```
 
-The source SAROO checkout and original raw dump remain untouched by these
-workflows.
+The original raw dump remains untouched; SRK publishes a new verified capture
+artifact with SHA-256 metadata.
