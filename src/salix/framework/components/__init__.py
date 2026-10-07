@@ -2,6 +2,18 @@
 
 from .base import Component, ValueComponent
 from .bindings import BindingSet, ValueBinding
+from .controls import (
+    Button,
+    CheckBox,
+    ComboBox,
+    Label,
+    NumericKind,
+    NumericStepper,
+    ProgressBar,
+    Separator,
+    Spacer,
+    TextInput,
+)
 from .events import ComponentEvent, ComponentEventType, action_callback
 from .layout import (
     AUTO,
@@ -33,6 +45,9 @@ __all__ = [
     "NATURAL",
     "STRETCH",
     "BindingSet",
+    "Button",
+    "CheckBox",
+    "ComboBox",
     "Component",
     "ComponentEvent",
     "ComponentEventType",
@@ -45,7 +60,14 @@ __all__ = [
     "CrossAxisMode",
     "DimensionMode",
     "FRAMEWORK_COMPONENT_PROFILE",
+    "Label",
+    "NumericKind",
+    "NumericStepper",
+    "ProgressBar",
     "ResolvedControlLayout",
+    "Separator",
+    "Spacer",
+    "TextInput",
     "ValueBinding",
     "ValueComponent",
     "action_callback",
