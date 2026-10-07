@@ -15,6 +15,7 @@ SRK is currently alpha software. The public repository intentionally contains no
 - Build the desktop as an SRK application **on the Salix RAD framework**, rather than maintaining an SRK-specific GUI framework.
 - Keep Dear PyGui on the presentation/owner thread and route background results through explicit worker events supervised by the Salix runtime.
 - Ship a detailed offline Help/Glossary so the application remains usable and educational without Internet access.
+- Build Saturn runtime research around reproducible captures and provenance evidence rather than title-specific guesswork.
 
 ## Current capabilities
 
@@ -27,12 +28,18 @@ SRK is currently alpha software. The public repository intentionally contains no
 - ISO-9660 directory walking, path lookup, and file reads.
 - Safe extraction with traversal protection and source-collision checks.
 - Standard hex rendering and file output.
+- Exact source-file-to-memory correlation for runtime provenance research.
 
 ### Sega Saturn
 
 - Saturn `IP.BIN` boot-header inspection from logical LBA 0.
-- Saturn-specific code lives under `rikai_kotoba.formats.saturn` rather than in the generic core.
-- `hardware/saturn/saroo/` is reserved for generic original-hardware capture/debug tooling.
+- Canonical 1 MiB Work RAM-L (`0x00200000`) and Work RAM-H (`0x06000000`) capture regions.
+- Title-neutral SAROO memory-range capture contracts.
+- Atomic SAROO capture artifacts containing raw region files plus SHA-256 `capture.json` metadata.
+- Capture verification that detects size/hash changes after a dump is recorded.
+- Saturn-specific code lives under `rikai_kotoba.formats.saturn` and `rikai_kotoba.hardware.saturn` rather than in the generic core.
+
+The real SAROO communication adapter is intentionally **not guessed**. The desktop exposes the capture pipeline and keeps capture buttons disabled until a verified transport implementation reports itself available.
 
 ### Salix RAD desktop foundation
 
@@ -48,7 +55,7 @@ SRK deliberately does **not** maintain a parallel `rikai_kotoba.runtime` or `rik
 The desktop currently provides:
 
 - **Disc Workspace** — open and index a CUE or standalone disc without running the scan on the UI thread;
-- **Saturn / SAROO** — presentation shell for the upcoming flight-recorder/capture toolchain;
+- **Saturn / SAROO** — title-neutral transport status, canonical Work RAM capture controls, checkpoint/session metadata, and external capture destination;
 - **Diagnostics** — Salix runtime state, SRK worker-pool state, queue depth, and UI error-log location;
 - **Offline Help & Glossary** — searchable novice-oriented documentation with Contents navigation, A-Z glossary navigation, scalable documentation text, and cross-linked semantic pages.
 
@@ -114,7 +121,19 @@ Launch the desktop shell:
 srk-gui
 ```
 
-Open one disc after startup and choose a separate output workspace:
+A normal desktop launch defaults generated artifacts to:
+
+```text
+~/SRK-Workspace/Output
+```
+
+and SAROO captures to:
+
+```text
+~/SRK-Workspace/Dumps/SAROO
+```
+
+Set `SRK_WORKSPACE_DIR` to override the workspace root, or pass `--output-dir` for one launch:
 
 ```bash
 srk-gui /path/to/disc.cue --output-dir /path/to/SRK-Workspace/Output
@@ -156,6 +175,14 @@ Extract one ISO path:
 srk extract /path/to/disc.cue /path/to/output --file /EXAMPLE.BIN
 ```
 
+Search a raw Saturn RAM capture for exact chunks from an extracted disc file:
+
+```bash
+srk correlate /path/to/FILE.BIN /path/to/ram.bin --base-address 0x06000000
+```
+
+The correlator streams the source file, hashes both inputs, suppresses highly repeated ambiguous chunks, and coalesces adjacent exact matches into longer provenance runs. An exact run proves that those bytes occur in the capture; it does **not** claim to detect decompression, relocation fixups, decoding, byte swapping, or other transformations.
+
 ## Mjölnir examples
 
 Open one disc immediately:
@@ -180,7 +207,7 @@ Generated structured dumps and portable ZIPs are placed beneath `extracted_outpu
 
 ## Suggested workspace separation
 
-Keep media and generated research outside the source-code repository, for example:
+The default non-portable workspace follows this layout:
 
 ```text
 SRK-Workspace/
@@ -192,6 +219,20 @@ SRK-Workspace/
 ```
 
 This keeps original media, generated analysis, hardware captures, and public source code clearly separated.
+
+## SAROO capture artifacts
+
+A successful capture is published as a new timestamped directory under `Dumps/SAROO`. Existing capture directories are never overwritten. Each capture contains one binary file per requested address range plus `capture.json` metadata recording:
+
+- checkpoint and optional session labels;
+- capture time in UTC;
+- start/end address and byte size for every region;
+- SHA-256 for every region file;
+- a versioned SRK capture schema.
+
+Capture files are first written to a temporary sibling directory and are published only after every region and the manifest succeed. `verify_capture()` can later confirm size and SHA-256 integrity.
+
+The transport boundary is deliberately small: a concrete adapter reports status, reads an explicit `MemoryRange`, and closes. Capture persistence, worker-thread orchestration, GUI state, and correlation are therefore independent of how a verified SAROO firmware ultimately moves bytes off the Saturn.
 
 ## Source-image safety policy
 
@@ -225,6 +266,7 @@ src/
     ├── cli.py
     ├── desktop.py
     ├── core/
+    │   ├── correlation.py
     │   ├── disc_source.py
     │   ├── disc_image.py
     │   ├── cue_disc.py
@@ -234,6 +276,7 @@ src/
     ├── application/
     │   ├── controller.py
     │   ├── disc_workspace.py
+    │   ├── saroo_capture.py
     │   ├── workers.py
     │   ├── paths.py
     │   └── help_content.py
@@ -250,7 +293,10 @@ src/
     │   └── mjolnir.py
     └── hardware/
         └── saturn/
+            ├── memory_map.py
             └── saroo/
+                ├── capture.py
+                └── transport.py
 ```
 
 The dependency direction is deliberate. SRK core/application code does not import Dear PyGui; Salix framework/runtime code does not import Dear PyGui or SRK product code; concrete toolkit adapters live under `salix.engine`.
