@@ -24,6 +24,17 @@ from .capture import (
     load_manifest,
     verify_capture,
 )
+from .card_guard import (
+    SAROO_CARD_INVENTORY_HASH_MAX_BYTES,
+    SAROO_CARD_INVENTORY_SCHEMA,
+    SAROO_CARD_INVENTORY_VERSION,
+    SarooCardInventoryEntry,
+    SarooCardInventoryError,
+    SarooCardInventoryResult,
+    SarooCardInventoryVerification,
+    create_saroo_card_inventory,
+    verify_saroo_card_inventory,
+)
 from .deployment import (
     SarooDeploymentApplyError,
     SarooDeploymentApplyResult,
@@ -82,6 +93,9 @@ from .transport import (
 __all__ = [
     "CAPTURE_SCHEMA",
     "CAPTURE_SCHEMA_VERSION",
+    "SAROO_CARD_INVENTORY_HASH_MAX_BYTES",
+    "SAROO_CARD_INVENTORY_SCHEMA",
+    "SAROO_CARD_INVENTORY_VERSION",
     "SAROO_SD_LAYOUT_LEGACY",
     "SAROO_SD_LAYOUT_MIXED",
     "SAROO_SD_LAYOUT_MODERN",
@@ -99,6 +113,10 @@ __all__ = [
     "SarooBuildError",
     "SarooBuildResult",
     "SarooCaptureCoordinator",
+    "SarooCardInventoryEntry",
+    "SarooCardInventoryError",
+    "SarooCardInventoryResult",
+    "SarooCardInventoryVerification",
     "SarooDeploymentApplyError",
     "SarooDeploymentApplyResult",
     "SarooDeploymentBackupError",
@@ -126,6 +144,7 @@ __all__ = [
     "apply_saroo_firmware",
     "backup_saroo_firmware",
     "build_firm_saturn_tree",
+    "create_saroo_card_inventory",
     "default_helper_root",
     "import_raw_sd_dump",
     "inspect_saroo_sd_layout",
@@ -137,4 +156,5 @@ __all__ = [
     "restore_saroo_firmware",
     "total_planned_bytes",
     "verify_capture",
+    "verify_saroo_card_inventory",
 ]
