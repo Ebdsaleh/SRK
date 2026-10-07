@@ -1,4 +1,4 @@
-"""Synthetic tests for title-neutral one-shot first-read capture preparation."""
+"""Synthetic tests for title-neutral one-shot in-game capture preparation."""
 
 from pathlib import Path
 import tempfile
@@ -8,6 +8,7 @@ from rikai_kotoba.hardware.saturn.saroo.ingame_entry_integration import (
     SarooInGameEntryIntegrationError,
     prepare_ingame_entry_capture_tree,
 )
+from rikai_kotoba.tools.saroo_ingame_entry_prepare import main as prepare_main
 
 
 MAIN_CAPTURE = '''#include "main.h"
@@ -20,25 +21,25 @@ int srk_wramh_index = -1;
 
 int main_handle(int ctrl)
 {
-	int index = main_menu.current;
-	if(index==srk_wramh_index){
-		return 0;
-	}else if(index==update_index){
-		return 0;
-	}
-	return 0;
+\tint index = main_menu.current;
+\tif(index==srk_wramh_index){
+\t\treturn 0;
+\t}else if(index==update_index){
+\t\treturn 0;
+\t}
+\treturn 0;
 }
 
 void menu_init(void)
 {
-	int i;
-	for(i=0; i<menu_str_nr; i++){
-		add_menu_item(&main_menu, TT(menu_str[i]));
-	}
-	srk_wraml_index = main_menu.num;
-	add_menu_item(&main_menu, "SRK Capture WRAM-L");
-	srk_wramh_index = main_menu.num;
-	add_menu_item(&main_menu, "SRK Capture WRAM-H");
+\tint i;
+\tfor(i=0; i<menu_str_nr; i++){
+\t\tadd_menu_item(&main_menu, TT(menu_str[i]));
+\t}
+\tsrk_wraml_index = main_menu.num;
+\tadd_menu_item(&main_menu, "SRK Capture WRAM-L");
+\tsrk_wramh_index = main_menu.num;
+\tadd_menu_item(&main_menu, "SRK Capture WRAM-H");
 }
 '''
 
@@ -47,10 +48,10 @@ GAME_LOAD = '''#include "main.h"
 
 void patch_game(void)
 {
-	if(game_break_pc){
-		set_break_pc(game_break_pc, 0);
-		install_ubr_isr();
-	}
+\tif(game_break_pc){
+\t\tset_break_pc(game_break_pc, 0);
+\t\tinstall_ubr_isr();
+\t}
 }
 '''
 
@@ -102,6 +103,7 @@ class SarooInGameEntryIntegrationTests(unittest.TestCase):
                 if path.is_file()
             }
             self.assertEqual(after, before)
+            self.assertIsNone(result.capture_pc)
             self.assertTrue(result.marker_path.is_file())
             main = result.main_path.read_text(encoding="utf-8")
             game = result.game_load_path.read_text(encoding="utf-8")
@@ -130,6 +132,70 @@ class SarooInGameEntryIntegrationTests(unittest.TestCase):
             self.assertIn("first_read_pc>=SRK_WRAMH_END_EXCLUSIVE", helper)
             self.assertIn("(first_read_pc&1u)!=0u", helper)
             self.assertIn("game_break_pc = 0;", helper)
+
+    def test_explicit_pc_is_local_generator_data_and_changes_trigger(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = self._source(root)
+            output = root / "explicit"
+
+            result = prepare_ingame_entry_capture_tree(
+                source,
+                output,
+                capture_pc=0x06012000,
+            )
+
+            self.assertEqual(result.capture_pc, 0x06012000)
+            main = result.main_path.read_text(encoding="utf-8")
+            helper = result.helper_source_path.read_text(encoding="utf-8")
+            marker = result.marker_path.read_text(encoding="utf-8")
+            self.assertIn("SRK Arm PC Capture", main)
+            self.assertNotIn("SRK Arm 1st-Read Capture", main)
+            self.assertIn("#define SRK_EXPLICIT_CAPTURE_PC     0x06012000u", helper)
+            self.assertIn("first_read_pc = SRK_EXPLICIT_CAPTURE_PC;", helper)
+            self.assertIn("first_read_pc<SRK_WRAMH_START", helper)
+            self.assertNotIn(
+                "first_read_pc = BE32((void*)(SRK_IP_MEMORY_BASE + SRK_IP_FIRST_READ_OFFSET));",
+                helper,
+            )
+            self.assertIn("caller-supplied SH-2 PC 0x06012000", marker)
+            self.assertIn("no commercial-title-specific breakpoint constant", marker)
+
+    def test_explicit_pc_is_validated_before_output_creation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = self._source(root)
+
+            for value in (0x05FFFFFE, 0x06100000, 0x06012001):
+                output = root / f"out-{value:08x}"
+                with self.assertRaises(SarooInGameEntryIntegrationError):
+                    prepare_ingame_entry_capture_tree(
+                        source,
+                        output,
+                        capture_pc=value,
+                    )
+                self.assertFalse(output.exists())
+
+    def test_module_command_accepts_hex_capture_pc(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = self._source(root)
+            output = root / "explicit-cli"
+
+            exit_code = prepare_main(
+                [
+                    str(source),
+                    str(output),
+                    "--capture-pc",
+                    "0x06012000",
+                ]
+            )
+
+            self.assertEqual(exit_code, 0)
+            helper = (output / "Firm_Saturn" / "srk_capture_helper.c").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("0x06012000u", helper)
 
     def test_existing_output_is_refused_without_modifying_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:
