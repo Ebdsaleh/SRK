@@ -38,6 +38,7 @@ srk = "rikai_kotoba.cli:main"
 srk-gui = "rikai_kotoba.desktop:main"
 srk-mjolnir = "rikai_kotoba.tools.mjolnir:main"
 srk-saroo-toolchain = "rikai_kotoba.tools.saroo_toolchain:main"
+srk-saroo-build = "rikai_kotoba.tools.saroo_build:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "rikai_kotoba.__version__" }
