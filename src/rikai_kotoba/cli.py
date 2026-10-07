@@ -7,11 +7,17 @@ import os
 import sys
 from typing import Iterable, Optional, Sequence, Tuple
 
+from rikai_kotoba.application.paths import default_saroo_dump_directory
 from rikai_kotoba.core.correlation import correlate_file_to_memory_dump
 from rikai_kotoba.core.disc_source import open_disc_source
 from rikai_kotoba.core.iso9660 import ISO9660Entry, ISO9660Reader
 from rikai_kotoba.core.safe_extractor import ExtractionReport, ISOExtractor
 from rikai_kotoba.formats.saturn.ip_bin import parse_ip_bin
+from rikai_kotoba.hardware.saturn.saroo import (
+    CaptureStore,
+    import_raw_sd_dump,
+    verify_capture,
+)
 
 
 def _open_iso(path: os.PathLike[str] | str) -> Tuple[object, ISO9660Reader]:
@@ -36,11 +42,29 @@ def _parse_address(value: str) -> int:
     if not text:
         raise argparse.ArgumentTypeError("address must not be empty")
     try:
-        return int(text, 16 if text.lower().startswith("0x") else 10)
+        parsed = int(text, 16 if text.lower().startswith("0x") else 10)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(
             "address must be decimal or 0x-prefixed hexadecimal"
         ) from exc
+    if parsed < 0 or parsed >= (1 << 32):
+        raise argparse.ArgumentTypeError("address must fit in 32 bits")
+    return parsed
+
+
+def _parse_positive_integer(value: str) -> int:
+    text = str(value or "").strip()
+    if not text:
+        raise argparse.ArgumentTypeError("value must not be empty")
+    try:
+        parsed = int(text, 16 if text.lower().startswith("0x") else 10)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "value must be decimal or 0x-prefixed hexadecimal"
+        ) from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be positive")
+    return parsed
 
 
 def _print_extraction_report(report: ExtractionReport) -> None:
@@ -148,6 +172,31 @@ def _cmd_correlate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_import_saroo_dump(args: argparse.Namespace) -> int:
+    capture_root = args.capture_root or str(default_saroo_dump_directory())
+    store = CaptureStore(capture_root)
+    artifact = import_raw_sd_dump(
+        args.dump,
+        base_address=args.base_address,
+        checkpoint=args.checkpoint,
+        store=store,
+        label=args.label,
+        session_label=args.session_label,
+        expected_size=args.expected_size,
+    )
+    verification = verify_capture(artifact.directory)
+    verification.require_valid()
+
+    print(f"Imported raw dump : {os.path.abspath(args.dump)}")
+    print(f"Saturn base       : 0x{args.base_address:08X}")
+    print(f"Capture directory : {artifact.directory}")
+    print(f"Manifest          : {artifact.manifest_path}")
+    for path in artifact.region_paths:
+        print(f"Region file       : {path}")
+    print("Integrity         : verified")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="srk",
@@ -236,6 +285,45 @@ def build_parser() -> argparse.ArgumentParser:
         help="Suppress chunks repeated more than this many times in RAM (default: 8)",
     )
     correlate_parser.set_defaults(handler=_cmd_correlate)
+
+    import_parser = subparsers.add_parser(
+        "import-saroo-dump",
+        help="Import a raw SAROO SD-card memory dump into a verified SRK capture",
+    )
+    import_parser.add_argument("dump", help="Raw dump file copied from the SAROO SD card")
+    import_parser.add_argument(
+        "--base-address",
+        required=True,
+        type=_parse_address,
+        help="Saturn address represented by raw dump offset 0",
+    )
+    import_parser.add_argument(
+        "--checkpoint",
+        required=True,
+        help="Human-readable capture checkpoint, for example title-screen",
+    )
+    import_parser.add_argument(
+        "--capture-root",
+        default=None,
+        help="Destination root for verified captures; defaults to SRK-Workspace/Dumps/SAROO",
+    )
+    import_parser.add_argument(
+        "--label",
+        default="",
+        help="Optional memory-region label such as work_ram_high",
+    )
+    import_parser.add_argument(
+        "--session-label",
+        default="",
+        help="Optional session label stored in capture metadata",
+    )
+    import_parser.add_argument(
+        "--expected-size",
+        default=None,
+        type=_parse_positive_integer,
+        help="Reject the import unless the raw file has exactly this many bytes",
+    )
+    import_parser.set_defaults(handler=_cmd_import_saroo_dump)
 
     return parser
 
