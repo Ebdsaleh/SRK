@@ -1,12 +1,13 @@
-"""Read-only discovery for the external SAROO ``Firm_Saturn`` build tools.
+"""Read-only discovery for the external SAROO ``Firm_Saturn`` SH-ELF tools.
 
-Upstream SAROO's historical Makefile uses an SH-ELF cross toolchain plus a few
-Unix-style file utilities. SRK-generated build trees replace those small file
-operations with the bundled Python ``srk_build_support.py`` helper, so preflight
-only requires the external compiler/object tools and a Make-compatible driver.
+SRK's controlled SAROO build driver invokes the SuperH compiler/object tools
+directly from Python. GNU Make, MSYS ``sh.exe``, and the historical Makefile's
+``touch``/``cat``/``rm`` utilities are therefore not external preflight
+requirements.
+
 SRK must not silently mutate the user's global PATH or pretend a build
-environment is ready when one of those programs is missing, so discovery is
-explicit and reports where every resolved executable came from.
+environment is ready when one of the required SH-ELF programs is missing, so
+discovery is explicit and reports where every resolved executable came from.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ SAROO_TOOL_REQUIREMENTS: tuple[SarooToolRequirement, ...] = (
     SarooToolRequirement(
         "sh-elf-gcc",
         ("sh-elf-gcc", "sh-elf-gcc.exe"),
-        "SuperH C compiler used by Firm_Saturn",
+        "SuperH C compiler/linker used by Firm_Saturn",
     ),
     SarooToolRequirement(
         "sh-elf-as",
@@ -43,24 +44,12 @@ SAROO_TOOL_REQUIREMENTS: tuple[SarooToolRequirement, ...] = (
     SarooToolRequirement(
         "sh-elf-objdump",
         ("sh-elf-objdump", "sh-elf-objdump.exe"),
-        "SuperH object/disassembly inspector used by the Makefile",
+        "SuperH object/disassembly inspector used to publish dump.txt",
     ),
     SarooToolRequirement(
         "sh-elf-objcopy",
         ("sh-elf-objcopy", "sh-elf-objcopy.exe"),
         "SuperH object converter used to publish the Saturn binary",
-    ),
-    SarooToolRequirement(
-        "make",
-        (
-            "make",
-            "make.exe",
-            "gmake",
-            "gmake.exe",
-            "mingw32-make",
-            "mingw32-make.exe",
-        ),
-        "Make-compatible build driver for the generated Firm_Saturn Makefile",
     ),
 )
 
@@ -151,7 +140,6 @@ def _search_explicit_root(
         root / "toolchain" / "bin",
         root / "tools" / "bin",
         root / "SH_ELF" / "sh-elf" / "bin",
-        root / "SH_ELF" / "Other Utilities",
         root / "MinGW" / "bin",
     )
     checked: set[Path] = set()
@@ -203,16 +191,12 @@ def inspect_saroo_toolchain(
     *,
     path_env: str | None = None,
 ) -> SarooToolchainReport:
-    """Resolve external executables needed by an SRK-generated ``Firm_Saturn`` build.
+    """Resolve SH-ELF executables needed by SRK's native Firm_Saturn build.
 
     When ``toolchain_root`` is supplied it is searched first, including nested
-    SaturnOrbit-style ``bin`` and ``Other Utilities`` directories. The process
-    PATH is only *read* as a fallback and is never changed. ``path_env`` exists
-    primarily so tests or callers can supply an explicit PATH snapshot.
-
-    The generated Makefile uses SRK's Python build-support helper for upstream's
-    historical ``touch``, ``cat``, and ``rm`` recipes, so those programs are not
-    external preflight requirements.
+    SaturnOrbit-style ``bin`` directories. The process PATH is only *read* as a
+    fallback and is never changed. ``path_env`` exists primarily so tests or
+    callers can supply an explicit PATH snapshot.
     """
 
     root: Path | None = None
