@@ -22,8 +22,13 @@ class SarooToolchainHelpTests(unittest.TestCase):
         results = help_catalog.search("PATH is not modified")
         self.assertTrue(any(target == "page:saroo-capture" for target, _ in results))
 
-    def test_complete_build_environment_guidance_is_searchable(self) -> None:
-        for query in ("MAKE_ELF.bat", "Other Utilities", "sh-elf-objcopy"):
+    def test_generated_build_contract_is_searchable(self) -> None:
+        for query in (
+            "five external build programs",
+            "srk_build_support.py",
+            "MAKE_ELF.bat",
+            "sh-elf-objcopy",
+        ):
             with self.subTest(query=query):
                 results = help_catalog.search(query)
                 self.assertTrue(
