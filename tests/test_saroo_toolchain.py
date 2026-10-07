@@ -17,15 +17,10 @@ class SarooToolchainTests(unittest.TestCase):
         bin_dir = root / "SaturnOrbit" / "toolchains" / "sh-elf" / "bin"
         bin_dir.mkdir(parents=True)
         for requirement in SAROO_TOOL_REQUIREMENTS:
-            filename = (
-                "mingw32-make.exe"
-                if requirement.name == "make"
-                else requirement.name + ".exe"
-            )
-            (bin_dir / filename).write_bytes(b"synthetic-tool")
+            (bin_dir / (requirement.name + ".exe")).write_bytes(b"synthetic-tool")
         return bin_dir
 
-    def test_generated_build_requires_only_external_compiler_tools_and_make(self) -> None:
+    def test_native_build_requires_only_external_sh_elf_tools(self) -> None:
         self.assertEqual(
             tuple(requirement.name for requirement in SAROO_TOOL_REQUIREMENTS),
             (
@@ -33,8 +28,11 @@ class SarooToolchainTests(unittest.TestCase):
                 "sh-elf-as",
                 "sh-elf-objdump",
                 "sh-elf-objcopy",
-                "make",
             ),
+        )
+        self.assertNotIn(
+            "make",
+            tuple(requirement.name for requirement in SAROO_TOOL_REQUIREMENTS),
         )
 
     def test_explicit_saturnorbit_root_resolves_every_required_tool(self) -> None:
@@ -67,33 +65,20 @@ class SarooToolchainTests(unittest.TestCase):
                 "sh-elf-as",
                 "sh-elf-objdump",
                 "sh-elf-objcopy",
-                "make",
             ):
                 with self.subTest(required_name=required_name):
                     self.assertIn(required_name, report.missing)
-            for portable_helper_operation in ("touch", "cat", "rm"):
-                with self.subTest(portable_helper_operation=portable_helper_operation):
-                    self.assertNotIn(portable_helper_operation, report.missing)
-                    self.assertIsNone(report.path_for(portable_helper_operation))
 
-    def test_make_compatible_alias_is_accepted(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            self._populate_toolchain(root)
+            for no_longer_required in ("make", "touch", "cat", "rm"):
+                with self.subTest(no_longer_required=no_longer_required):
+                    self.assertNotIn(no_longer_required, report.missing)
+                    self.assertIsNone(report.path_for(no_longer_required))
 
-            report = inspect_saroo_toolchain(root, path_env="")
-
-            make_path = report.path_for("make")
-            self.assertIsNotNone(make_path)
-            self.assertEqual(make_path.name.casefold(), "mingw32-make.exe")
-
-    def test_physical_saturnorbit_r1_layout_resolves_generated_build_tools(self) -> None:
+    def test_physical_saturnorbit_r1_layout_resolves_native_build_tools(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             compiler_bin = root / "SH_ELF" / "sh-elf" / "bin"
-            utility_bin = root / "SH_ELF" / "Other Utilities"
             compiler_bin.mkdir(parents=True)
-            utility_bin.mkdir(parents=True)
 
             for name in (
                 "sh-elf-gcc.exe",
@@ -102,7 +87,12 @@ class SarooToolchainTests(unittest.TestCase):
                 "sh-elf-objcopy.exe",
             ):
                 (compiler_bin / name).write_bytes(b"synthetic-tool")
-            (utility_bin / "make.exe").write_bytes(b"synthetic-tool")
+
+            # SaturnOrbit R1 may also contain an ancient GNU Make. The native
+            # SRK build path deliberately does not require or resolve it.
+            utility_bin = root / "SH_ELF" / "Other Utilities"
+            utility_bin.mkdir(parents=True)
+            (utility_bin / "make.exe").write_bytes(b"legacy-make")
 
             report = inspect_saroo_toolchain(root, path_env="")
 
@@ -110,7 +100,7 @@ class SarooToolchainTests(unittest.TestCase):
             self.assertTrue(
                 os.path.samefile(report.path_for("sh-elf-gcc").parent, compiler_bin)
             )
-            self.assertTrue(os.path.samefile(report.path_for("make").parent, utility_bin))
+            self.assertIsNone(report.path_for("make"))
 
     def test_invalid_explicit_root_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
