@@ -29,10 +29,35 @@ class SarooFirmwareIntegrationResult:
     shell_path: Path
     helper_source_path: Path
     helper_header_path: Path
+    build_support_path: Path
 
 
 _MAKEFILE_OBJECT_ANCHOR = "\t\tobj/sci_shell.o  \\\n"
 _MAKEFILE_HELPER_OBJECT = "\t\tobj/srk_capture_helper.o  \\\n"
+_MAKEFILE_PYTHON_ANCHOR = "OBJCOPY = sh-elf-objcopy\n"
+_MAKEFILE_PYTHON_LINE = "PYTHON ?= python\n"
+_MAKEFILE_TOUCH_ANCHOR = (
+    '\t$(call ECHO_CMD, "TOUCH  ", version.c, touch version.c)\n'
+)
+_MAKEFILE_TOUCH_REPLACEMENT = (
+    '\t$(call ECHO_CMD, "TOUCH  ", version.c, '
+    '$(PYTHON) srk_build_support.py touch version.c)\n'
+)
+_MAKEFILE_CAT_ANCHOR = (
+    '\t$(call ECHO_CMD, "CAT    ", ssfirm.bin, '
+    'cat tmp.bin font_cjk.bin >ssfirm.bin)\n'
+)
+_MAKEFILE_CAT_REPLACEMENT = (
+    '\t$(call ECHO_CMD, "CAT    ", ssfirm.bin, '
+    '$(PYTHON) srk_build_support.py concat ssfirm.bin tmp.bin font_cjk.bin)\n'
+)
+_MAKEFILE_RM_ANCHOR = (
+    '\t$(call ECHO_CMD, "RM     ", tmp.bin,  rm -f tmp.bin)\n'
+)
+_MAKEFILE_RM_REPLACEMENT = (
+    '\t$(call ECHO_CMD, "RM     ", tmp.bin,  '
+    '$(PYTHON) srk_build_support.py remove tmp.bin)\n'
+)
 _SHELL_INCLUDE_ANCHOR = '#include "smpc.h"\n'
 _SHELL_HELPER_INCLUDE = '#include "srk_capture_helper.h"\n'
 _SHELL_COMMAND_ANCHOR = "\t\tCMD(q) {\n"
@@ -85,6 +110,64 @@ def _write_text(path: Path, content: str) -> None:
         raise SarooFirmwareIntegrationError(f"cannot write {path}: {exc}") from exc
 
 
+def _portable_build_rewrite_required(makefile_text: str) -> bool:
+    upstream_markers = (
+        "touch version.c",
+        "cat tmp.bin font_cjk.bin >ssfirm.bin",
+        "rm -f tmp.bin",
+    )
+    return any(marker in makefile_text for marker in upstream_markers)
+
+
+def _validate_portable_build_anchors(makefile_text: str) -> None:
+    for anchor, label in (
+        (_MAKEFILE_TOUCH_ANCHOR, "Makefile touch recipe"),
+        (_MAKEFILE_CAT_ANCHOR, "Makefile concatenation recipe"),
+        (_MAKEFILE_RM_ANCHOR, "Makefile remove recipe"),
+    ):
+        if makefile_text.count(anchor) != 1:
+            raise SarooFirmwareIntegrationError(
+                f"expected exactly one {label} anchor; "
+                "the SAROO revision may not match this integration"
+            )
+    if _MAKEFILE_PYTHON_LINE not in makefile_text:
+        if makefile_text.count(_MAKEFILE_PYTHON_ANCHOR) != 1:
+            raise SarooFirmwareIntegrationError(
+                "expected exactly one Makefile OBJCOPY anchor; "
+                "the SAROO revision may not match this integration"
+            )
+
+
+def _apply_portable_build_rewrite(makefile_text: str) -> str:
+    patched = makefile_text
+    if _MAKEFILE_PYTHON_LINE not in patched:
+        patched = _replace_once(
+            patched,
+            _MAKEFILE_PYTHON_ANCHOR,
+            _MAKEFILE_PYTHON_ANCHOR + _MAKEFILE_PYTHON_LINE,
+            label="Makefile OBJCOPY",
+        )
+    patched = _replace_once(
+        patched,
+        _MAKEFILE_TOUCH_ANCHOR,
+        _MAKEFILE_TOUCH_REPLACEMENT,
+        label="Makefile touch recipe",
+    )
+    patched = _replace_once(
+        patched,
+        _MAKEFILE_CAT_ANCHOR,
+        _MAKEFILE_CAT_REPLACEMENT,
+        label="Makefile concatenation recipe",
+    )
+    patched = _replace_once(
+        patched,
+        _MAKEFILE_RM_ANCHOR,
+        _MAKEFILE_RM_REPLACEMENT,
+        label="Makefile remove recipe",
+    )
+    return patched
+
+
 def prepare_firm_saturn_tree(
     saroo_source_root: os.PathLike[str] | str,
     output_root: os.PathLike[str] | str,
@@ -119,9 +202,10 @@ def prepare_firm_saturn_tree(
     helpers = _canonical(helper_root) if helper_root is not None else default_helper_root()
     helper_source = helpers / "srk_capture_helper.c"
     helper_header = helpers / "srk_capture_helper.h"
-    if not helper_source.is_file() or not helper_header.is_file():
+    build_support = helpers / "srk_build_support.py"
+    if not helper_source.is_file() or not helper_header.is_file() or not build_support.is_file():
         raise SarooFirmwareIntegrationError(
-            f"SRK capture helper sources are unavailable beneath: {helpers}"
+            f"SRK integration helper sources are unavailable beneath: {helpers}"
         )
 
     source_makefile = source_firm / "Makefile"
@@ -136,6 +220,9 @@ def prepare_firm_saturn_tree(
             raise SarooFirmwareIntegrationError(
                 "SAROO Makefile does not contain the expected sci_shell object anchor"
             )
+    rewrite_portable_build = _portable_build_rewrite_required(makefile_text)
+    if rewrite_portable_build:
+        _validate_portable_build_anchors(makefile_text)
     if _SHELL_HELPER_INCLUDE not in shell_text:
         if shell_text.count(_SHELL_INCLUDE_ANCHOR) != 1:
             raise SarooFirmwareIntegrationError(
@@ -162,6 +249,8 @@ def prepare_firm_saturn_tree(
                 _MAKEFILE_OBJECT_ANCHOR + _MAKEFILE_HELPER_OBJECT,
                 label="Makefile object",
             )
+        if rewrite_portable_build:
+            patched_makefile = _apply_portable_build_rewrite(patched_makefile)
 
         patched_shell = shell_text
         if _SHELL_HELPER_INCLUDE not in patched_shell:
@@ -183,6 +272,7 @@ def prepare_firm_saturn_tree(
         _write_text(target_shell, patched_shell)
         shutil.copy2(helper_source, destination_firm / helper_source.name)
         shutil.copy2(helper_header, destination_firm / helper_header.name)
+        shutil.copy2(build_support, destination_firm / build_support.name)
 
         marker = destination / "SRK_INTEGRATION.txt"
         _write_text(
@@ -191,7 +281,8 @@ def prepare_firm_saturn_tree(
             f"Source: {source_root}\n"
             "The original source checkout was not modified.\n"
             "Capture shell commands: srkwl, srkwh\n"
-            "Generated files: /SAROO/SRK_WRAML.BIN, /SAROO/SRK_WRAMH.BIN\n",
+            "Generated files: /SAROO/SRK_WRAML.BIN, /SAROO/SRK_WRAMH.BIN\n"
+            "Portable build helper: Firm_Saturn/srk_build_support.py\n",
         )
     except Exception:
         shutil.rmtree(destination, ignore_errors=True)
@@ -205,4 +296,5 @@ def prepare_firm_saturn_tree(
         shell_path=destination_firm / "sci_shell.c",
         helper_source_path=destination_firm / helper_source.name,
         helper_header_path=destination_firm / helper_header.name,
+        build_support_path=destination_firm / build_support.name,
     )
