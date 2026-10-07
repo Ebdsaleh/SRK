@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from salix.engine.command_menu_hosts import DearPyGuiCommandMenuHost
 from salix.engine.component_renderers import DearPyGuiRenderer
 from salix.engine.layout_hosts import DearPyGuiLayoutHost
 from salix.engine.scene_hosts import DearPyGuiSceneHost
@@ -19,4 +20,5 @@ def create_dearpygui_backend(
         component_renderer=DearPyGuiRenderer(component_profile=component_profile),
         layout_host=DearPyGuiLayoutHost(),
         scene_host=DearPyGuiSceneHost(),
+        command_menu_host=DearPyGuiCommandMenuHost(),
     )
