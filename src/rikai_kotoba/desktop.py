@@ -9,7 +9,7 @@ from typing import Sequence
 from rikai_kotoba import __version__
 from rikai_kotoba.application.controller import DiscWorkspaceController
 from rikai_kotoba.application.disc_workspace import DiscWorkspaceService
-from rikai_kotoba.application.paths import state_directory
+from rikai_kotoba.application.paths import default_output_directory, state_directory
 from rikai_kotoba.application.workers import BackgroundWorkerService
 from salix.runtime.application import ApplicationSpec
 from salix.runtime.diagnostics import ExceptionReporter
@@ -30,7 +30,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "-o",
         "--output-dir",
         default=None,
-        help="Workspace root for generated artifacts; defaults to the current directory",
+        help="Workspace root for generated artifacts; defaults to ~/SRK-Workspace/Output",
     )
     parser.add_argument(
         "--version",
@@ -43,7 +43,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_argument_parser().parse_args(argv)
     source = os.path.abspath(args.source) if args.source else None
-    output_dir = os.path.abspath(args.output_dir or os.getcwd())
+    output_dir = (
+        os.path.abspath(args.output_dir)
+        if args.output_dir
+        else str(default_output_directory())
+    )
 
     reporter = ExceptionReporter(
         log_path=state_directory() / "ui_errors.log",
