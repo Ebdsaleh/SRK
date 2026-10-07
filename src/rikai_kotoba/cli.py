@@ -15,6 +15,7 @@ from rikai_kotoba.core.safe_extractor import ExtractionReport, ISOExtractor
 from rikai_kotoba.formats.saturn.ip_bin import parse_ip_bin
 from rikai_kotoba.hardware.saturn.saroo import (
     CaptureStore,
+    build_firm_saturn_tree,
     import_raw_sd_dump,
     prepare_firm_saturn_tree,
     verify_capture,
@@ -211,6 +212,47 @@ def _cmd_prepare_saroo_firmware(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_build_saroo_firmware(args: argparse.Namespace) -> int:
+    result = build_firm_saturn_tree(
+        args.generated_root,
+        args.toolchain_root,
+        log_path=args.log,
+    )
+
+    print("SRK controlled SAROO Firm_Saturn build")
+    print("-" * 44)
+    print(f"Generated root : {result.generated_root}")
+    print(f"Firm_Saturn    : {result.firm_saturn_directory}")
+    print(f"Toolchain root : {result.toolchain_root}")
+    print(f"Build log      : {result.log_path}")
+    print(f"Clean exit     : {result.clean_returncode}")
+    if result.build_returncode is None:
+        print("Build exit     : [not run; clean failed]")
+    else:
+        print(f"Build exit     : {result.build_returncode}")
+    print()
+
+    if result.artifacts:
+        print("Artifacts:")
+        for artifact in result.artifacts:
+            print(
+                f"  {artifact.path.name:<12} {artifact.size:>10} bytes  "
+                f"SHA-256 {artifact.sha256}"
+            )
+    else:
+        print("Artifacts: [none of the expected outputs were produced]")
+
+    print()
+    if result.successful:
+        print("Build result: SUCCESS")
+        print("No firmware was copied to SD or flashed.")
+        return 0
+
+    print("Build result: FAILED")
+    print("Review the captured build log above; no firmware was deployed or flashed.")
+    return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="srk",
@@ -352,6 +394,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="New output directory; must not already exist or be inside the source checkout",
     )
     prepare_parser.set_defaults(handler=_cmd_prepare_saroo_firmware)
+
+    build_saroo_parser = subparsers.add_parser(
+        "build-saroo-firmware",
+        help="Clean and build an SRK-generated SAROO Firm_Saturn tree",
+    )
+    build_saroo_parser.add_argument(
+        "generated_root",
+        help="SRK-generated SAROO-SRK root containing SRK_INTEGRATION.txt",
+    )
+    build_saroo_parser.add_argument(
+        "--toolchain-root",
+        required=True,
+        help="Verified SaturnOrbit/SH-ELF root used for the controlled build",
+    )
+    build_saroo_parser.add_argument(
+        "--log",
+        default=None,
+        help=(
+            "Optional new build-log path. If omitted, SRK allocates a unique "
+            "SRK_BUILD_LOG*.txt beneath the generated tree."
+        ),
+    )
+    build_saroo_parser.set_defaults(handler=_cmd_build_saroo_firmware)
 
     return parser
 
