@@ -164,6 +164,7 @@ def _search_explicit_root(
         root / "tools" / "bin",
         root / "SH_ELF" / "sh-elf" / "bin",
         root / "SH_ELF" / "Other Utilities",
+        root / "MinGW" / "bin",
     )
     checked: set[Path] = set()
     for directory in preferred:
