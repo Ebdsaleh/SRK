@@ -1,13 +1,14 @@
-"""Preserve-first planning, apply, and restore for SAROO Saturn firmware.
+"""Preserve-first planning, backup, apply, and restore for SAROO Saturn firmware.
 
 The user's existing SAROO SD card is treated as independent known-good evidence.
 SRK never assumes that its current firmware came from the same upstream source
 revision used for an SRK research build.
 
-Planning is read-only.  Apply and restore are explicit write-capable operations
-that are gated by caller-supplied SHA-256 expectations, verified off-card
-backups, same-directory staging, and post-write verification.  Only the modern
-``SAROO/ssfirm.bin`` layout is eligible; MCU/FPGA firmware is out of scope.
+Planning is read-only. Backup writes only to an explicitly off-card location.
+Apply and restore are explicit card-write operations gated by caller-supplied
+SHA-256 expectations, verified off-card preservation, same-directory staging,
+and post-write verification. Only modern ``SAROO/ssfirm.bin`` is eligible;
+MCU/FPGA firmware is out of scope.
 """
 
 from __future__ import annotations
@@ -27,6 +28,10 @@ from .sd_layout import (
 
 class SarooDeploymentPlanError(RuntimeError):
     """Raised when a safe read-only deployment plan cannot be produced."""
+
+
+class SarooDeploymentBackupError(RuntimeError):
+    """Raised when a verified off-card baseline backup cannot be produced."""
 
 
 class SarooDeploymentApplyError(RuntimeError):
@@ -56,6 +61,15 @@ class SarooDeploymentPlan:
     replacement_needed: bool
     ready_for_future_apply: bool
     warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SarooDeploymentBackupResult:
+    card_root: Path
+    source_path: Path
+    backup_path: Path
+    firmware_sha256: str
+    backup_reused: bool
 
 
 @dataclass(frozen=True)
@@ -112,11 +126,16 @@ def _validated_sha256(value: str, *, label: str, error_type: type[RuntimeError])
     return text
 
 
-def _firmware_destination(card: Path, relative_path: str) -> Path:
+def _firmware_destination(
+    card: Path,
+    relative_path: str,
+    *,
+    error_type: type[RuntimeError],
+) -> Path:
     parts = [part for part in relative_path.replace("\\", "/").split("/") if part]
     destination = card.joinpath(*parts)
     if not _inside(destination.resolve(strict=False), card):
-        raise SarooDeploymentApplyError("resolved firmware destination escaped the card root")
+        raise error_type("resolved firmware destination escaped the card root")
     return destination
 
 
@@ -376,6 +395,67 @@ def plan_saroo_firmware_deployment(
     )
 
 
+def backup_saroo_firmware(
+    card_root: os.PathLike[str] | str,
+    backup_root: os.PathLike[str] | str,
+    *,
+    expected_existing_sha256: str,
+) -> SarooDeploymentBackupResult:
+    """Create or reuse a verified off-card backup without modifying the SD card."""
+
+    expected_existing = _validated_sha256(
+        expected_existing_sha256,
+        label="expected existing firmware hash",
+        error_type=SarooDeploymentBackupError,
+    )
+    card = _canonical(card_root)
+    backups = _canonical(backup_root)
+    if _inside(backups, card):
+        raise SarooDeploymentBackupError(
+            "backup root must be outside the mounted SAROO SD card"
+        )
+
+    report = inspect_saroo_sd_layout(card)
+    if report.layout != SAROO_SD_LAYOUT_MODERN or len(report.firmware_files) != 1:
+        raise SarooDeploymentBackupError(
+            "backup is gated to exactly one modern SAROO/ssfirm.bin firmware file"
+        )
+
+    existing = report.firmware_files[0]
+    if existing.sha256 != expected_existing:
+        raise SarooDeploymentBackupError(
+            "existing card firmware hash does not match the reviewed value"
+        )
+
+    source = _firmware_destination(
+        card,
+        existing.relative_path,
+        error_type=SarooDeploymentBackupError,
+    )
+    backup_path = backups / f"ssfirm_{existing.sha256[:16]}.bin"
+    reused = _copy_new_verified(
+        source,
+        backup_path,
+        expected_existing,
+        error_type=SarooDeploymentBackupError,
+    )
+
+    if _hash_file(source, error_type=SarooDeploymentBackupError) != expected_existing:
+        raise SarooDeploymentBackupError(
+            "card firmware changed while backup was being created; review card state before applying"
+        )
+    if _hash_file(backup_path, error_type=SarooDeploymentBackupError) != expected_existing:
+        raise SarooDeploymentBackupError("off-card backup failed final SHA-256 verification")
+
+    return SarooDeploymentBackupResult(
+        card_root=card,
+        source_path=source,
+        backup_path=backup_path,
+        firmware_sha256=expected_existing,
+        backup_reused=reused,
+    )
+
+
 def apply_saroo_firmware(
     card_root: os.PathLike[str] | str,
     candidate_firmware: os.PathLike[str] | str,
@@ -421,33 +501,36 @@ def apply_saroo_firmware(
             "candidate firmware hash no longer matches the reviewed plan"
         )
 
-    destination = _firmware_destination(plan.card_root, plan.destination_relative_path)
-    backup_reused = _copy_new_verified(
-        destination,
-        plan.backup_path,
-        expected_existing,
+    try:
+        backup_result = backup_saroo_firmware(
+            plan.card_root,
+            backup_root,
+            expected_existing_sha256=expected_existing,
+        )
+    except Exception as exc:
+        raise SarooDeploymentApplyError(str(exc)) from exc
+
+    destination = _firmware_destination(
+        plan.card_root,
+        plan.destination_relative_path,
         error_type=SarooDeploymentApplyError,
     )
-
-    if _hash_file(plan.backup_path, error_type=SarooDeploymentApplyError) != expected_existing:
-        raise SarooDeploymentApplyError("off-card backup verification failed; card was not modified")
-
     _replace_verified(
         plan.candidate.path,
         destination,
         expected_current_sha256=expected_existing,
         expected_new_sha256=expected_candidate,
-        rollback_source=plan.backup_path,
+        rollback_source=backup_result.backup_path,
         error_type=SarooDeploymentApplyError,
     )
 
     return SarooDeploymentApplyResult(
         card_root=plan.card_root,
         destination_path=destination,
-        backup_path=plan.backup_path,
+        backup_path=backup_result.backup_path,
         previous_sha256=expected_existing,
         candidate_sha256=expected_candidate,
-        backup_reused=backup_reused,
+        backup_reused=backup_result.backup_reused,
     )
 
 
@@ -499,7 +582,11 @@ def restore_saroo_firmware(
     if current.sha256 == backup_expected:
         raise SarooDeploymentRestoreError("card already contains the requested backup firmware")
 
-    destination = _firmware_destination(card, current.relative_path)
+    destination = _firmware_destination(
+        card,
+        current.relative_path,
+        error_type=SarooDeploymentRestoreError,
+    )
     archives = _canonical(archive_root) if archive_root is not None else backup.parent
     if _inside(archives, card):
         raise SarooDeploymentRestoreError("pre-restore archive root must be outside the card")
