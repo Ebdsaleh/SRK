@@ -9,8 +9,18 @@ from typing import Sequence
 from rikai_kotoba import __version__
 from rikai_kotoba.application.controller import DiscWorkspaceController
 from rikai_kotoba.application.disc_workspace import DiscWorkspaceService
-from rikai_kotoba.application.paths import default_output_directory, state_directory
+from rikai_kotoba.application.paths import (
+    default_output_directory,
+    default_saroo_dump_directory,
+    state_directory,
+)
+from rikai_kotoba.application.saroo_capture import SarooCaptureController
 from rikai_kotoba.application.workers import BackgroundWorkerService
+from rikai_kotoba.hardware.saturn.saroo import (
+    CaptureStore,
+    SarooCaptureCoordinator,
+    UnconfiguredSarooTransport,
+)
 from salix.runtime.application import ApplicationSpec
 from salix.runtime.diagnostics import ExceptionReporter
 from salix.runtime.lifecycle import ApplicationRuntime, CallbackService
@@ -63,6 +73,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     disc_service = DiscWorkspaceService()
     disc_controller = DiscWorkspaceController(disc_service, workers)
 
+    saroo_coordinator = SarooCaptureCoordinator(
+        UnconfiguredSarooTransport(),
+        CaptureStore(default_saroo_dump_directory()),
+    )
+    saroo_controller = SarooCaptureController(saroo_coordinator, workers)
+    runtime.services.register(
+        "SRK SAROO capture",
+        CallbackService(on_stop=saroo_controller.close),
+    )
+
     try:
         from salix.engine.application_hosts import DearPyGuiApplicationHost
         from rikai_kotoba.views.main_viewport import MainViewport
@@ -88,6 +108,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     viewport = MainViewport(
         host,
         disc_controller,
+        saroo_controller,
         workers,
         reporter,
         initial_source=source,
