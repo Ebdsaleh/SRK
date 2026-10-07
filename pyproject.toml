@@ -43,4 +43,4 @@ version = { attr = "rikai_kotoba.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["rikai_kotoba*"]
+include = ["rikai_kotoba*", "salix*"]
