@@ -59,32 +59,82 @@ User physically confirmed:
 - the existing game library remained intact;
 - games remained functional.
 
-This establishes the installed SRK candidate as the first physically accepted
-Saturn-side research firmware checkpoint. It does **not** yet validate the SRK
-memory-capture commands themselves.
+This established the first physically accepted Saturn-side SRK firmware
+checkpoint.
 
-## Next capture-access checkpoint
+## 2026-10-07 — controller capture firmware
 
-The initial SRK integration exposes `srkwl` and `srkwh` through SAROO's serial
-debug shell. Upstream SAROO also exposes the serial debug tool from its normal
-boot menu, but SRK should not require extra serial hardware merely to validate
-the capture helper.
-
-SRK therefore provides a second-stage generator that starts from the already
-validated `SAROO-SRK` generated tree and creates a new tree, leaving both the
-upstream source and hardware-validated generated tree unchanged.
-
-The second tree adds two explicit boot-menu actions:
+A second generated tree was prepared outside the accepted source tree and built
+with the existing SRK capture helper plus two controller-accessible menu actions:
 
 ```text
-SRK Capture WRAM-L -> /SAROO/SRK_WRAML.BIN
-SRK Capture WRAM-H -> /SAROO/SRK_WRAMH.BIN
+SRK Capture WRAM-L
+SRK Capture WRAM-H
 ```
 
-Both use the same existing title-neutral 64 KiB chunked helper and each produces
-a 1 MiB raw Work RAM capture.
+Candidate `ssfirm.bin`:
 
-The first controller-accessible capture test should be performed from the SAROO
-menu before attempting in-game capture policy. A menu capture validates the
-helper, file-write path, and resulting artifact without yet claiming that a game
-runtime checkpoint can be captured.
+```text
+size:    484246 bytes
+SHA-256: 28c154b415b570d1d3075fbe5fa5cd1bb51ab5ef511fe9a0318f43c97c783d95
+```
+
+Before transition, the first accepted SRK firmware was independently backed up
+and verified off-card. The guarded firmware-to-firmware transition then reported
+matching pre- and post-transition card guards, and an independent inspection
+confirmed the new candidate hash.
+
+The card was booted on the real Saturn. Both new SRK capture menu entries were
+visibly present alongside the normal SAROO menu.
+
+## 2026-10-07 — first physical Work RAM captures
+
+The user physically invoked both controller-accessible capture actions on the
+real Saturn.
+
+### WRAM-L
+
+```text
+/SAROO/SRK_WRAML.BIN
+size:    1048576 bytes
+SHA-256: 30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58
+range:   0x00200000-0x002FFFFF
+```
+
+The captured payload was entirely zero-filled at the SAROO boot-menu checkpoint.
+The exact 1 MiB output proves the low-memory capture action and chunked SD write
+completed; the zero content is a property of that checkpoint, not evidence of a
+short file.
+
+### WRAM-H
+
+```text
+/SAROO/SRK_WRAMH.BIN
+size:    1048576 bytes
+SHA-256: a546912eb7eb1b16f4ea45e3074f795c3be6085af1a9ac095164ce4dc900f04c
+range:   0x06000000-0x060FFFFF
+```
+
+The WRAM-H dump contained 17,475 non-zero bytes. The last non-zero byte occurred
+at offset `0x5FFF` (`0x06005FFF`). Recognizable Saturn/SAROO boot structures were
+present in the payload, including `SEGA SEGASATURN` identification data and
+`SAROO firm` text.
+
+This is the first physical proof that SRK can capture live Sega Saturn memory on
+original hardware and return it as a host-readable artifact through SAROO.
+
+The proven path is:
+
+```text
+real Sega Saturn Work RAM
+  -> SRK capture helper
+  -> SAROO file-write path
+  -> SD card
+  -> host-readable 1 MiB dump
+```
+
+These captures were taken from the SAROO boot menu. In-game capture remains a
+separate future checkpoint and must not be inferred from this validation.
+
+See `SAROO-HARDWARE-CAPTURE.md` for the host-side ingestion and research-output
+guard policy built on top of this physical checkpoint.
