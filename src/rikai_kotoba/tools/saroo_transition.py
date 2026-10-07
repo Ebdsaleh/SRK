@@ -21,7 +21,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Replace an already accepted SRK SAROO ssfirm.bin with a new research "
             "build while preserving the current firmware and requiring the reviewed "
-            "whole-card inventory to match everywhere else."
+            "whole-card inventory to match everywhere except the firmware and SRK's "
+            "two exact validated Work RAM output paths."
         ),
     )
     parser.add_argument("card_root", help="Root directory of the mounted SAROO SD card")
@@ -91,8 +92,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"Card root          : {result.card_root}")
     print(f"Guard manifest     : {guarded.guard_manifest_path}")
     print(f"Guard SHA-256      : {guarded.guard_manifest_sha256}")
-    print("Pre-transition guard : MATCH (only SAROO/ssfirm.bin may differ from baseline)")
-    print("Post-transition guard: MATCH (only SAROO/ssfirm.bin differs from baseline)")
+    print("Pre-transition guard : MATCH (firmware / validated SRK capture outputs may differ)")
+    print("Post-transition guard: MATCH (same narrow research-output allowance)")
     print(f"Destination        : {result.destination_path}")
     print(f"Preserved previous : {result.backup_path}")
     print(
@@ -102,9 +103,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"Previous SHA-256   : {result.previous_sha256}")
     print(f"Installed SHA-256  : {result.candidate_sha256}")
     print()
-    print("Only SAROO/ssfirm.bin was authorised to change.")
+    print("Only SAROO/ssfirm.bin was replaced by this transition.")
+    print("Any present SRK_WRAML.BIN / SRK_WRAMH.BIN remained exact 1 MiB research outputs.")
     print("Games, configuration, MCU/FPGA firmware, and unrelated card paths matched.")
-    print("Keep both accepted firmware backups and the original guard manifest.")
+    print("Keep accepted firmware backups and the original guard manifest.")
     return 0
 
 
