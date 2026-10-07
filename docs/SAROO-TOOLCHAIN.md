@@ -2,15 +2,15 @@
 
 SRK prepares and researches a title-neutral Saturn-side memory-capture helper for
 upstream SAROO. Before attempting a firmware build, SRK can perform a **read-only
-preflight** for the build programs invoked by upstream SAROO's `Firm_Saturn`
-Makefile.
+preflight** for the external build programs still required by the separate
+SRK-generated `Firm_Saturn` tree.
 
 This document describes discovery only. Nothing here flashes SAROO hardware or
 modifies a known-good SAROO checkout.
 
-## Upstream build contract
+## Upstream and generated build contracts
 
-The upstream `Firm_Saturn/Makefile` uses these SH-ELF programs:
+The pinned upstream `Firm_Saturn/Makefile` uses these SH-ELF programs:
 
 ```text
 sh-elf-gcc
@@ -19,14 +19,24 @@ sh-elf-objdump
 sh-elf-objcopy
 ```
 
-It also invokes a Make-compatible build driver plus the Unix-style support
-utilities used directly by the Makefile:
+It also invokes a Make-compatible build driver and historically uses the
+Unix-style file commands `touch`, `cat`, and `rm`.
+
+Physical inspection of SaturnOrbit R1 showed that its SH-ELF payload provides
+all four SH-ELF programs and `make.exe`, but does **not** provide `touch.exe` or
+`cat.exe`. Rather than add unrelated utility packages, SRK rewrites those three
+small file-operation recipes only in the **separate generated build tree** and
+supplies `srk_build_support.py`, which implements the equivalent operations with
+Python's standard library.
+
+Therefore the external programs required by an SRK-generated build are:
 
 ```text
+sh-elf-gcc
+sh-elf-as
+sh-elf-objdump
+sh-elf-objcopy
 make
-touch
-cat
-rm
 ```
 
 SRK recognizes `make`, `gmake`, or `mingw32-make` as possible Make-compatible
@@ -41,29 +51,32 @@ The SRK integration was researched against upstream SAROO commit:
 c31bf6192eff59533d7268dfdf6c791f11a1f7c9
 ```
 
-## Historical SaturnOrbit layout
+## Verified SaturnOrbit R1 layout
 
-Older SaturnOrbit distributions commonly place the required programs beneath
-separate directories. SRK's explicit-root search understands layouts including:
+The user's SaturnOrbit R1 package was inspected without executing its legacy
+installer. The extracted payload contained:
 
 ```text
 SaturnOrbit\
-├── SH_ELF\
-│   ├── sh-elf\bin\
-│   │   ├── sh-elf-gcc.exe
-│   │   ├── sh-elf-as.exe
-│   │   ├── sh-elf-objdump.exe
-│   │   └── sh-elf-objcopy.exe
-│   └── Other Utilities\
-│       ├── touch.exe
-│       ├── cat.exe
-│       └── rm.exe
-└── MinGW\bin\
-    └── make.exe
+└── SH_ELF\
+    ├── sh-elf\bin\
+    │   ├── sh-elf-gcc.exe
+    │   ├── sh-elf-as.exe
+    │   ├── sh-elf-objdump.exe
+    │   └── sh-elf-objcopy.exe
+    └── Other Utilities\
+        ├── make.exe
+        └── rm.exe
 ```
 
-The exact installed package may differ, so preflight reports the actual path used
-for each executable rather than assuming a fixed installation directory.
+The inspected R1 payload did not contain `touch.exe`, `cat.exe`, or
+`mingw32-make.exe`. SRK does not require those missing executables for its
+generated build because the generated Makefile uses the bundled Python helper
+for `touch`, concatenation, and removal.
+
+The explicit-root search still understands several common nested toolchain
+layouts and performs a bounded recursive search, so another compatible SH-ELF
+distribution does not need to reproduce this exact directory tree.
 
 ## Do not use upstream `MAKE_ELF.bat` as the SRK build entry point
 
@@ -79,10 +92,11 @@ separate generated Firm_Saturn tree
 +
 explicit process-local toolchain environment
 +
-upstream Makefile
+generated portable Makefile recipes
 ```
 
-This keeps the user's global `PATH` and known-good upstream checkout untouched.
+The known-good upstream checkout, the user's global `PATH`, and the extracted
+SaturnOrbit source package remain untouched by source preparation.
 
 ## Run the preflight
 
@@ -102,8 +116,8 @@ srk-saroo-toolchain --toolchain-root "C:\path\to\SaturnOrbit"
 ```
 
 The explicit root is searched first. SRK understands common nested `bin`,
-`sh-elf/bin`, `toolchain/bin`, historical SaturnOrbit directories, and performs a
-bounded recursive search beneath the directory.
+`sh-elf/bin`, `toolchain/bin`, and historical SaturnOrbit directories, then
+performs a bounded recursive search beneath the directory.
 
 Example successful report:
 
@@ -118,16 +132,14 @@ PATH policy   : read-only fallback; PATH is not modified
 [OK]      sh-elf-objdump   C:\SaturnOrbit\...\sh-elf-objdump.exe (toolchain-root)
 [OK]      sh-elf-objcopy   C:\SaturnOrbit\...\sh-elf-objcopy.exe (toolchain-root)
 [OK]      make             C:\SaturnOrbit\...\make.exe (toolchain-root)
-[OK]      touch            C:\SaturnOrbit\...\touch.exe (toolchain-root)
-[OK]      cat              C:\SaturnOrbit\...\cat.exe (toolchain-root)
-[OK]      rm               C:\SaturnOrbit\...\rm.exe (toolchain-root)
 
 Discovery result: READY - every required executable was resolved.
 ```
 
 ## What `READY` means
 
-`READY` means only that every required executable could be resolved.
+`READY` means only that every external executable required by the generated
+build could be resolved.
 
 It does **not** yet prove that:
 
