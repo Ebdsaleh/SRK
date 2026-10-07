@@ -6,7 +6,7 @@ import unittest
 
 from rikai_kotoba.application.controller import DiscWorkspaceController
 from rikai_kotoba.application.disc_workspace import DiscWorkspaceSnapshot
-from rikai_kotoba.runtime.workers import BackgroundWorkerService
+from rikai_kotoba.application.workers import BackgroundWorkerService
 
 
 class _FakeDiscService:
