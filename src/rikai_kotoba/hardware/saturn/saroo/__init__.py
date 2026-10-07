@@ -56,6 +56,13 @@ from .firmware_integration import (
     default_helper_root,
     prepare_firm_saturn_tree,
 )
+from .guarded_deployment import (
+    SarooGuardedApplyResult,
+    SarooGuardedDeploymentError,
+    SarooGuardedRestoreResult,
+    apply_saroo_firmware_guarded,
+    restore_saroo_firmware_guarded,
+)
 from .sd_exchange import (
     SAROO_SD_WRITE_CHUNK_SIZE,
     SarooSdWriteChunk,
@@ -128,6 +135,9 @@ __all__ = [
     "SarooDeploymentRestoreResult",
     "SarooFirmwareIntegrationError",
     "SarooFirmwareIntegrationResult",
+    "SarooGuardedApplyResult",
+    "SarooGuardedDeploymentError",
+    "SarooGuardedRestoreResult",
     "SarooSdFileInfo",
     "SarooSdLayoutError",
     "SarooSdLayoutReport",
@@ -142,6 +152,7 @@ __all__ = [
     "SarooTransportUnavailableError",
     "UnconfiguredSarooTransport",
     "apply_saroo_firmware",
+    "apply_saroo_firmware_guarded",
     "backup_saroo_firmware",
     "build_firm_saturn_tree",
     "create_saroo_card_inventory",
@@ -154,6 +165,7 @@ __all__ = [
     "plan_sd_write_chunks",
     "prepare_firm_saturn_tree",
     "restore_saroo_firmware",
+    "restore_saroo_firmware_guarded",
     "total_planned_bytes",
     "verify_capture",
     "verify_saroo_card_inventory",
