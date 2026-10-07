@@ -133,7 +133,7 @@ PAGES: dict[str, DocPage] = {
                         language="bat",
                     ),
                     DocParagraph(
-                        "The preflight is read-only. A supplied toolchain root is searched first, then the existing process PATH is checked as a fallback. SRK does not edit the global PATH. A READY discovery result means every required executable was found; only an actual Firm_Saturn build proves that the installation works correctly."
+                        "The preflight is read-only. A supplied toolchain root is searched first, then the existing process PATH is checked as a fallback. PATH is not modified by SRK. A READY discovery result means every required executable was found; only an actual Firm_Saturn build proves that the installation works correctly."
                     ),
                     DocCallout(
                         title="No firmware deployment occurs here",
