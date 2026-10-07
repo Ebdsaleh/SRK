@@ -89,7 +89,13 @@ class SarooBuildTests(unittest.TestCase):
 
             clean_call = run_make.call_args_list[0]
             child_path = clean_call.kwargs["env"]["PATH"]
-            self.assertIn(str(tool_bin), child_path)
+            child_entries = [Path(value) for value in child_path.split(os.pathsep) if value]
+            self.assertTrue(
+                any(
+                    entry.exists() and os.path.samefile(tool_bin, entry)
+                    for entry in child_entries
+                )
+            )
             self.assertTrue(clean_call.args[0][0].endswith("make.exe"))
             self.assertEqual(clean_call.args[0][-1], "clean")
 
