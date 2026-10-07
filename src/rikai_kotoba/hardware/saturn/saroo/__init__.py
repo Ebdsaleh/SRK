@@ -25,10 +25,16 @@ from .capture import (
     verify_capture,
 )
 from .deployment import (
+    SarooDeploymentApplyError,
+    SarooDeploymentApplyResult,
     SarooDeploymentCandidate,
     SarooDeploymentPlan,
     SarooDeploymentPlanError,
+    SarooDeploymentRestoreError,
+    SarooDeploymentRestoreResult,
+    apply_saroo_firmware,
     plan_saroo_firmware_deployment,
+    restore_saroo_firmware,
 )
 from .firmware_integration import (
     SarooFirmwareIntegrationError,
@@ -90,9 +96,13 @@ __all__ = [
     "SarooBuildError",
     "SarooBuildResult",
     "SarooCaptureCoordinator",
+    "SarooDeploymentApplyError",
+    "SarooDeploymentApplyResult",
     "SarooDeploymentCandidate",
     "SarooDeploymentPlan",
     "SarooDeploymentPlanError",
+    "SarooDeploymentRestoreError",
+    "SarooDeploymentRestoreResult",
     "SarooFirmwareIntegrationError",
     "SarooFirmwareIntegrationResult",
     "SarooSdFileInfo",
@@ -108,6 +118,7 @@ __all__ = [
     "SarooTransportStatus",
     "SarooTransportUnavailableError",
     "UnconfiguredSarooTransport",
+    "apply_saroo_firmware",
     "build_firm_saturn_tree",
     "default_helper_root",
     "import_raw_sd_dump",
@@ -117,6 +128,7 @@ __all__ = [
     "plan_saroo_firmware_deployment",
     "plan_sd_write_chunks",
     "prepare_firm_saturn_tree",
+    "restore_saroo_firmware",
     "total_planned_bytes",
     "verify_capture",
 ]
