@@ -42,6 +42,7 @@ srk-saroo-build = "rikai_kotoba.tools.saroo_build:main"
 srk-saroo-deployment = "rikai_kotoba.tools.saroo_deployment:main"
 srk-saroo-apply = "rikai_kotoba.tools.saroo_apply:main"
 srk-saroo-restore = "rikai_kotoba.tools.saroo_restore:main"
+srk-saroo-card-guard = "rikai_kotoba.tools.saroo_card_guard:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "rikai_kotoba.__version__" }
