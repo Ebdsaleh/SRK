@@ -3,17 +3,19 @@
 SRK treats the first successful whole-card-guarded SAROO deployment differently
 from later research-firmware revisions.
 
-The original whole-card manifest remains the authority for every card path other
-than:
+The original whole-card manifest remains the authority for every unrelated card
+path. Later research sessions may legitimately differ at these exact SRK paths:
 
 ```text
 SAROO/ssfirm.bin
+SAROO/SRK_WRAML.BIN
+SAROO/SRK_WRAMH.BIN
 ```
 
-Once the first accepted SRK firmware is installed, that one file is expected to
-differ from the original card baseline.  Later transitions therefore permit
-that single pre-existing difference while requiring the exact currently
-accepted firmware SHA-256 as an additional gate.
+`SAROO/ssfirm.bin` must always match the exact reviewed currently accepted
+firmware SHA-256 before a transition. If either Work RAM capture file exists, it
+must be an ordinary file of exactly 1 MiB before SRK exempts that path from the
+original baseline comparison.
 
 ## Physically accepted starting firmware
 
@@ -33,7 +35,9 @@ size:    484246 bytes
 SHA-256: 7f30e1a58ff1a26cd70af1d36a85129fad132016b2b7c47626e3c2fb04a90686
 ```
 
-## Next controller-capture candidate
+This accepted build was preserved off-card before the next research transition.
+
+## Controller-capture firmware
 
 The separate generated tree:
 
@@ -41,44 +45,29 @@ The separate generated tree:
 C:\Users\Developer.ERIDU\Saturn-Dev\SAROO-SRK-CAPTURE
 ```
 
-was physically prepared and built on ERIDU without modifying the accepted
-`SAROO-SRK` generated tree.
+was prepared and built on ERIDU without modifying the accepted `SAROO-SRK`
+generated tree.
 
-Validation before build:
-
-```text
-237 unittest tests passed
-237 pytest tests passed
-23 pytest subtests passed
-```
-
-Build result:
+Build artifact:
 
 ```text
-17 Firm_Saturn objects compiled
-clean exit: 0
-build exit: 0
-result: SUCCESS
-```
-
-Artifacts:
-
-```text
-ssfirm.elf
-  90224 bytes
-  SHA-256 965ed602fa1fd59485302f74b9e9a4b81b963b97f53ee1e0ad7a28ab0c46515b
-
 ssfirm.bin
   484246 bytes
   SHA-256 28c154b415b570d1d3075fbe5fa5cd1bb51ab5ef511fe9a0318f43c97c783d95
-
-dump.txt
-  843717 bytes
-  SHA-256 0febbfdd9b1d5a65288e8558182d2cc8699140b11e7c13ba9c9bd5102150796c
 ```
 
-The candidate adds controller-accessible boot-menu actions for Work RAM capture.
-It has not yet been physically installed or capture-tested.
+The guarded accepted-firmware transition from `7f30e1a5...` to `28c154b4...`
+completed with both pre- and post-transition guards matching. The new firmware
+then booted on the real Sega Saturn and exposed:
+
+```text
+SRK Capture WRAM-L
+SRK Capture WRAM-H
+```
+
+Both menu actions were physically exercised successfully and produced exact
+1 MiB SD-card files. See `SAROO-HARDWARE-CAPTURE.md` for the recorded hashes and
+content observations.
 
 ## Transition safety contract
 
@@ -91,20 +80,33 @@ It has not yet been physically installed or capture-tested.
 5. a backup root outside the card;
 6. every unrelated card path to match the original baseline.
 
+Before and after a transition, SRK may exempt only:
+
+```text
+SAROO/ssfirm.bin
+SAROO/SRK_WRAML.BIN
+SAROO/SRK_WRAMH.BIN
+```
+
+The capture-output exemptions are conditional: any present WRAM file must still
+be exactly 1 MiB. A missing capture file is acceptable because captures are
+session artifacts rather than required firmware components.
+
 The transition then:
 
-1. verifies the card against the original manifest while allowing only
-   `SAROO/ssfirm.bin` to differ;
-2. verifies that the live `ssfirm.bin` hash exactly matches the accepted current
+1. validates any present SRK Work RAM output files;
+2. verifies the card against the original manifest with only the reviewed SRK
+   research paths exempted;
+3. verifies that the live `ssfirm.bin` hash exactly matches the accepted current
    firmware hash;
-3. creates or reuses a content-addressed verified off-card backup of the current
+4. creates or reuses a content-addressed verified off-card backup of the current
    firmware;
-4. stages and verifies the candidate beside the live destination;
-5. re-checks the live current firmware immediately before replacement;
-6. replaces only `SAROO/ssfirm.bin`;
-7. verifies the installed candidate SHA-256;
-8. verifies the whole card again while permitting only `SAROO/ssfirm.bin` to
-   differ from the original baseline.
+5. stages and verifies the candidate beside the live destination;
+6. re-checks the live current firmware immediately before replacement;
+7. replaces only `SAROO/ssfirm.bin`;
+8. verifies the installed candidate SHA-256;
+9. validates the SRK capture outputs again;
+10. verifies every unrelated card path against the original baseline again.
 
 If post-transition verification fails, SRK attempts to restore the just-preserved
 accepted firmware and verifies both its hash and the guarded card state.
@@ -127,18 +129,19 @@ python -m rikai_kotoba.tools.saroo_transition ^
 
 Do not use the first-deployment `srk-saroo-apply` command for later accepted
 research-firmware revisions. The transition command exists specifically because
-the original whole-card manifest is no longer an exact byte-for-byte firmware
-baseline after the first accepted deployment.
+the card now contains reviewed research-state differences from the original
+baseline.
 
-## Capture files are separate mutations
+## Capture files remain separate research evidence
 
-The controller capture actions create:
+Allowing the two exact Work RAM filenames through a later firmware-transition
+guard does not make them firmware. They remain runtime evidence produced by
+explicit capture actions.
 
-```text
-/SAROO/SRK_WRAML.BIN
-/SAROO/SRK_WRAMH.BIN
+Host-side ingestion should copy them into SRK's immutable off-card CaptureStore:
+
+```bat
+python -m rikai_kotoba.tools.saroo_capture_import D:\
 ```
 
-Those files are **not** authorised by the firmware-transition guard. This is
-intentional. Firmware revision and runtime capture are separate mutation scopes
-and should be validated separately.
+The mounted card remains read-only during ingestion.
