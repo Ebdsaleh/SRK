@@ -3,6 +3,12 @@
 #include "srk_runtime_video_state.h"
 
 
+#define SRK_RUNTIME_VIDEO_COLOR_TARGETS 0x007fu
+#define SRK_RUNTIME_VIDEO_CANARY_RED     0x0060u
+#define SRK_RUNTIME_VIDEO_CANARY_GREEN   0x0000u
+#define SRK_RUNTIME_VIDEO_CANARY_BLUE    0x0000u
+
+
 void srk_runtime_video_state_reset(SRK_RUNTIME_VIDEO_STATE *state)
 {
     if(!state)
@@ -25,11 +31,6 @@ int srk_runtime_video_state_capture(SRK_RUNTIME_VIDEO_STATE *state)
     if(!state)
         return 0;
 
-    /*
-     * Read-only snapshot.  Do not write VDP2 state in this tranche.  The
-     * captured registers are exactly the color-offset resources reserved for
-     * the later visible-canary experiment.
-     */
     state->clofen = CLOFEN;
     state->clofsl = CLOFSL;
     state->coar = COAR;
@@ -39,6 +40,48 @@ int srk_runtime_video_state_capture(SRK_RUNTIME_VIDEO_STATE *state)
     state->cobg = COBG;
     state->cobb = COBB;
     state->valid = 1;
+
+    return 1;
+}
+
+
+int srk_runtime_video_state_restore(const SRK_RUNTIME_VIDEO_STATE *state)
+{
+    if(!state || !state->valid)
+        return 0;
+
+    /* Restore value registers before their enable/select controls. */
+    COAR = state->coar;
+    COAG = state->coag;
+    COAB = state->coab;
+    COBR = state->cobr;
+    COBG = state->cobg;
+    COBB = state->cobb;
+    CLOFSL = state->clofsl;
+    CLOFEN = state->clofen;
+
+    return 1;
+}
+
+
+int srk_runtime_video_canary_apply(const SRK_RUNTIME_VIDEO_STATE *state)
+{
+    if(!state || !state->valid)
+        return 0;
+
+    /*
+     * The Saturn color-offset enable/select registers expose seven targets.
+     * Enable all seven, but preserve the title's A/B selection.  Program both
+     * offset banks identically so no CLOFSL write is needed for the canary.
+     * The exact pre-canary values are restored by srk_runtime_video_state_restore.
+     */
+    COAR = SRK_RUNTIME_VIDEO_CANARY_RED;
+    COAG = SRK_RUNTIME_VIDEO_CANARY_GREEN;
+    COAB = SRK_RUNTIME_VIDEO_CANARY_BLUE;
+    COBR = SRK_RUNTIME_VIDEO_CANARY_RED;
+    COBG = SRK_RUNTIME_VIDEO_CANARY_GREEN;
+    COBB = SRK_RUNTIME_VIDEO_CANARY_BLUE;
+    CLOFEN = (unsigned short)(state->clofen | SRK_RUNTIME_VIDEO_COLOR_TARGETS);
 
     return 1;
 }
