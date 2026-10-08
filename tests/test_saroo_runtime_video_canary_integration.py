@@ -157,7 +157,7 @@ class SarooRuntimeVideoCanaryIntegrationTests(unittest.TestCase):
         text = helper.read_text(encoding="utf-8")
 
         self.assertIn("0x007fu", text)
-        self.assertIn("SRK_RUNTIME_VIDEO_CANARY_FRAMES  3", text)
+        self.assertRegex(text, r"#define\s+SRK_RUNTIME_VIDEO_CANARY_FRAMES\s+3\b")
         self.assertIn("CLOFEN = (unsigned short)(state->clofen", text)
         for register, field in (
             ("CLOFEN", "clofen"),
