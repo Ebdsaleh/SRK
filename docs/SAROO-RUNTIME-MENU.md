@@ -57,22 +57,21 @@ handler can execute after a title begins execution: the UBR handler ran at the
 configured title entry event, wrote a 1 MiB WRAM-H snapshot, disarmed, and
 returned to the title.
 
-Those facts do **not** prove continuous or recurring SRK execution while normal
-gameplay proceeds. That remains a separate hardware milestone.
+Those facts did **not** by themselves prove continuous or recurring SRK execution
+while normal gameplay proceeds. That required the later resident proof.
 
 ## Controller-sample caveat
 
 The original runtime-hook integration samples the BIOS controller memory at
 `0x06020232` before invoking SAROO's original BIOS routine. The exact freshness
 and recurrence semantics of that memory location during arbitrary commercial
-gameplay have not been physically established.
+gameplay have not yet been physically established.
 
 During later testing, holding L+R in the SAROO menu could also be interpreted by
 the menu as repeated actions. That menu uses its own edge/state logic and is not
 identical to the in-game 16-bit sample path, so the behavior does not by itself
 explain the in-game failure. It does, however, reinforce the requirement that
-SRK stop treating passive controller observation as proof of a reliable runtime
-callback.
+SRK test controller observation only from a proven resident execution path.
 
 ## Existing research-output files after runtime-hook tests
 
@@ -206,10 +205,10 @@ upstream `patch_game()` resets `CHEAT_ADDRES` to zero. The mere presence of that
 optional call site is therefore not sufficient evidence that an arbitrary C
 callback is context-safe at this point in the BIOS handler.
 
-## Context-safe persistent resident proof (R8)
+## Context-safe persistent resident proof (R8) — physically proven
 
-R8 retains the useful R7 persistence format and exact BIOS-shape verification,
-but replaces the compiler-generated vector entry with a dedicated SH-2 assembly
+R8 retained the useful R7 persistence format and exact BIOS-shape verification,
+but replaced the compiler-generated vector entry with a dedicated SH-2 assembly
 trampoline.
 
 Before executing any SRK C code, the assembly wrapper preserves the BIOS-live
@@ -230,37 +229,96 @@ It then replays the exact displaced BIOS instructions from
 15 while the SRK callback executes, restores the saved special/general state,
 restores the BIOS-selected SR, and resumes at `0x0600091A`.
 
-The existing proof lifecycle remains deliberately narrow:
+The generated SH-2 disassembly was inspected before deployment and matched that
+save/replay/call/restore sequence exactly. The guarded candidate was:
 
 ```text
-SRK Arm Resident Proof
-  -> create/truncate /SAROO/SRK_RUNTIME_PROOF.BIN to exactly 96 bytes
-  -> write ARMED slot with SS_TIMER
-  -> launch title
-  -> after patch_game(), verify the exact BIOS instruction sequence
-  -> install the context-safe assembly trampoline
-  -> write INSTALLED slot with SS_TIMER
-  -> each trampoline callback increments an in-cartridge counter
-  -> callback 600 writes one 32-byte PROVEN slot
-  -> immediately restore the original BIOS vector
+ssfirm.bin
+size:    484246 bytes
+SHA-256: d2e07f46aa81f1bc6ebc3d0785f7b353f2a4456611e6b54754c1983e052e12f4
 ```
 
-The runtime callback still does **not** inspect controller state and does **not**
-touch VDP1, VDP2, Work RAM capture, or UBR state. The proof file is preallocated
-while still in the SAROO menu. The only runtime SD update is the bounded 32-byte
-`PROVEN` slot at callback 600.
+On original Saturn hardware, the persistent proof reached all three stages:
 
-R8 is not yet physically accepted. Its next gate is compilation through the real
-SH-ELF toolchain, inspection of the generated trampoline disassembly, then a
-fresh guarded hardware A/B run.
+```text
+ARMED
+INSTALLED
+PROVEN — callback count 600
+```
+
+The hardware timestamps were:
+
+```text
+arm       18415897
+installed 27656614   (+9.240717 s from arm)
+proven    31064538   (+12.648641 s from arm)
+                       +3.407924 s from installation
+```
+
+The exact 96-byte proven artifact was preserved off-card with SHA-256:
+
+```text
+b10d0c5d5da1983659b14b4d7fb155e55a546f3cbc184d04a7b592a58b0c3d9c
+```
+
+This is persistent physical evidence that the cartridge-resident SRK callback
+was entered 600 times after installation through the running title-launch
+lifetime. It replaces the earlier transient visual inference with a durable
+artifact. The proof does not by itself claim indefinite residency after the
+600th callback because R8 deliberately restores the BIOS vector immediately
+once `PROVEN` is written.
+
+The decoded BIOS path at `0x0600090C` is the HBLANK-IN handler for SCU vector
+`0x42`. That matters for input work: resident callback frequency is display-line
+interrupt frequency when enabled, not controller-sample frequency. Future input
+logic must therefore rate-limit observations rather than counting every
+trampoline entry as a fresh pad sample.
+
+## R9 — rate-limited resident runtime-input proof
+
+R9 asks the next narrow question without adding a renderer or direct SMPC I/O:
+can the physically proven resident trampoline remain installed until the player
+intentionally holds L+R, and can SRK persist that activation?
+
+The R9 lifecycle is:
+
+```text
+SRK Arm Runtime Input
+  -> create/truncate /SAROO/SRK_RUNTIME_INPUT_PROOF.BIN to exactly 96 bytes
+  -> write ARMED slot
+  -> launch title
+  -> verify and install the context-safe HBLANK-IN trampoline after patch_game()
+  -> write INSTALLED slot
+  -> remain resident with no waiting-path SD I/O
+  -> observe BIOS controller-1 memory at 0x06020232
+  -> rate-limit observations to one every 20000 SS_TIMER ticks (20 ms)
+  -> require L+R for 50 rate-limited samples (~1 second)
+  -> write one 32-byte ACTIVATED slot
+  -> restore the original BIOS HBLANK-IN vector
+```
+
+The existing title-neutral `srk_runtime_input` detector remains responsible for
+the release-gated L+R state machine. Rate limiting is deliberately outside that
+helper so its semantics remain reusable while R9 prevents HBLANK frequency from
+artificially satisfying the 50-sample threshold in milliseconds.
+
+The R9 proof slot records the observed 16-bit button value, total resident
+callback count, rate-limited input sample count, `SS_TIMER`, elapsed ticks from
+arm, sample period, and hold threshold. It performs no VDP writes, Work RAM
+capture, UBR operation, or direct SMPC command.
+
+R9 is a diagnostic bridge, not the final runtime menu. Hardware acceptance
+requires intentionally waiting after title launch before holding L+R so a valid
+`ACTIVATED` artifact demonstrates both continued residency and controller
+observation after the launch window.
 
 ## Planned validation order
 
-1. One-shot post-launch UBR execution — already physically demonstrated.
+1. One-shot post-launch UBR execution — physically demonstrated.
 2. R6 transient recurring-callback proof — physically inconclusive; do not use as evidence.
 3. R7 persistent BIOS-trampoline proof — physically rejected; reproducible armed freeze traced to pre-save register clobber.
-4. R8 context-safe assembly trampoline — build/disassembly validation, then guarded physical A/B test.
-5. Only if R8 succeeds, characterize controller input from a proven recurring execution path.
+4. R8 context-safe assembly trampoline — **physically proven to 600 callbacks** with persistent evidence.
+5. R9 rate-limited controller proof from the proven resident HBLANK-IN path.
 6. Add a persistent snapshot trigger and then a VDP/VRAM capture package for offline frame reconstruction.
 7. Rebuild the modal lifecycle on the proven resident callback.
 8. Minimal text shell with `SRK` / `Resume` only.
