@@ -1,5 +1,7 @@
 """Tests for the presentation-neutral SAROO application controller."""
 
+from hashlib import sha256
+from pathlib import Path
 import threading
 import time
 import tempfile
@@ -126,6 +128,53 @@ class SarooCaptureControllerTests(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("unavailable", errors[0].message)
         self.assertFalse(controller.is_busy)
+
+    def test_mounted_sd_game_capture_import_is_read_only_and_transport_independent(self):
+        workers = BackgroundWorkerService(max_workers=1)
+        received = []
+        payload = bytearray(0x00100000)
+        payload[0x20:0x24] = b"TEST"
+        payload = bytes(payload)
+
+        with tempfile.TemporaryDirectory() as card_temporary, tempfile.TemporaryDirectory() as store_temporary:
+            card_root = Path(card_temporary)
+            source = card_root / "SAROO" / "SRK_GAME_WRAMH.BIN"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(payload)
+            original = source.read_bytes()
+
+            coordinator = SarooCaptureCoordinator(
+                _FakeTransport(available=False),
+                CaptureStore(store_temporary),
+            )
+            controller = SarooCaptureController(coordinator, workers)
+            controller.subscribe(received.append)
+            workers.start()
+            try:
+                controller.import_mounted_sd_capture(
+                    card_root,
+                    "zone-b",
+                    session_label="real-hardware",
+                    game_wramh=True,
+                )
+                self._drain_until(
+                    workers,
+                    lambda: any(event.kind == "imported" for event in received),
+                )
+            finally:
+                workers.stop()
+
+            imported = [event for event in received if event.kind == "imported"]
+            self.assertEqual(len(imported), 1)
+            result = imported[0].ingest_result
+            self.assertIsNotNone(result)
+            self.assertEqual(len(result.summaries), 1)
+            self.assertEqual(result.summaries[0].sha256, sha256(payload).hexdigest())
+            self.assertEqual(result.summaries[0].nonzero_bytes, 4)
+            self.assertTrue(result.artifact.manifest_path.is_file())
+            self.assertEqual(result.artifact.region_paths[0].read_bytes(), payload)
+            self.assertEqual(source.read_bytes(), original)
+            self.assertFalse(controller.is_busy)
 
 
 if __name__ == "__main__":
