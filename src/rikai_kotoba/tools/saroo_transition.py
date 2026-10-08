@@ -21,8 +21,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Replace an already accepted SRK SAROO ssfirm.bin with a new research "
             "build while preserving the current firmware and requiring the reviewed "
-            "whole-card inventory to match everywhere except the firmware and SRK's "
-            "two exact validated Work RAM output paths."
+            "whole-card inventory to match everywhere except the firmware, SRK's "
+            "validated capture outputs, and an optional exact reviewed SS_SAVE.BIN state."
         ),
     )
     parser.add_argument("card_root", help="Root directory of the mounted SAROO SD card")
@@ -53,6 +53,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Full SHA-256 of the new candidate firmware",
     )
     parser.add_argument(
+        "--expected-ss-save-sha256",
+        default=None,
+        help=(
+            "Optional full SHA-256 of the exact reviewed SAROO/SS_SAVE.BIN state. "
+            "Requires --expected-ss-save-size and causes that save state to be "
+            "preserved off-card and required unchanged through the transition."
+        ),
+    )
+    parser.add_argument(
+        "--expected-ss-save-size",
+        type=int,
+        default=None,
+        help=(
+            "Optional exact byte size of the reviewed SAROO/SS_SAVE.BIN state. "
+            "Requires --expected-ss-save-sha256."
+        ),
+    )
+    parser.add_argument(
         "--confirm-transition",
         required=True,
         metavar=_CONFIRM_TEXT,
@@ -71,6 +89,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         return 2
 
+    if (args.expected_ss_save_sha256 is None) != (args.expected_ss_save_size is None):
+        print(
+            "srk-saroo-transition: reviewed SS_SAVE.BIN requires both "
+            "--expected-ss-save-sha256 and --expected-ss-save-size",
+            file=sys.stderr,
+        )
+        return 2
+
     backup_root = args.backup_root or str(default_saroo_backup_directory())
     try:
         guarded = transition_saroo_firmware_guarded(
@@ -81,6 +107,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             expected_guard_manifest_sha256=args.expected_guard_manifest_sha256,
             expected_current_sha256=args.expected_current_sha256,
             expected_candidate_sha256=args.expected_candidate_sha256,
+            expected_ss_save_sha256=args.expected_ss_save_sha256,
+            expected_ss_save_size=args.expected_ss_save_size,
         )
     except Exception as exc:
         print(f"srk-saroo-transition: {type(exc).__name__}: {exc}", file=sys.stderr)
@@ -92,8 +120,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"Card root          : {result.card_root}")
     print(f"Guard manifest     : {guarded.guard_manifest_path}")
     print(f"Guard SHA-256      : {guarded.guard_manifest_sha256}")
-    print("Pre-transition guard : MATCH (firmware / validated SRK capture outputs may differ)")
-    print("Post-transition guard: MATCH (same narrow research-output allowance)")
+    if guarded.reviewed_save_path is None:
+        print("Pre-transition guard : MATCH (firmware / validated SRK capture outputs may differ)")
+        print("Post-transition guard: MATCH (same narrow research-output allowance)")
+    else:
+        print(
+            "Pre-transition guard : MATCH (firmware / validated SRK captures / exact reviewed save may differ)"
+        )
+        print("Post-transition guard: MATCH (same exact reviewed-save allowance)")
     print(f"Destination        : {result.destination_path}")
     print(f"Preserved previous : {result.backup_path}")
     print(
@@ -102,11 +136,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     print(f"Previous SHA-256   : {result.previous_sha256}")
     print(f"Installed SHA-256  : {result.candidate_sha256}")
+    if guarded.reviewed_save_path is not None:
+        print()
+        print(f"Reviewed SS_SAVE   : {guarded.reviewed_save_path}")
+        print(f"SS_SAVE size       : {guarded.reviewed_save_size} bytes")
+        print(f"SS_SAVE SHA-256    : {guarded.reviewed_save_sha256}")
+        print(f"Preserved SS_SAVE  : {guarded.reviewed_save_backup_path}")
+        print(
+            "Save backup action : "
+            + (
+                "reused existing verified backup"
+                if guarded.reviewed_save_backup_reused
+                else "created and verified"
+            )
+        )
     print()
     print("Only SAROO/ssfirm.bin was replaced by this transition.")
     print("Any present SRK_WRAML.BIN / SRK_WRAMH.BIN remained exact 1 MiB research outputs.")
+    if guarded.reviewed_save_path is not None:
+        print("The exact reviewed SAROO/SS_SAVE.BIN state was preserved off-card and remained unchanged.")
     print("Games, configuration, MCU/FPGA firmware, and unrelated card paths matched.")
-    print("Keep accepted firmware backups and the original guard manifest.")
+    print("Keep accepted firmware/save backups and the original guard manifest.")
     return 0
 
 
