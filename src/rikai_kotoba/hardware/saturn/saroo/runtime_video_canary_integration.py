@@ -1,7 +1,7 @@
 """Prepare a bounded visible-canary SAROO tree from a runtime-video state tree.
 
-This stage is deliberately narrower than the eventual text overlay.  It keeps
-all title-owned VRAM/CRAM and VDP1 resources untouched.  On the already
+This stage is deliberately narrower than the eventual text overlay. It keeps
+all title-owned VRAM/CRAM and VDP1 resources untouched. On the already
 validated L+R menu-open event SRK snapshots the VDP2 color-offset register set,
 applies a short red color-offset pulse for three display frames, restores the
 exact captured register values, and then returns to the normal title path.
@@ -28,12 +28,17 @@ class SarooRuntimeVideoCanaryIntegrationResult:
     source_root: Path
     output_root: Path
     firm_saturn_directory: Path
+    makefile_path: Path
     game_load_path: Path
-    video_source_path: Path
-    video_header_path: Path
+    canary_source_path: Path
+    canary_header_path: Path
     marker_path: Path
 
 
+_MAKEFILE_VIDEO_STATE_OBJECT = "\t\tobj/srk_runtime_video_state.o  \\\n"
+_MAKEFILE_CANARY_OBJECT = "\t\tobj/srk_runtime_video_canary.o  \\\n"
+_GAME_VIDEO_STATE_INCLUDE = '#include "srk_runtime_video_state.h"\n'
+_GAME_CANARY_INCLUDE = '#include "srk_runtime_video_canary.h"\n'
 _GAME_CAPTURE_ONLY_ANCHOR = (
     "\t\tif(srk_menu_event==SRK_RUNTIME_MENU_EVENT_OPENED)\n"
     "\t\t\tsrk_runtime_video_state_capture(&srk_runtime_video_state);\n"
@@ -83,6 +88,7 @@ def prepare_runtime_video_canary_tree(
     source = _canonical(runtime_video_source_root)
     output = _canonical(output_root)
     firm = source / "Firm_Saturn"
+    makefile_path = firm / "Makefile"
     game_load_path = firm / "game_load.c"
     video_marker = source / "SRK_RUNTIME_VIDEO_STATE.txt"
 
@@ -94,9 +100,9 @@ def prepare_runtime_video_canary_tree(
         raise SarooRuntimeVideoCanaryIntegrationError(
             "source is not a validated SRK runtime-video state tree; marker is missing"
         )
-    if not game_load_path.is_file():
+    if not makefile_path.is_file() or not game_load_path.is_file():
         raise SarooRuntimeVideoCanaryIntegrationError(
-            "source runtime-video tree is incomplete; game_load.c is missing"
+            "source runtime-video tree is incomplete; Makefile/game_load.c is missing"
         )
     if output.exists():
         raise SarooRuntimeVideoCanaryIntegrationError(
@@ -108,17 +114,27 @@ def prepare_runtime_video_canary_tree(
         )
 
     helpers = _canonical(helper_root) if helper_root is not None else default_helper_root()
-    video_source = helpers / "srk_runtime_video_state.c"
-    video_header = helpers / "srk_runtime_video_state.h"
-    if not video_source.is_file() or not video_header.is_file():
+    canary_source = helpers / "srk_runtime_video_canary.c"
+    canary_header = helpers / "srk_runtime_video_canary.h"
+    if not canary_source.is_file() or not canary_header.is_file():
         raise SarooRuntimeVideoCanaryIntegrationError(
-            f"SRK runtime-video helper sources are unavailable beneath: {helpers}"
+            f"SRK runtime-video canary helpers are unavailable beneath: {helpers}"
         )
 
+    makefile_text = _read_text(makefile_path)
     game_text = _read_text(game_load_path)
-    if "srk_runtime_video_canary_pulse(&srk_runtime_video_state)" in game_text:
+
+    if _MAKEFILE_CANARY_OBJECT in makefile_text or _GAME_CANARY_INCLUDE in game_text:
         raise SarooRuntimeVideoCanaryIntegrationError(
             "source tree already contains SRK runtime-video canary integration"
+        )
+    if makefile_text.count(_MAKEFILE_VIDEO_STATE_OBJECT) != 1:
+        raise SarooRuntimeVideoCanaryIntegrationError(
+            "runtime-video Makefile does not contain exactly one video-state object"
+        )
+    if game_text.count(_GAME_VIDEO_STATE_INCLUDE) != 1:
+        raise SarooRuntimeVideoCanaryIntegrationError(
+            "runtime-video game_load.c does not contain exactly one video-state include"
         )
     if game_text.count(_GAME_CAPTURE_ONLY_ANCHOR) != 1:
         raise SarooRuntimeVideoCanaryIntegrationError(
@@ -126,7 +142,17 @@ def prepare_runtime_video_canary_tree(
             "source tree may not match the validated R3 revision"
         )
 
+    patched_makefile = makefile_text.replace(
+        _MAKEFILE_VIDEO_STATE_OBJECT,
+        _MAKEFILE_VIDEO_STATE_OBJECT + _MAKEFILE_CANARY_OBJECT,
+        1,
+    )
     patched_game = game_text.replace(
+        _GAME_VIDEO_STATE_INCLUDE,
+        _GAME_VIDEO_STATE_INCLUDE + _GAME_CANARY_INCLUDE,
+        1,
+    )
+    patched_game = patched_game.replace(
         _GAME_CAPTURE_ONLY_ANCHOR,
         _GAME_CANARY_PATCH,
         1,
@@ -135,13 +161,15 @@ def prepare_runtime_video_canary_tree(
     try:
         shutil.copytree(source, output)
         target_firm = output / "Firm_Saturn"
+        target_makefile = target_firm / "Makefile"
         target_game = target_firm / "game_load.c"
-        target_video_source = target_firm / video_source.name
-        target_video_header = target_firm / video_header.name
+        target_canary_source = target_firm / canary_source.name
+        target_canary_header = target_firm / canary_header.name
 
+        _write_text(target_makefile, patched_makefile)
         _write_text(target_game, patched_game)
-        shutil.copy2(video_source, target_video_source)
-        shutil.copy2(video_header, target_video_header)
+        shutil.copy2(canary_source, target_canary_source)
+        shutil.copy2(canary_header, target_canary_header)
 
         marker = output / "SRK_RUNTIME_VIDEO_CANARY.txt"
         _write_text(
@@ -152,7 +180,7 @@ def prepare_runtime_video_canary_tree(
             "Activation: hardware-validated L+R hold event.\n"
             "Visible action: red VDP2 color-offset pulse for three display frames.\n"
             "Restore: exact captured VDP2 color-offset register values before return.\n"
-            "CLOFSL is never changed by the canary; both offset banks are programmed equally.\n"
+            "CLOFSL is not changed while the canary is active; both offset banks are equal.\n"
             "VRAM writes: none. CRAM writes: none. VDP1 writes: none.\n"
             "No SD writes, RAM captures, or direct SMPC polling are performed.\n"
             "This is a visibility/restore canary, not the final SRK text menu.\n",
@@ -165,8 +193,9 @@ def prepare_runtime_video_canary_tree(
         source_root=source,
         output_root=output,
         firm_saturn_directory=output / "Firm_Saturn",
+        makefile_path=output / "Firm_Saturn" / "Makefile",
         game_load_path=output / "Firm_Saturn" / "game_load.c",
-        video_source_path=output / "Firm_Saturn" / video_source.name,
-        video_header_path=output / "Firm_Saturn" / video_header.name,
+        canary_source_path=output / "Firm_Saturn" / canary_source.name,
+        canary_header_path=output / "Firm_Saturn" / canary_header.name,
         marker_path=output / "SRK_RUNTIME_VIDEO_CANARY.txt",
     )
