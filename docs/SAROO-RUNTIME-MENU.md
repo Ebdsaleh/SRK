@@ -103,22 +103,55 @@ The snapshot stage itself is deliberately read-only: it does not write those
 registers, VDP1 state, VDP2 VRAM, or VDP2 CRAM. On `Resume`, the in-memory
 snapshot is simply discarded because nothing has yet been changed.
 
-This checkpoint exists so register observation can be compiled and, if desired,
-physically validated separately from register modification. A future visible
-canary must not silently expand this resource set; any additional register or
-memory ownership must be documented and preserved first.
+The R3 read-only snapshot tree built successfully through the real SH-ELF
+firmware toolchain with 20 objects and clean/build exit code 0. Its generated
+`ssfirm.bin` remained the standard 484246 bytes and had SHA-256:
+
+```text
+ba1c1f2ef33ec15cecb0b32a61c84ac07bd062e0d9affe78e3d80be3cc28d682
+```
+
+R3 was not deployed to the SAROO SD card.
+
+## Bounded visible canary checkpoint
+
+The next stage remains smaller than the final text menu.  It introduces a
+separate `srk_runtime_video_canary` helper rather than adding write behavior to
+the read-only snapshot helper.
+
+On a validated runtime-menu OPENED event SRK will:
+
+```text
+capture CLOFEN/CLOFSL/COA*/COB*
+  -> enable the seven VDP2 color-offset targets
+  -> leave CLOFSL unchanged
+  -> program both A and B offset banks to the same red offset
+  -> hold that canary for three display frames
+  -> restore the exact captured color-offset register set
+  -> return to the title path
+```
+
+The canary intentionally owns no VDP2 VRAM, CRAM, tile-map, character-data, or
+VDP1 resource.  It performs no SD write, RAM capture, or direct SMPC poll.
+Programming both color-offset banks identically avoids changing the title's
+A/B selection while the canary is active.
+
+This is a **visibility/restore experiment**, not the final runtime menu.  A
+successful hardware test should produce only a short red flash when L+R is held,
+followed by the original picture and continued normal gameplay.
 
 ## Planned validation order
 
 1. Runtime-menu state machine, independent of video hardware.
 2. Exact VDP/resource preservation contract.
 3. Read-only VDP2 preservation snapshot.
-4. Minimal visible canary / shell with `Resume` only.
-5. Physical enter/resume validation on real hardware.
-6. `Capture Both`.
-7. Individual WRAM-H / WRAM-L captures.
-8. Mark / metadata.
-9. Bounded recording controls.
+4. Bounded visible color-offset canary with exact restore.
+5. Minimal visible shell with `Resume` only.
+6. Physical enter/resume validation on real hardware.
+7. `Capture Both`.
+8. Individual WRAM-H / WRAM-L captures.
+9. Mark / metadata.
+10. Bounded recording controls.
 
 Each stage must remain title-neutral in public SRK code and should be promoted
 only after the preceding stage has been physically accepted where hardware is
