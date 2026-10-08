@@ -227,9 +227,10 @@ void srk_runtime_resident_proof_tick(void)
         return;
 
     /*
-     * Set the one-shot latch before touching the SD path.  If a higher-priority
-     * interrupt nests while the tiny proof write is in progress, the trampoline
-     * immediately becomes inert rather than attempting a second file write.
+     * The assembly trampoline masks interrupts around this callback and
+     * preserves the BIOS-live context that has not yet been stacked by the
+     * original handler.  Keep the one-shot latch before the proof write so a
+     * later callback cannot attempt the same write again.
      */
     srk_runtime_resident_proof_written = 1;
     now = SS_TIMER;
@@ -248,22 +249,4 @@ void srk_runtime_resident_proof_tick(void)
     srk_runtime_resident_restore_vector();
     srk_runtime_resident_installed = 0;
     srk_runtime_resident_armed = 0;
-}
-
-
-void srk_runtime_resident_proof_vector_entry(void)
-{
-    /* Reproduce the BIOS instructions displaced by the trampoline. */
-    __asm__("mov    r3,  r4");
-    __asm__("shlr16 r3");
-    __asm__("ldc     r3, sr");
-    __asm__("exts.w  r4, r4");
-    __asm__("or      r4, r2");
-    __asm__("mov.l   r2, @r1");
-    __asm__("mov.l   r2, @r5");
-
-    srk_runtime_resident_proof_tick();
-
-    __asm volatile("jmp @%0"::"r"(SRK_RUNTIME_RESIDENT_PROOF_RETURN));
-    __asm__("lds.l   @r15+, pr");
 }
