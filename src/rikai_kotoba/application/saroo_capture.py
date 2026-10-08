@@ -1,8 +1,9 @@
 """Application controller for SAROO transport status and memory captures.
 
-The controller owns no GUI objects. Potentially blocking transport operations run
-through SRK's background worker service and immutable events are delivered back
-on the application thread during the normal Salix runtime update cycle.
+The controller owns no GUI objects. Potentially blocking transport and mounted-SD
+operations run through SRK's background worker service and immutable events are
+delivered back on the application thread during the normal Salix runtime update
+cycle.
 """
 
 from __future__ import annotations
@@ -22,6 +23,11 @@ from rikai_kotoba.hardware.saturn.saroo import (
     SarooCaptureCoordinator,
     SarooTransportStatus,
 )
+from rikai_kotoba.hardware.saturn.saroo.capture_ingest import (
+    SarooCaptureIngestResult,
+    import_saroo_game_work_ram_high_capture,
+    import_saroo_work_ram_captures,
+)
 
 
 @dataclass(frozen=True)
@@ -31,11 +37,13 @@ class SarooControllerEvent:
     job_id: str | None = None
     status: SarooTransportStatus | None = None
     artifact: CaptureArtifact | None = None
+    ingest_result: SarooCaptureIngestResult | None = None
 
 
 class SarooCaptureController:
     STATUS_TOPIC = "saroo.status"
     CAPTURE_TOPIC = "saroo.capture"
+    IMPORT_TOPIC = "saroo.import"
 
     def __init__(
         self,
@@ -126,6 +134,47 @@ class SarooCaptureController:
         )
         return job_id
 
+    def import_mounted_sd_capture(
+        self,
+        card_root: str | Path,
+        checkpoint: str,
+        *,
+        session_label: str = "real-hardware",
+        game_wramh: bool = True,
+    ) -> str:
+        """Import verified SAROO capture files from a mounted card, read-only."""
+
+        card_text = str(card_root).strip()
+        if not card_text:
+            raise ValueError("mounted SAROO card root is required")
+        checkpoint_text = str(checkpoint).strip()
+        if not checkpoint_text:
+            raise ValueError("capture checkpoint label is required")
+        session_text = str(session_label).strip()
+
+        importer = (
+            import_saroo_game_work_ram_high_capture
+            if game_wramh
+            else import_saroo_work_ram_captures
+        )
+        job_id = self._start(
+            self.IMPORT_TOPIC,
+            importer,
+            card_text,
+            str(self.capture_root),
+            checkpoint=checkpoint_text,
+            session_label=session_text,
+        )
+        mode = "in-game WRAM-H" if game_wramh else "menu WRAM-L + WRAM-H"
+        self._emit(
+            SarooControllerEvent(
+                "importing",
+                message=f"Importing mounted-card {mode} capture...",
+                job_id=job_id,
+            )
+        )
+        return job_id
+
     def cancel_active(self) -> bool:
         if self._active_job_id is None:
             return False
@@ -139,7 +188,7 @@ class SarooCaptureController:
         return job_id, topic
 
     def _on_worker_event(self, event: WorkerEvent[object]) -> None:
-        if event.topic not in {self.STATUS_TOPIC, self.CAPTURE_TOPIC}:
+        if event.topic not in {self.STATUS_TOPIC, self.CAPTURE_TOPIC, self.IMPORT_TOPIC}:
             return
         if self._active_job_id is None or event.job_id != self._active_job_id:
             return
@@ -165,6 +214,31 @@ class SarooCaptureController:
                         message=status.detail,
                         job_id=job_id,
                         status=status,
+                    )
+                )
+                return
+
+            if topic == self.IMPORT_TOPIC:
+                ingest_result = event.payload
+                if not isinstance(ingest_result, SarooCaptureIngestResult):
+                    self._emit(
+                        SarooControllerEvent(
+                            "error",
+                            message="SAROO import worker returned an unexpected result",
+                            job_id=job_id,
+                        )
+                    )
+                    return
+                self._emit(
+                    SarooControllerEvent(
+                        "imported",
+                        message=(
+                            "Mounted-card capture imported and verified at "
+                            f"{ingest_result.artifact.directory}"
+                        ),
+                        job_id=job_id,
+                        artifact=ingest_result.artifact,
+                        ingest_result=ingest_result,
                     )
                 )
                 return
