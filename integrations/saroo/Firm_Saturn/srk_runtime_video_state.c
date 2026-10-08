@@ -7,6 +7,7 @@
 #define SRK_RUNTIME_VIDEO_CANARY_RED     0x0060u
 #define SRK_RUNTIME_VIDEO_CANARY_GREEN   0x0000u
 #define SRK_RUNTIME_VIDEO_CANARY_BLUE    0x0000u
+#define SRK_RUNTIME_VIDEO_CANARY_FRAMES  3
 
 
 void srk_runtime_video_state_reset(SRK_RUNTIME_VIDEO_STATE *state)
@@ -71,7 +72,7 @@ int srk_runtime_video_canary_apply(const SRK_RUNTIME_VIDEO_STATE *state)
 
     /*
      * The Saturn color-offset enable/select registers expose seven targets.
-     * Enable all seven, but preserve the title's A/B selection.  Program both
+     * Enable all seven, but preserve the title's A/B selection. Program both
      * offset banks identically so no CLOFSL write is needed for the canary.
      * The exact pre-canary values are restored by srk_runtime_video_state_restore.
      */
@@ -84,4 +85,29 @@ int srk_runtime_video_canary_apply(const SRK_RUNTIME_VIDEO_STATE *state)
     CLOFEN = (unsigned short)(state->clofen | SRK_RUNTIME_VIDEO_COLOR_TARGETS);
 
     return 1;
+}
+
+
+int srk_runtime_video_canary_pulse(const SRK_RUNTIME_VIDEO_STATE *state)
+{
+    int frame;
+
+    if(!state || !state->valid)
+        return 0;
+    if(!srk_runtime_video_canary_apply(state))
+        return 0;
+
+    /*
+     * Keep the canary bounded to three display frames while execution is still
+     * inside the controller hook. The title cannot advance its normal game
+     * loop during this pulse, so the captured register values remain the exact
+     * values to restore before returning control.
+     */
+    WaitForVBLANKIn();
+    for(frame=0; frame<SRK_RUNTIME_VIDEO_CANARY_FRAMES; frame++){
+        WaitForVBLANKOut();
+        WaitForVBLANKIn();
+    }
+
+    return srk_runtime_video_state_restore(state);
 }
