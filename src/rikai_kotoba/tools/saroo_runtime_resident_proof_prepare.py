@@ -16,8 +16,8 @@ def _parser() -> argparse.ArgumentParser:
         prog="srk-saroo-runtime-resident-proof-prepare",
         description=(
             "Create a separate SRK/SAROO tree that arms from the SAROO menu, "
-            "installs a verified BIOS interrupt trampoline after 1ST_READ is loaded, "
-            "and persists proof after 600 runtime callbacks."
+            "installs a verified context-safe BIOS interrupt trampoline after "
+            "1ST_READ is loaded, and persists proof after 600 runtime callbacks."
         ),
     )
     parser.add_argument("source", help="validated SRK capture-menu tree")
@@ -41,11 +41,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Patched main.c    : {result.main_path}")
     print(f"Patched game_load : {result.game_load_path}")
     print(f"Proof helper      : {result.helper_source_path}")
+    print(f"Trampoline        : {result.trampoline_source_path}")
     print(f"Marker            : {result.marker_path}")
     print()
     print("Source capture-menu tree was not modified.")
     print("Arm                : SRK Arm Resident Proof in SAROO menu")
     print("Runtime hook       : verified BIOS interrupt trampoline at 0x0600090C")
+    print("Context safety     : preserve r0/r6/r7 + PR/GBR/MACH/MACL around callback")
+    print("Interrupt safety   : nesting masked while SRK callback executes")
     print("Proof threshold    : 600 trampoline callbacks")
     print("Persistent output  : /SAROO/SRK_RUNTIME_PROOF.BIN (96 bytes)")
     print("Timing             : raw SAROO FPGA SS_TIMER hardware ticks")
