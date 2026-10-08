@@ -73,19 +73,19 @@ running title
   -> preserve required machine/video state
   -> render minimal SRK menu
   -> service menu input through the existing BIOS controller path
-  -> Resume
+  -> dismiss/resume
   -> restore preserved state
   -> return to title
 ```
 
-The first visible menu must contain **Resume only**. Capture and recording
-commands remain later checkpoints.
+The first text menu must contain **Resume only**. Capture and recording commands
+remain later checkpoints.
 
 ## Read-only VDP2 preservation checkpoint
 
-Before SRK writes any video register, the next generated firmware stage snapshots
-only the VDP2 color-offset register family into firmware-owned state when the
-runtime menu opens:
+Before SRK writes any video register, the generated R3 firmware snapshots only
+the VDP2 color-offset register family into firmware-owned state when the runtime
+menu opens:
 
 ```text
 CLOFEN
@@ -98,10 +98,9 @@ COBG
 COBB
 ```
 
-These are the exact resources reserved for a later low-impact visual canary.
-The snapshot stage itself is deliberately read-only: it does not write those
-registers, VDP1 state, VDP2 VRAM, or VDP2 CRAM. On `Resume`, the in-memory
-snapshot is simply discarded because nothing has yet been changed.
+These are the exact resources reserved for the first low-impact visual work. The
+snapshot stage itself is deliberately read-only: it does not write those
+registers, VDP1 state, VDP2 VRAM, or VDP2 CRAM.
 
 The R3 read-only snapshot tree built successfully through the real SH-ELF
 firmware toolchain with 20 objects and clean/build exit code 0. Its generated
@@ -115,30 +114,66 @@ R3 was not deployed to the SAROO SD card.
 
 ## Bounded visible canary checkpoint
 
-The next stage remains smaller than the final text menu.  It introduces a
-separate `srk_runtime_video_canary` helper rather than adding write behavior to
-the read-only snapshot helper.
+R4 introduced a separate `srk_runtime_video_canary` helper rather than adding
+write behavior to the read-only snapshot helper.
 
-On a validated runtime-menu OPENED event SRK will:
+On a validated runtime-menu OPENED event R4:
 
 ```text
-capture CLOFEN/CLOFSL/COA*/COB*
-  -> enable the seven VDP2 color-offset targets
-  -> leave CLOFSL unchanged
-  -> program both A and B offset banks to the same red offset
-  -> hold that canary for three display frames
-  -> restore the exact captured color-offset register set
-  -> return to the title path
+captures CLOFEN/CLOFSL/COA*/COB*
+  -> enables the seven VDP2 color-offset targets
+  -> leaves CLOFSL unchanged
+  -> programs both A and B offset banks to the same red offset
+  -> holds that canary for three display frames
+  -> restores the exact captured color-offset register set
+  -> returns to the title path
 ```
 
-The canary intentionally owns no VDP2 VRAM, CRAM, tile-map, character-data, or
-VDP1 resource.  It performs no SD write, RAM capture, or direct SMPC poll.
-Programming both color-offset banks identically avoids changing the title's
-A/B selection while the canary is active.
+The R4 firmware was guarded onto the real SAROO card and independently verified.
+On physical Saturn hardware the commercial title remained completely stable, but
+the three-frame red pulse was not perceptible to the user. This is therefore a
+useful stability result but not sufficient visual proof that the canary was seen.
 
-This is a **visibility/restore experiment**, not the final runtime menu.  A
-successful hardware test should produce only a short red flash when L+R is held,
-followed by the original picture and continued normal gameplay.
+R4 intentionally owns no VDP2 VRAM, CRAM, tile-map, character-data, or VDP1
+resource. It performs no SD write, RAM capture, or direct SMPC poll.
+
+## Modal red-shell checkpoint
+
+R5 changes the experiment from a fixed three-frame pulse to the lifecycle shape
+needed by the eventual menu.
+
+The R5 generator starts from the validated R4 tree and creates a new tree. On the
+first release-gated L+R activation it:
+
+```text
+captures the exact VDP2 color-offset state
+  -> forces all seven color-offset targets to solid red
+  -> keeps the title's main path blocked inside the existing controller hook
+  -> calls the original BIOS controller routine once per display frame
+  -> waits for both shoulders to be released
+  -> accepts a second 50-sample L+R hold as dismissal
+  -> restores the exact captured VDP2 color-offset register set
+  -> returns to the title
+```
+
+The solid-red surface uses signed 9-bit VDP2 offsets: red `+255` and green/blue
+`-255`, with both A/B offset banks programmed identically. It still owns no
+VRAM, CRAM, VDP1, SD-card, or capture resource.
+
+Keeping the title's main path inside the hook is important. Allowing normal title
+execution to continue beneath a persistent overlay could let the title change
+video state after SRK captured it, making a later restore stale. The modal proof
+therefore tests the stronger save/take-over/service-input/restore/return model.
+
+The original BIOS controller routine is the only controller-refresh operation
+used while modal; SRK still issues no direct SMPC command. Because repeated BIOS
+controller refresh while the title path is blocked is new behavior, R5 includes
+a first-test fail-safe: if no dismissal is observed, it restores automatically
+after 600 display frames (about 10 seconds at 60 Hz or 12 seconds at 50 Hz).
+
+R5 is still not the final text menu. Its purpose is to validate the modal
+lifecycle and exact restoration with an unmistakable visible surface before SRK
+claims VRAM/CRAM resources for text rendering.
 
 ## Planned validation order
 
@@ -146,12 +181,13 @@ followed by the original picture and continued normal gameplay.
 2. Exact VDP/resource preservation contract.
 3. Read-only VDP2 preservation snapshot.
 4. Bounded visible color-offset canary with exact restore.
-5. Minimal visible shell with `Resume` only.
-6. Physical enter/resume validation on real hardware.
-7. `Capture Both`.
-8. Individual WRAM-H / WRAM-L captures.
-9. Mark / metadata.
-10. Bounded recording controls.
+5. Modal solid-color shell: L+R open, L+R dismiss, exact restore.
+6. Minimal text shell with `SRK` / `Resume` only.
+7. Physical text-menu enter/resume validation on real hardware.
+8. `Capture Both`.
+9. Individual WRAM-H / WRAM-L captures.
+10. Mark / metadata.
+11. Bounded recording controls.
 
 Each stage must remain title-neutral in public SRK code and should be promoted
 only after the preceding stage has been physically accepted where hardware is
