@@ -75,6 +75,13 @@ int srk_runtime_execution_proof_prepare(void)
     if(!srk_runtime_proof_armed)
         return 0;
 
+    /* Do not steal an independently configured SAROO/SRK breakpoint. */
+    if(game_break_pc || game_break_handle){
+        srk_runtime_proof_armed = 0;
+        srk_runtime_proof_entry_seen = 0;
+        return SRK_RUNTIME_EXECUTION_PROOF_ERR_BREAK_BUSY;
+    }
+
     first_read_pc = BE32(
         (void*)(SRK_RUNTIME_PROOF_IP_BASE + SRK_RUNTIME_PROOF_FIRST_READ_OFFSET)
     );
@@ -107,7 +114,7 @@ void srk_runtime_execution_proof_on_controller_hook(void)
 
     /*
      * Reaching this point proves that the SAROO cdp_hook continued to call SRK
-     * after the title crossed its 1st-read entry breakpoint.  The beacon is
+     * after the title crossed its 1st-read entry breakpoint. The beacon is
      * intentionally input-independent so controller semantics cannot hide the
      * result.
      */
