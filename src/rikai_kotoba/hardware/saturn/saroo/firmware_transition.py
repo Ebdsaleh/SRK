@@ -2,9 +2,9 @@
 
 The first guarded apply starts from the exact whole-card baseline. Later SRK
 research builds necessarily start from a card whose ``SAROO/ssfirm.bin`` already
-differs from that original baseline and may also contain SRK's reviewed Work RAM
-capture outputs. This module permits only those narrow research paths while
-continuing to require every unrelated card entry to match the baseline.
+differs from that original baseline and may also contain SRK's reviewed research
+outputs. This module permits only those narrow research paths while continuing
+to require every unrelated card entry to match the baseline.
 
 SAROO's own ``SAROO/SS_SAVE.BIN`` is a legitimate mutable save container. It is
 *not* exempted by default. A caller may explicitly review one exact save state by
@@ -38,12 +38,13 @@ from .guarded_deployment import (
 from .sd_layout import SAROO_SD_LAYOUT_MODERN, inspect_saroo_sd_layout
 
 
-SAROO_TRANSITION_RESEARCH_OUTPUTS = (
-    "SAROO/SRK_WRAML.BIN",
-    "SAROO/SRK_WRAMH.BIN",
-    "SAROO/SRK_GAME_WRAMH.BIN",
-)
-_RESEARCH_CAPTURE_SIZE = 0x00100000
+SAROO_TRANSITION_RESEARCH_OUTPUT_SIZES = {
+    "SAROO/SRK_WRAML.BIN": 0x00100000,
+    "SAROO/SRK_WRAMH.BIN": 0x00100000,
+    "SAROO/SRK_GAME_WRAMH.BIN": 0x00100000,
+    "SAROO/SRK_RUNTIME_PROOF.BIN": 96,
+}
+SAROO_TRANSITION_RESEARCH_OUTPUTS = tuple(SAROO_TRANSITION_RESEARCH_OUTPUT_SIZES)
 _SAROO_SAVE_PATH = "SAROO/SS_SAVE.BIN"
 _SAROO_SAVE_BLOCK_SIZE = 0x00010000
 _BASE_ALLOWED_TRANSITION_PATHS = (
@@ -102,10 +103,10 @@ def _require_card_firmware_hash(
 
 
 def _validate_research_outputs(card_root: os.PathLike[str] | str) -> None:
-    """Validate SRK-created capture files before exempting them from baseline diffing."""
+    """Validate SRK-created research files before exempting them from baseline diffing."""
 
     card = Path(card_root).expanduser().resolve(strict=False)
-    for relative in SAROO_TRANSITION_RESEARCH_OUTPUTS:
+    for relative, expected_size in SAROO_TRANSITION_RESEARCH_OUTPUT_SIZES.items():
         path = card / Path(relative)
         if not path.exists():
             continue
@@ -119,10 +120,10 @@ def _validate_research_outputs(card_root: os.PathLike[str] | str) -> None:
             raise SarooGuardedDeploymentError(
                 f"cannot inspect SRK research output {relative}: {exc}"
             ) from exc
-        if size != _RESEARCH_CAPTURE_SIZE:
+        if size != expected_size:
             raise SarooGuardedDeploymentError(
                 f"reviewed SRK research output has unexpected size: {relative} "
-                f"({size} != {_RESEARCH_CAPTURE_SIZE})"
+                f"({size} != {expected_size})"
             )
 
 
@@ -219,9 +220,10 @@ def transition_saroo_firmware_guarded(
     """Replace one accepted research firmware with another under the card guard.
 
     The original whole-card manifest remains authoritative for every path except
-    ``SAROO/ssfirm.bin`` and the exact reviewed SRK Work RAM output paths. The
+    ``SAROO/ssfirm.bin`` and the exact reviewed SRK research-output paths. The
     caller must provide the exact hash of the currently accepted firmware. Any
-    present SRK Work RAM output must also be exactly 1 MiB before exemption.
+    present SRK research output must match its exact known format size before
+    exemption.
 
     ``SAROO/SS_SAVE.BIN`` remains protected by default. It is exempted only when
     the caller supplies both its exact current SHA-256 and exact current size.
