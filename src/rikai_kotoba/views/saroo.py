@@ -23,6 +23,7 @@ class SarooView:
         self._pending_refresh = True
         self._transport_available = False
         self._capture_buttons: list[object] = []
+        self.import_button = None
         controller.subscribe(self._on_controller_event)
 
     @staticmethod
@@ -40,6 +41,45 @@ class SarooView:
             f"{region.name}: 0x{region.start_address:08X}-0x{end:08X} "
             f"({region.size // (1024 * 1024)} MiB)"
         )
+
+    @staticmethod
+    def _address_text(value: int | None) -> str:
+        return "none" if value is None else f"0x{value:08X}"
+
+    @classmethod
+    def _format_ingest_result(cls, result) -> str:
+        lines = [
+            "Import complete",
+            "",
+            f"Artifact: {result.artifact.directory}",
+            f"Manifest: {result.artifact.manifest_path}",
+            "",
+        ]
+        for summary in result.summaries:
+            end = summary.memory_range.end_address_exclusive - 1
+            lines.extend(
+                [
+                    summary.relative_path,
+                    (
+                        "  Saturn range : "
+                        f"0x{summary.memory_range.start_address:08X}-0x{end:08X}"
+                    ),
+                    f"  Size         : {summary.size} bytes",
+                    f"  SHA-256      : {summary.sha256}",
+                    f"  Non-zero     : {summary.nonzero_bytes}",
+                    f"  Zero         : {summary.zero_bytes}",
+                    f"  First nonzero: {cls._address_text(summary.first_nonzero_address)}",
+                    f"  Last nonzero : {cls._address_text(summary.last_nonzero_address)}",
+                    "",
+                ]
+            )
+        lines.extend(
+            [
+                "Mounted SAROO SD card: READ ONLY / UNMODIFIED",
+                "Off-card artifact: SHA-256 VERIFIED",
+            ]
+        )
+        return "\n".join(lines)
 
     def build(self, parent: str | int) -> None:
         self._built = True
@@ -109,10 +149,44 @@ class SarooView:
             color=(180, 180, 180),
             wrap=1050,
         )
+
+        dpg.add_separator(parent=parent)
+        dpg.add_text("Import from mounted SAROO SD", parent=parent, color=(150, 190, 255))
+        dpg.add_text(
+            "Import existing SRK capture files from a mounted card into immutable off-card evidence storage. This path is independent of live SAROO transport availability and treats the card as read-only input.",
+            parent=parent,
+            wrap=1050,
+            color=(180, 180, 180),
+        )
+        dpg.add_text("Mounted card root", parent=parent)
+        self.card_root_input = dpg.add_input_text(
+            default_value="",
+            width=420,
+            parent=parent,
+        )
+        dpg.add_text("Capture type", parent=parent)
+        self.import_mode_input = dpg.add_radio_button(
+            items=("In-game WRAM-H", "Menu WRAM-L + WRAM-H"),
+            default_value="In-game WRAM-H",
+            horizontal=True,
+            parent=parent,
+        )
+        self.import_button = dpg.add_button(
+            label="Import Capture from SD",
+            callback=lambda *_args: self._import_from_sd(),
+            parent=parent,
+        )
+        self.import_details_text = dpg.add_text(
+            "No mounted-card capture imported yet.",
+            parent=parent,
+            wrap=1050,
+            color=(140, 140, 140),
+        )
+
         dpg.add_separator(parent=parent)
         dpg.add_text("Evidence pipeline", parent=parent, color=(150, 190, 255))
         for line in (
-            "1. Ask a verified transport for explicit Saturn memory ranges",
+            "1. Ask a verified transport for explicit Saturn memory ranges, or import validated files from a mounted SAROO SD card",
             "2. Save immutable region files plus SHA-256 capture.json metadata",
             "3. Keep captures under the external SRK-Workspace/Dumps/SAROO tree",
             "4. Correlate extracted disc files against captured memory",
@@ -122,7 +196,7 @@ class SarooView:
 
         dpg.add_spacer(height=8, parent=parent)
         dpg.add_text(
-            "Current transport policy: SRK will not guess a SAROO communication protocol. Capture buttons enable only when a verified adapter reports that it is available.",
+            "Live capture buttons require a verified transport. Mounted-SD import is a separate read-only evidence-ingestion path and does not require live transport.",
             parent=parent,
             wrap=1050,
             color=(140, 140, 140),
@@ -135,6 +209,8 @@ class SarooView:
         enable_capture = self._transport_available and not busy
         for button in self._capture_buttons:
             dpg.configure_item(button, enabled=enable_capture)
+        if self.import_button is not None:
+            dpg.configure_item(self.import_button, enabled=not busy)
 
     def _refresh_status(self) -> None:
         if self.controller.is_busy:
@@ -160,10 +236,28 @@ class SarooView:
             dpg.set_value(self.status_text, f"{type(exc).__name__}: {exc}")
             dpg.configure_item(self.status_text, color=(255, 110, 110))
 
+    def _import_from_sd(self) -> None:
+        if self.controller.is_busy:
+            return
+        card_root = str(dpg.get_value(self.card_root_input) or "").strip()
+        checkpoint = str(dpg.get_value(self.checkpoint_input) or "").strip()
+        session_label = str(dpg.get_value(self.session_input) or "").strip()
+        mode = str(dpg.get_value(self.import_mode_input) or "")
+        try:
+            self.controller.import_mounted_sd_capture(
+                card_root,
+                checkpoint,
+                session_label=session_label or "real-hardware",
+                game_wramh=(mode == "In-game WRAM-H"),
+            )
+        except Exception as exc:
+            dpg.set_value(self.status_text, f"{type(exc).__name__}: {exc}")
+            dpg.configure_item(self.status_text, color=(255, 110, 110))
+
     def _on_controller_event(self, event: SarooControllerEvent) -> None:
         if not self._built:
             return
-        if event.kind in {"checking", "capturing"}:
+        if event.kind in {"checking", "capturing", "importing"}:
             self._set_busy(True)
             dpg.set_value(self.status_text, event.message)
             dpg.configure_item(self.status_text, color=(150, 190, 255))
@@ -185,7 +279,7 @@ class SarooView:
             self._set_busy(False)
             dpg.set_value(
                 self.status_text,
-                "Transport ready." if event.status.available else "No verified SAROO transport is configured yet.",
+                "Transport ready." if event.status.available else "No verified SAROO transport is configured yet. Mounted-SD import remains available.",
             )
             dpg.configure_item(
                 self.status_text,
@@ -194,6 +288,14 @@ class SarooView:
         elif event.kind == "captured" and event.artifact is not None:
             dpg.set_value(self.status_text, event.message)
             dpg.configure_item(self.status_text, color=(80, 220, 160))
+        elif event.kind == "imported" and event.ingest_result is not None:
+            dpg.set_value(self.status_text, event.message)
+            dpg.configure_item(self.status_text, color=(80, 220, 160))
+            dpg.set_value(
+                self.import_details_text,
+                self._format_ingest_result(event.ingest_result),
+            )
+            dpg.configure_item(self.import_details_text, color=(80, 220, 160))
         elif event.kind == "cancelled":
             dpg.set_value(self.status_text, event.message)
             dpg.configure_item(self.status_text, color=(255, 190, 90))
