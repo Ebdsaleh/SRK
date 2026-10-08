@@ -62,6 +62,7 @@ RESIDENT_H = '''#ifndef SRK_RUNTIME_RESIDENT_PROOF_H
 #define SRK_RUNTIME_RESIDENT_PROOF_OK 0
 int srk_runtime_resident_proof_arm(void);
 int srk_runtime_resident_proof_install(void);
+void srk_runtime_resident_proof_vector_entry(void);
 #endif
 '''
 
@@ -70,6 +71,21 @@ RESIDENT_C = '''#include "main.h"
 #define SRK_RUNTIME_RESIDENT_PROOF_CALLBACKS 600u
 int srk_runtime_resident_proof_arm(void) { return 0; }
 int srk_runtime_resident_proof_install(void) { return 0; }
+void srk_runtime_resident_proof_tick(void) { }
+'''
+
+RESIDENT_S = '''\t.text
+\t.global _srk_runtime_resident_proof_vector_entry
+_srk_runtime_resident_proof_vector_entry:
+\tmov.l\tr6,@-r15
+\tmov.l\t.Ltick,r1
+\tjsr\t@r1
+\tnop
+\tmov.l\t@r15+,r6
+\trts
+\tnop
+.Ltick:
+\t.long\t_srk_runtime_resident_proof_tick
 '''
 
 
@@ -118,6 +134,9 @@ class SarooRuntimeResidentProofIntegrationTests(unittest.TestCase):
         (helpers / "srk_runtime_resident_proof.c").write_text(
             RESIDENT_C, encoding="utf-8"
         )
+        (helpers / "srk_runtime_resident_trampoline.S").write_text(
+            RESIDENT_S, encoding="utf-8"
+        )
         return helpers
 
     def test_generates_separate_resident_proof_tree_without_modifying_capture_source(self):
@@ -136,13 +155,11 @@ class SarooRuntimeResidentProofIntegrationTests(unittest.TestCase):
             self.assertEqual((source / "Firm_Saturn" / "game_load.c").read_bytes(), before_game)
             self.assertTrue(result.helper_source_path.is_file())
             self.assertTrue(result.helper_header_path.is_file())
+            self.assertTrue(result.trampoline_source_path.is_file())
             self.assertTrue(result.marker_path.is_file())
-            self.assertEqual(
-                result.makefile_path.read_text(encoding="utf-8").count(
-                    "obj/srk_runtime_resident_proof.o"
-                ),
-                1,
-            )
+            makefile = result.makefile_path.read_text(encoding="utf-8")
+            self.assertEqual(makefile.count("obj/srk_runtime_resident_proof.o"), 1)
+            self.assertEqual(makefile.count("obj/srk_runtime_resident_trampoline.o"), 1)
 
     def test_arm_menu_and_post_1st_read_install_are_wired(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -162,7 +179,7 @@ class SarooRuntimeResidentProofIntegrationTests(unittest.TestCase):
                 game.index("srk_runtime_resident_proof_install()"),
             )
 
-    def test_real_helper_uses_verified_saroo_style_vector_and_persistent_slot(self):
+    def test_real_helper_uses_verified_vector_context_safe_assembly_and_persistent_slot(self):
         helper_dir = (
             Path(__file__).resolve().parents[1]
             / "integrations"
@@ -171,8 +188,10 @@ class SarooRuntimeResidentProofIntegrationTests(unittest.TestCase):
         )
         helper = helper_dir / "srk_runtime_resident_proof.c"
         header = helper_dir / "srk_runtime_resident_proof.h"
+        trampoline = helper_dir / "srk_runtime_resident_trampoline.S"
         text = helper.read_text(encoding="utf-8")
         header_text = header.read_text(encoding="utf-8")
+        trampoline_text = trampoline.read_text(encoding="utf-8")
 
         self.assertIn('#include "srk_runtime_resident_proof.h"', text)
         self.assertIn("SRK_RUNTIME_RESIDENT_PROOF_CALLBACKS 600u", header_text)
@@ -184,6 +203,25 @@ class SarooRuntimeResidentProofIntegrationTests(unittest.TestCase):
         self.assertIn("*(volatile u16*)0x06000910 = 0x0009;", text)
         self.assertIn("srk_runtime_resident_restore_vector();", text)
         self.assertIn("SRK_RUNTIME_RESIDENT_PROOF_SLOT_SIZE * 2", text)
+        self.assertNotIn("void srk_runtime_resident_proof_vector_entry(void)\n{", text)
+
+        self.assertIn(".global _srk_runtime_resident_proof_vector_entry", trampoline_text)
+        self.assertIn("sts.l\tpr,@-r15", trampoline_text)
+        self.assertIn("mov.l\tr0,@-r15", trampoline_text)
+        self.assertIn("mov.l\tr6,@-r15", trampoline_text)
+        self.assertIn("mov.l\tr7,@-r15", trampoline_text)
+        self.assertIn("sts.l\tmach,@-r15", trampoline_text)
+        self.assertIn("sts.l\tmacl,@-r15", trampoline_text)
+        self.assertIn("stc.l\tgbr,@-r15", trampoline_text)
+        self.assertIn("or\t#0xf0,r0", trampoline_text)
+        self.assertIn("_srk_runtime_resident_proof_tick", trampoline_text)
+        self.assertIn("ldc\tr2,sr", trampoline_text)
+        self.assertIn(".long\t0x0600091a", trampoline_text)
+        self.assertLess(
+            trampoline_text.index("mov.l\tr6,@-r15"),
+            trampoline_text.index("mov\tr3,r4"),
+        )
+
         self.assertNotIn("PAD_LT", text)
         self.assertNotIn("PAD_RT", text)
         self.assertNotIn("TVMD", text)
@@ -211,7 +249,8 @@ class SarooRuntimeResidentProofIntegrationTests(unittest.TestCase):
 
     def test_inspector_reports_proven_three_stage_artifact(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            card = Path(temp_dir) / "CARD"
+            root = Path(temp_dir)
+            card = root / "CARD"
             saroo = card / "SAROO"
             saroo.mkdir(parents=True)
             payload = (
@@ -240,10 +279,14 @@ class SarooRuntimeResidentProofIntegrationTests(unittest.TestCase):
             )
             self.assertTrue((real_helpers / "srk_runtime_resident_proof.c").is_file())
             self.assertTrue((real_helpers / "srk_runtime_resident_proof.h").is_file())
+            self.assertTrue((real_helpers / "srk_runtime_resident_trampoline.S").is_file())
 
             output = root / "cli-out"
             self.assertEqual(prepare_main([str(source), str(output)]), 0)
             self.assertTrue((output / "SRK_RUNTIME_RESIDENT_PROOF.txt").is_file())
+            self.assertTrue(
+                (output / "Firm_Saturn" / "srk_runtime_resident_trampoline.S").is_file()
+            )
 
             card = root / "CARD"
             saroo = card / "SAROO"
