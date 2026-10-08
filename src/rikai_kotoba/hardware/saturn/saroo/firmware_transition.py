@@ -6,6 +6,12 @@ differs from that original baseline and may also contain SRK's reviewed Work RAM
 capture outputs. This module permits only those narrow research paths while
 continuing to require every unrelated card entry to match the baseline.
 
+SAROO's own ``SAROO/SS_SAVE.BIN`` is a legitimate mutable save container. It is
+*not* exempted by default. A caller may explicitly review one exact save state by
+supplying both its current byte size and SHA-256. That exact state is then
+preserved off-card, admitted through the pre/post whole-card guard, and required
+to remain byte-for-byte unchanged during the firmware transition.
+
 Before replacement, the currently installed firmware is preserved off-card by
 the existing content-addressed backup primitive. After replacement, the same
 narrow research-output allowance is re-verified.
@@ -19,6 +25,8 @@ import os
 
 from .deployment import (
     SarooDeploymentApplyResult,
+    _copy_new_verified,
+    _hash_file,
     apply_saroo_firmware,
     restore_saroo_firmware,
 )
@@ -36,7 +44,11 @@ SAROO_TRANSITION_RESEARCH_OUTPUTS = (
     "SAROO/SRK_GAME_WRAMH.BIN",
 )
 _RESEARCH_CAPTURE_SIZE = 0x00100000
-_ALLOWED_TRANSITION_PATHS = (_AUTHORISED_FIRMWARE_PATH,) + SAROO_TRANSITION_RESEARCH_OUTPUTS
+_SAROO_SAVE_PATH = "SAROO/SS_SAVE.BIN"
+_SAROO_SAVE_BLOCK_SIZE = 0x00010000
+_BASE_ALLOWED_TRANSITION_PATHS = (
+    _AUTHORISED_FIRMWARE_PATH,
+) + SAROO_TRANSITION_RESEARCH_OUTPUTS
 
 
 @dataclass(frozen=True)
@@ -46,6 +58,11 @@ class SarooGuardedTransitionResult:
     guard_manifest_sha256: str
     pre_guard_valid: bool
     post_guard_valid: bool
+    reviewed_save_path: Path | None = None
+    reviewed_save_backup_path: Path | None = None
+    reviewed_save_sha256: str | None = None
+    reviewed_save_size: int | None = None
+    reviewed_save_backup_reused: bool = False
 
 
 def _validated_sha256(value: str, *, label: str) -> str:
@@ -55,6 +72,14 @@ def _validated_sha256(value: str, *, label: str) -> str:
             f"{label} must be a full 64-character SHA-256 hex digest"
         )
     return text
+
+
+def _inside(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
 
 
 def _require_card_firmware_hash(
@@ -101,6 +126,84 @@ def _validate_research_outputs(card_root: os.PathLike[str] | str) -> None:
             )
 
 
+def _validate_reviewed_save(
+    card_root: os.PathLike[str] | str,
+    *,
+    expected_sha256: str | None,
+    expected_size: int | None,
+) -> tuple[Path | None, str | None, int | None]:
+    """Validate one explicitly reviewed exact ``SS_SAVE.BIN`` state.
+
+    The absence of both expectations means the save file receives no guard
+    exemption. Supplying only one expectation is rejected. SAROO stores this
+    container as one 64 KiB index block followed by 64 KiB per-game save blocks,
+    so reviewed sizes must be positive multiples of 64 KiB.
+    """
+
+    if expected_sha256 is None and expected_size is None:
+        return None, None, None
+    if expected_sha256 is None or expected_size is None:
+        raise SarooGuardedDeploymentError(
+            "reviewed SS_SAVE.BIN requires both expected SHA-256 and expected size"
+        )
+    if isinstance(expected_size, bool) or not isinstance(expected_size, int):
+        raise SarooGuardedDeploymentError("expected SS_SAVE.BIN size must be an integer")
+    if expected_size < _SAROO_SAVE_BLOCK_SIZE or expected_size % _SAROO_SAVE_BLOCK_SIZE:
+        raise SarooGuardedDeploymentError(
+            "expected SS_SAVE.BIN size must be a positive 64 KiB multiple"
+        )
+
+    expected_hash = _validated_sha256(
+        expected_sha256,
+        label="expected SS_SAVE.BIN hash",
+    )
+    card = Path(card_root).expanduser().resolve(strict=False)
+    save_path = card / Path(_SAROO_SAVE_PATH)
+    if not save_path.is_file():
+        raise SarooGuardedDeploymentError(
+            f"reviewed SAROO save container is missing or not a file: {_SAROO_SAVE_PATH}"
+        )
+    try:
+        actual_size = save_path.stat().st_size
+    except OSError as exc:
+        raise SarooGuardedDeploymentError(
+            f"cannot inspect reviewed SAROO save container {_SAROO_SAVE_PATH}: {exc}"
+        ) from exc
+    if actual_size != expected_size:
+        raise SarooGuardedDeploymentError(
+            "reviewed SS_SAVE.BIN size mismatch "
+            f"(expected {expected_size}, found {actual_size})"
+        )
+    actual_hash = _hash_file(save_path, error_type=SarooGuardedDeploymentError)
+    if actual_hash != expected_hash:
+        raise SarooGuardedDeploymentError(
+            "reviewed SS_SAVE.BIN hash mismatch "
+            f"(expected {expected_hash}, found {actual_hash})"
+        )
+    return save_path, expected_hash, expected_size
+
+
+def _preserve_reviewed_save(
+    save_path: Path,
+    backup_root: os.PathLike[str] | str,
+    expected_sha256: str,
+) -> tuple[Path, bool]:
+    card_root = save_path.parents[1].resolve(strict=False)
+    backup = Path(backup_root).expanduser().resolve(strict=False)
+    if _inside(backup, card_root):
+        raise SarooGuardedDeploymentError(
+            "SS_SAVE.BIN preservation directory must be outside the mounted SAROO card"
+        )
+    destination = backup / f"SS_SAVE_{expected_sha256[:16]}.BIN"
+    reused = _copy_new_verified(
+        save_path,
+        destination,
+        expected_sha256,
+        error_type=SarooGuardedDeploymentError,
+    )
+    return destination, reused
+
+
 def transition_saroo_firmware_guarded(
     card_root: os.PathLike[str] | str,
     candidate_firmware: os.PathLike[str] | str,
@@ -110,6 +213,8 @@ def transition_saroo_firmware_guarded(
     expected_guard_manifest_sha256: str,
     expected_current_sha256: str,
     expected_candidate_sha256: str,
+    expected_ss_save_sha256: str | None = None,
+    expected_ss_save_size: int | None = None,
 ) -> SarooGuardedTransitionResult:
     """Replace one accepted research firmware with another under the card guard.
 
@@ -117,6 +222,11 @@ def transition_saroo_firmware_guarded(
     ``SAROO/ssfirm.bin`` and the exact reviewed SRK Work RAM output paths. The
     caller must provide the exact hash of the currently accepted firmware. Any
     present SRK Work RAM output must also be exactly 1 MiB before exemption.
+
+    ``SAROO/SS_SAVE.BIN`` remains protected by default. It is exempted only when
+    the caller supplies both its exact current SHA-256 and exact current size.
+    That reviewed state is preserved off-card before the firmware write and must
+    remain unchanged through the post-transition guard.
     """
 
     current_expected = _validated_sha256(
@@ -132,18 +242,36 @@ def transition_saroo_firmware_guarded(
             "current and candidate firmware hashes are identical; transition is unnecessary"
         )
 
+    reviewed_save_path, reviewed_save_hash, reviewed_save_size = _validate_reviewed_save(
+        card_root,
+        expected_sha256=expected_ss_save_sha256,
+        expected_size=expected_ss_save_size,
+    )
+    allowed_transition_paths = _BASE_ALLOWED_TRANSITION_PATHS
+    if reviewed_save_path is not None:
+        allowed_transition_paths += (_SAROO_SAVE_PATH,)
+
     _validate_research_outputs(card_root)
     manifest, manifest_hash, pre_guard = _guard_check(
         card_root,
         guard_manifest,
         expected_guard_manifest_sha256,
-        allowed_changed_paths=_ALLOWED_TRANSITION_PATHS,
+        allowed_changed_paths=allowed_transition_paths,
     )
     _require_card_firmware_hash(
         card_root,
         current_expected,
         context="pre-transition validation",
     )
+
+    reviewed_save_backup_path: Path | None = None
+    reviewed_save_backup_reused = False
+    if reviewed_save_path is not None and reviewed_save_hash is not None:
+        reviewed_save_backup_path, reviewed_save_backup_reused = _preserve_reviewed_save(
+            reviewed_save_path,
+            backup_root,
+            reviewed_save_hash,
+        )
 
     try:
         deployment = apply_saroo_firmware(
@@ -156,6 +284,11 @@ def transition_saroo_firmware_guarded(
     except Exception as exc:
         try:
             _validate_research_outputs(card_root)
+            _validate_reviewed_save(
+                card_root,
+                expected_sha256=reviewed_save_hash,
+                expected_size=reviewed_save_size,
+            )
             _require_card_firmware_hash(
                 card_root,
                 current_expected,
@@ -165,7 +298,7 @@ def transition_saroo_firmware_guarded(
                 card_root,
                 manifest,
                 manifest_hash,
-                allowed_changed_paths=_ALLOWED_TRANSITION_PATHS,
+                allowed_changed_paths=allowed_transition_paths,
             )
         except Exception as recovery_exc:
             raise SarooGuardedDeploymentError(
@@ -178,6 +311,11 @@ def transition_saroo_firmware_guarded(
 
     try:
         _validate_research_outputs(card_root)
+        _validate_reviewed_save(
+            card_root,
+            expected_sha256=reviewed_save_hash,
+            expected_size=reviewed_save_size,
+        )
         _require_card_firmware_hash(
             card_root,
             candidate_expected,
@@ -187,7 +325,7 @@ def transition_saroo_firmware_guarded(
             card_root,
             manifest,
             manifest_hash,
-            allowed_changed_paths=_ALLOWED_TRANSITION_PATHS,
+            allowed_changed_paths=allowed_transition_paths,
         )
     except Exception as guard_exc:
         rollback_state: str
@@ -200,6 +338,11 @@ def transition_saroo_firmware_guarded(
                 archive_root=deployment.backup_path.parent,
             )
             _validate_research_outputs(card_root)
+            _validate_reviewed_save(
+                card_root,
+                expected_sha256=reviewed_save_hash,
+                expected_size=reviewed_save_size,
+            )
             _require_card_firmware_hash(
                 card_root,
                 current_expected,
@@ -209,7 +352,7 @@ def transition_saroo_firmware_guarded(
                 card_root,
                 manifest,
                 manifest_hash,
-                allowed_changed_paths=_ALLOWED_TRANSITION_PATHS,
+                allowed_changed_paths=allowed_transition_paths,
             )
             rollback_state = "verified accepted-firmware rollback succeeded"
         except Exception as rollback_exc:
@@ -227,4 +370,9 @@ def transition_saroo_firmware_guarded(
         guard_manifest_sha256=manifest_hash,
         pre_guard_valid=pre_guard.valid,
         post_guard_valid=post_guard.valid,
+        reviewed_save_path=reviewed_save_path,
+        reviewed_save_backup_path=reviewed_save_backup_path,
+        reviewed_save_sha256=reviewed_save_hash,
+        reviewed_save_size=reviewed_save_size,
+        reviewed_save_backup_reused=reviewed_save_backup_reused,
     )
