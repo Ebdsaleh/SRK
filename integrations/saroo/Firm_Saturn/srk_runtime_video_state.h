@@ -4,8 +4,10 @@
 /*
  * SRK runtime-video preservation contract.
  *
- * This tranche captures only the VDP2 color-offset register set that a later
- * visible canary may use.  It performs no rendering and writes no VDP state.
+ * SRK reserves only the VDP2 color-offset register family for the first
+ * visible runtime canary.  The caller must capture state before applying the
+ * canary and restore that exact snapshot before returning normal title control.
+ * No VRAM, CRAM, VDP1, SD-card, or capture resources are owned here.
  */
 
 typedef struct {
@@ -22,5 +24,7 @@ typedef struct {
 
 void srk_runtime_video_state_reset(SRK_RUNTIME_VIDEO_STATE *state);
 int srk_runtime_video_state_capture(SRK_RUNTIME_VIDEO_STATE *state);
+int srk_runtime_video_state_restore(const SRK_RUNTIME_VIDEO_STATE *state);
+int srk_runtime_video_canary_apply(const SRK_RUNTIME_VIDEO_STATE *state);
 
 #endif
