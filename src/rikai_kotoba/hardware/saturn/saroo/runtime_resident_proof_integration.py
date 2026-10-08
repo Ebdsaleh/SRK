@@ -1,9 +1,15 @@
-"""Prepare a persistent resident-runtime proof using SAROO's BIOS trampoline shape.
+"""Prepare a persistent resident-runtime proof using a verified BIOS trampoline.
 
 This diagnostic starts from the hardware-validated SRK capture-menu tree, not
 from the later controller-hook experiments.  It adds one title-neutral menu arm
-action and installs an SRK-owned version of SAROO's established cheat-style BIOS
-interrupt trampoline after ``patch_game()`` has loaded the title's 1ST_READ.
+action and installs an SRK-owned BIOS interrupt trampoline after ``patch_game()``
+has loaded the title's 1ST_READ.
+
+R7 proved that the hook could be armed and installed, but its C entry path
+clobbered BIOS-live registers before the original handler had saved them.  The
+current integration therefore adds a dedicated SH-2 assembly trampoline that
+preserves the live pre-handler context, masks interrupt nesting around the SRK C
+callback, restores the BIOS-selected SR, and resumes at the original continuation.
 
 The runtime callback does not inspect controller input or touch the VDP.  A fixed
 96-byte proof file is created while arming.  Installation appends a second
@@ -38,11 +44,13 @@ class SarooRuntimeResidentProofIntegrationResult:
     game_load_path: Path
     helper_source_path: Path
     helper_header_path: Path
+    trampoline_source_path: Path
     marker_path: Path
 
 
 _MAKEFILE_CAPTURE_OBJECT = "\t\tobj/srk_capture_helper.o  \\\n"
 _MAKEFILE_RESIDENT_OBJECT = "\t\tobj/srk_runtime_resident_proof.o  \\\n"
+_MAKEFILE_TRAMPOLINE_OBJECT = "\t\tobj/srk_runtime_resident_trampoline.o  \\\n"
 
 _MAIN_CAPTURE_INCLUDE = '#include "srk_capture_helper.h"\n'
 _MAIN_RESIDENT_INCLUDE = '#include "srk_runtime_resident_proof.h"\n'
@@ -157,7 +165,12 @@ def prepare_runtime_resident_proof_tree(
     helpers = _canonical(helper_root) if helper_root is not None else default_helper_root()
     resident_source = helpers / "srk_runtime_resident_proof.c"
     resident_header = helpers / "srk_runtime_resident_proof.h"
-    if not resident_source.is_file() or not resident_header.is_file():
+    trampoline_source = helpers / "srk_runtime_resident_trampoline.S"
+    if (
+        not resident_source.is_file()
+        or not resident_header.is_file()
+        or not trampoline_source.is_file()
+    ):
         raise SarooRuntimeResidentProofIntegrationError(
             f"SRK resident-runtime proof helpers are unavailable beneath: {helpers}"
         )
@@ -166,7 +179,11 @@ def prepare_runtime_resident_proof_tree(
     main_text = _read_text(main_path)
     game_text = _read_text(game_load_path)
 
-    if _MAKEFILE_RESIDENT_OBJECT in makefile_text or _MAIN_RESIDENT_INCLUDE in main_text:
+    if (
+        _MAKEFILE_RESIDENT_OBJECT in makefile_text
+        or _MAKEFILE_TRAMPOLINE_OBJECT in makefile_text
+        or _MAIN_RESIDENT_INCLUDE in main_text
+    ):
         raise SarooRuntimeResidentProofIntegrationError(
             "source tree already contains SRK resident-runtime proof integration"
         )
@@ -187,7 +204,9 @@ def prepare_runtime_resident_proof_tree(
 
     patched_makefile = makefile_text.replace(
         _MAKEFILE_CAPTURE_OBJECT,
-        _MAKEFILE_CAPTURE_OBJECT + _MAKEFILE_RESIDENT_OBJECT,
+        _MAKEFILE_CAPTURE_OBJECT
+        + _MAKEFILE_RESIDENT_OBJECT
+        + _MAKEFILE_TRAMPOLINE_OBJECT,
         1,
     )
     patched_main = _replace_once(
@@ -236,12 +255,14 @@ def prepare_runtime_resident_proof_tree(
         target_game = target_firm / "game_load.c"
         target_resident_source = target_firm / resident_source.name
         target_resident_header = target_firm / resident_header.name
+        target_trampoline_source = target_firm / trampoline_source.name
 
         _write_text(target_makefile, patched_makefile)
         _write_text(target_main, patched_main)
         _write_text(target_game, patched_game)
         shutil.copy2(resident_source, target_resident_source)
         shutil.copy2(resident_header, target_resident_header)
+        shutil.copy2(trampoline_source, target_trampoline_source)
 
         marker = output / "SRK_RUNTIME_RESIDENT_PROOF.txt"
         _write_text(
@@ -250,10 +271,12 @@ def prepare_runtime_resident_proof_tree(
             f"Source capture-menu tree: {source}\n"
             "The source capture-menu tree was not modified.\n"
             "Arm: SRK Arm Resident Proof in SAROO menu.\n"
-            "Hook: SRK-owned form of SAROO's BIOS interrupt cheat trampoline.\n"
+            "Hook: verified BIOS SCU interrupt trampoline with SRK-owned SH-2 wrapper.\n"
             "Install point: immediately after patch_game() once 1ST_READ is loaded.\n"
             "Vector: 0x0600090C; return: 0x0600091A.\n"
             "Vector shape is verified before patching; unexpected BIOS code is rejected.\n"
+            "Context safety: preserve BIOS-live r0/r6/r7 and PR/GBR/MACH/MACL.\n"
+            "Interrupt safety: mask nesting only while the SRK C callback executes.\n"
             "Persistent evidence: /SAROO/SRK_RUNTIME_PROOF.BIN (96 bytes).\n"
             "Slots: armed, installed, proven. Proven is written on callback 600.\n"
             "Time source: SAROO FPGA SS_TIMER; slots store raw 32-bit hardware ticks.\n"
@@ -273,5 +296,6 @@ def prepare_runtime_resident_proof_tree(
         game_load_path=output / "Firm_Saturn" / "game_load.c",
         helper_source_path=output / "Firm_Saturn" / resident_source.name,
         helper_header_path=output / "Firm_Saturn" / resident_header.name,
+        trampoline_source_path=output / "Firm_Saturn" / trampoline_source.name,
         marker_path=output / "SRK_RUNTIME_RESIDENT_PROOF.txt",
     )
