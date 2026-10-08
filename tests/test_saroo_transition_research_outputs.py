@@ -95,6 +95,38 @@ class SarooTransitionResearchOutputTests(unittest.TestCase):
             self.assertEqual((saroo / "ssfirm.bin").read_bytes(), candidate_data)
             self.assertEqual((saroo / "SRK_RUNTIME_PROOF.BIN").read_bytes(), proof)
 
+    def test_valid_runtime_input_proof_does_not_block_next_transition(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original = b"original"
+            accepted = b"accepted"
+            candidate_data = b"next"
+            card = self._card(root, original)
+            manifest = root / "baseline.json"
+            manifest_result = create_saroo_card_inventory(card, manifest, hash_max_bytes=64)
+            saroo = card / "SAROO"
+            (saroo / "ssfirm.bin").write_bytes(accepted)
+            proof = b"SRKI\x01\x01" + bytes(90)
+            self.assertEqual(len(proof), 96)
+            (saroo / "SRK_RUNTIME_INPUT_PROOF.BIN").write_bytes(proof)
+            candidate = root / "candidate.bin"
+            candidate.write_bytes(candidate_data)
+
+            result = transition_saroo_firmware_guarded(
+                card,
+                candidate,
+                root / "backups",
+                manifest,
+                expected_guard_manifest_sha256=manifest_result.manifest_sha256,
+                expected_current_sha256=_sha(accepted),
+                expected_candidate_sha256=_sha(candidate_data),
+            )
+
+            self.assertTrue(result.pre_guard_valid)
+            self.assertTrue(result.post_guard_valid)
+            self.assertEqual((saroo / "ssfirm.bin").read_bytes(), candidate_data)
+            self.assertEqual((saroo / "SRK_RUNTIME_INPUT_PROOF.BIN").read_bytes(), proof)
+
     def test_wrong_sized_capture_output_blocks_transition(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -136,6 +168,35 @@ class SarooTransitionResearchOutputTests(unittest.TestCase):
             saroo = card / "SAROO"
             (saroo / "ssfirm.bin").write_bytes(accepted)
             (saroo / "SRK_RUNTIME_PROOF.BIN").write_bytes(b"short")
+            candidate = root / "candidate.bin"
+            candidate.write_bytes(candidate_data)
+
+            with self.assertRaisesRegex(SarooGuardedDeploymentError, "unexpected size"):
+                transition_saroo_firmware_guarded(
+                    card,
+                    candidate,
+                    root / "backups",
+                    manifest,
+                    expected_guard_manifest_sha256=manifest_result.manifest_sha256,
+                    expected_current_sha256=_sha(accepted),
+                    expected_candidate_sha256=_sha(candidate_data),
+                )
+
+            self.assertEqual((saroo / "ssfirm.bin").read_bytes(), accepted)
+            self.assertFalse((root / "backups").exists())
+
+    def test_wrong_sized_runtime_input_proof_blocks_transition(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original = b"original"
+            accepted = b"accepted"
+            candidate_data = b"next"
+            card = self._card(root, original)
+            manifest = root / "baseline.json"
+            manifest_result = create_saroo_card_inventory(card, manifest, hash_max_bytes=64)
+            saroo = card / "SAROO"
+            (saroo / "ssfirm.bin").write_bytes(accepted)
+            (saroo / "SRK_RUNTIME_INPUT_PROOF.BIN").write_bytes(b"short")
             candidate = root / "candidate.bin"
             candidate.write_bytes(candidate_data)
 
