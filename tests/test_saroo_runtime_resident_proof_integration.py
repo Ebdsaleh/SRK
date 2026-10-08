@@ -163,16 +163,19 @@ class SarooRuntimeResidentProofIntegrationTests(unittest.TestCase):
             )
 
     def test_real_helper_uses_verified_saroo_style_vector_and_persistent_slot(self):
-        helper = (
+        helper_dir = (
             Path(__file__).resolve().parents[1]
             / "integrations"
             / "saroo"
             / "Firm_Saturn"
-            / "srk_runtime_resident_proof.c"
         )
+        helper = helper_dir / "srk_runtime_resident_proof.c"
+        header = helper_dir / "srk_runtime_resident_proof.h"
         text = helper.read_text(encoding="utf-8")
+        header_text = header.read_text(encoding="utf-8")
 
-        self.assertIn("SRK_RUNTIME_RESIDENT_PROOF_CALLBACKS 600u", text)
+        self.assertIn('#include "srk_runtime_resident_proof.h"', text)
+        self.assertIn("SRK_RUNTIME_RESIDENT_PROOF_CALLBACKS 600u", header_text)
         self.assertIn("SRK_RUNTIME_RESIDENT_PROOF_FILE_SIZE   96", text)
         self.assertIn("0x0600090cu", text)
         self.assertIn("0x0600091au", text)
