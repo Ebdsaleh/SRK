@@ -175,8 +175,13 @@ class SarooRuntimeModalRedIntegrationTests(unittest.TestCase):
         self.assertIn("SRK_RUNTIME_MODAL_RED_MAX_FRAMES 600", text)
         self.assertIn("srk_runtime_video_canary_apply_solid_red(video_state)", text)
         self.assertIn("refresh_controller();", text)
-        self.assertLess(text.index("refresh_controller();"), text.index("*controller_buttons"))
-        self.assertIn("srk_runtime_input_sample(input_state, buttons)", text)
+        controller_read = "buttons = (unsigned int)(*controller_buttons);"
+        self.assertIn(controller_read, text)
+        self.assertLess(text.index("refresh_controller();"), text.index(controller_read))
+        self.assertLess(
+            text.index(controller_read),
+            text.index("srk_runtime_input_sample(input_state, buttons)"),
+        )
         self.assertIn("SRK_RUNTIME_INPUT_OPEN_MENU", text)
         self.assertIn("srk_runtime_video_canary_restore(video_state)", text)
         self.assertIn("srk_runtime_menu_state_reset(menu_state)", text)
