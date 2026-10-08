@@ -81,16 +81,44 @@ running title
 The first visible menu must contain **Resume only**. Capture and recording
 commands remain later checkpoints.
 
+## Read-only VDP2 preservation checkpoint
+
+Before SRK writes any video register, the next generated firmware stage snapshots
+only the VDP2 color-offset register family into firmware-owned state when the
+runtime menu opens:
+
+```text
+CLOFEN
+CLOFSL
+COAR
+COAG
+COAB
+COBR
+COBG
+COBB
+```
+
+These are the exact resources reserved for a later low-impact visual canary.
+The snapshot stage itself is deliberately read-only: it does not write those
+registers, VDP1 state, VDP2 VRAM, or VDP2 CRAM. On `Resume`, the in-memory
+snapshot is simply discarded because nothing has yet been changed.
+
+This checkpoint exists so register observation can be compiled and, if desired,
+physically validated separately from register modification. A future visible
+canary must not silently expand this resource set; any additional register or
+memory ownership must be documented and preserved first.
+
 ## Planned validation order
 
 1. Runtime-menu state machine, independent of video hardware.
 2. Exact VDP/resource preservation contract.
-3. Minimal visible shell with `Resume` only.
-4. Physical enter/resume validation on real hardware.
-5. `Capture Both`.
-6. Individual WRAM-H / WRAM-L captures.
-7. Mark / metadata.
-8. Bounded recording controls.
+3. Read-only VDP2 preservation snapshot.
+4. Minimal visible canary / shell with `Resume` only.
+5. Physical enter/resume validation on real hardware.
+6. `Capture Both`.
+7. Individual WRAM-H / WRAM-L captures.
+8. Mark / metadata.
+9. Bounded recording controls.
 
 Each stage must remain title-neutral in public SRK code and should be promoted
 only after the preceding stage has been physically accepted where hardware is
