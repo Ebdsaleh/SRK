@@ -16,6 +16,7 @@ extern "C" {
 
 
 typedef signed short   srk_s16;
+typedef signed long    srk_s32;
 typedef unsigned char  srk_u8;
 typedef unsigned short srk_u16;
 typedef unsigned long  srk_u32;
@@ -60,6 +61,15 @@ typedef struct SRK_DIAG_VDP1_QUAD {
 } SRK_DIAG_VDP1_QUAD;
 
 
+#define SRK_DIAG_VDP1_MAX_QUADS 6
+
+
+typedef struct SRK_DIAG_VDP1_SCENE {
+    SRK_DIAG_VDP1_QUAD quad[SRK_DIAG_VDP1_MAX_QUADS];
+    unsigned int count;
+} SRK_DIAG_VDP1_SCENE;
+
+
 typedef struct SRK_DIAG_VDP1_STATUS {
     srk_u16 edsr;
     srk_u16 lopr;
@@ -95,8 +105,13 @@ typedef struct SRK_DIAG_HOST {
      * VDP1 diagnostics submit logical geometry through the host boundary.
      * Command-table layout, registers, framebuffer state, and RGB encoding remain
      * host responsibilities so the reusable core contains no Saturn addresses.
+     *
+     * Stage 1 uses present_vdp1_quad. Stage 2 adds the bounded scene callback so
+     * a title-neutral core can submit up to six already ordered cube faces while
+     * retaining the physically proven single-quad path as a recovery reference.
      */
     int (*present_vdp1_quad)(void *context, const SRK_DIAG_VDP1_QUAD *quad);
+    int (*present_vdp1_scene)(void *context, const SRK_DIAG_VDP1_SCENE *scene);
     void (*hide_vdp1)(void *context);
     int (*read_vdp1_status)(void *context, SRK_DIAG_VDP1_STATUS *status);
 
