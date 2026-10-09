@@ -48,6 +48,8 @@ class SaturnStandaloneProjectResult:
 _DIAGNOSTIC_FILES = (
     "srk_diag_app.c",
     "srk_diag_app.h",
+    "srk_diag_audio.c",
+    "srk_diag_audio.h",
     "srk_diag_flight_recorder.c",
     "srk_diag_flight_recorder.h",
     "srk_diag_host.h",
@@ -62,6 +64,8 @@ _DIAGNOSTIC_FILES = (
 )
 
 _STANDALONE_FILES = (
+    "srk_saturn_audio.c",
+    "srk_saturn_audio.h",
     "srk_saturn_host.c",
     "srk_saturn_host.h",
     "srk_saturn_main.c",
