@@ -1,14 +1,14 @@
-"""Generate SRK's first isolated standalone Sega Saturn diagnostics project.
+"""Generate SRK's isolated standalone Sega Saturn diagnostics project.
 
 The generated tree is deliberately separate from the user's installed Saturn
-SDK/examples.  It combines SRK-owned standalone host/startup/linker sources,
-the reusable diagnostics core, one reviewed local bitmap-font asset, and a
-patched copy of a caller-supplied Saturn IP.BIN.  Source SDK/example trees are
-read only.
+SDK/examples. It combines SRK-owned standalone host/startup/linker sources, the
+reusable diagnostics core, one reviewed local bitmap-font asset, and a patched
+copy of a caller-supplied Saturn IP.BIN. Source SDK/example trees are read only.
 
-Generation does not compile, link, package, execute, or modify PATH.  The output
-contains a deterministic ``build.bat`` that invokes the explicitly discovered
-SH-ELF and mkisofs executables when the user chooses to build it.
+Generation does not compile, link, package, execute, or modify PATH. The
+preferred build path is SRK's Python-native standalone builder. ``build.bat`` is
+only a thin convenience wrapper around that Python command; it contains no
+compiler/linker/package recipe of its own.
 """
 
 from __future__ import annotations
@@ -64,15 +64,6 @@ _STANDALONE_FILES = (
     "srk_saturn_startup.S",
 )
 
-_C_SOURCES = (
-    "srk_saturn_main.c",
-    "srk_saturn_host.c",
-    "srk_diag_app.c",
-    "srk_diag_input.c",
-    "srk_diag_menu.c",
-    "srk_diag_flight_recorder.c",
-)
-
 
 def _canonical(path: os.PathLike[str] | str) -> Path:
     return Path(path).expanduser().resolve(strict=False)
@@ -101,80 +92,14 @@ def _require_file(path: Path, description: str) -> Path:
     return path
 
 
-def _bat_path(path: Path) -> str:
-    return str(path).replace("%", "%%")
-
-
-def _build_script(gcc: Path, assembler: Path, iso_builder: Path) -> str:
-    compile_flags = "-Wall -Werror -m2 -O0 -ffreestanding -fno-builtin -Isrc"
+def _build_script() -> str:
     lines = [
         "@echo off",
         "setlocal",
-        "pushd \"%~dp0\"",
-        "if errorlevel 1 exit /b 1",
-        "if not exist build mkdir build",
-        "if errorlevel 1 goto :fail",
-        "if not exist cd mkdir cd",
-        "if errorlevel 1 goto :fail",
-        "",
-        "echo ============================================================",
-        "echo  SRK Saturn Diagnostics R1 build",
-        "echo ============================================================",
+        "python -m rikai_kotoba.tools.saturn_standalone_build --project \"%~dp0\"",
+        "exit /b %errorlevel%",
         "",
     ]
-
-    gcc_text = _bat_path(gcc)
-    as_text = _bat_path(assembler)
-    mkisofs_text = _bat_path(iso_builder)
-
-    for source in _C_SOURCES:
-        obj = Path(source).stem + ".o"
-        lines.extend(
-            [
-                f'"{gcc_text}" -c "src\\{source}" -o "build\\{obj}" {compile_flags}',
-                "if errorlevel 1 goto :fail",
-            ]
-        )
-
-    lines.extend(
-        [
-            f'"{as_text}" "src\\srk_saturn_startup.S" -o "build\\srk_saturn_startup.o"',
-            "if errorlevel 1 goto :fail",
-            "",
-            f'"{gcc_text}" -nostdlib -m2 -Wl,--script,srk_saturn.ld -Wl,-Map,build\\srk_diag.map '
-            ' -o "build\\srk_diag.bin" '
-            '"build\\srk_saturn_startup.o" '
-            '"build\\srk_saturn_main.o" '
-            '"build\\srk_saturn_host.o" '
-            '"build\\srk_diag_app.o" '
-            '"build\\srk_diag_input.o" '
-            '"build\\srk_diag_menu.o" '
-            '"build\\srk_diag_flight_recorder.o" -lgcc',
-            "if errorlevel 1 goto :fail",
-            "copy /Y \"build\\srk_diag.bin\" \"cd\\0.bin\" >nul",
-            "if errorlevel 1 goto :fail",
-            "",
-            f'"{mkisofs_text}" -quiet -sysid "SEGA SATURN" -volid "SRKDIAG" '
-            '-volset "SRKDIAG" -publisher "SRK PROJECT" -preparer "SRK" '
-            '-appid "SRK SATURN DIAGNOSTICS" -generic-boot "IP.BIN" '
-            '-full-iso9660-filenames -o "build\\srk_diag.iso" "cd"',
-            "if errorlevel 1 goto :fail",
-            "",
-            "echo.",
-            "echo Build complete.",
-            "echo   Binary: build\\srk_diag.bin",
-            "echo   ISO   : build\\srk_diag.iso",
-            "popd",
-            "exit /b 0",
-            "",
-            ":fail",
-            "echo.",
-            "echo SRK standalone Saturn build FAILED.",
-            "popd",
-            "exit /b 1",
-            "",
-        ]
-    )
     return "\r\n".join(lines)
 
 
@@ -284,14 +209,18 @@ def prepare_saturn_standalone_project(
         shutil.copy2(linker_source, temp_root / "srk_saturn.ld")
 
         (temp_root / "IP.BIN").write_bytes(patched_ip)
-        _write_text(temp_root / "build.bat", _build_script(gcc, assembler, iso_builder))
+        _write_text(temp_root / "build.bat", _build_script())
         _write_text(
             temp_root / "README_BUILD.txt",
             "SRK Saturn Diagnostics R1\n"
             "=========================\n\n"
             "This tree was generated separately from the installed Saturn SDK/example tree.\n"
             "The source template and IP.BIN were read only.\n\n"
-            "Run build.bat to compile/link and create build\\srk_diag.iso.\n"
+            "Preferred build (from the SRK virtual environment):\n"
+            "  python -m rikai_kotoba.tools.saturn_standalone_build --project <this-directory>\n\n"
+            "build.bat is only a thin wrapper around the same Python-native command.\n"
+            "Python orchestrates the recorded SH-ELF gcc/as and mkisofs executables directly;\n"
+            "GNU Make and shell build recipes are not used.\n\n"
             "The first hardware milestone performs no SD writes, dumps, audio, or 3D tests.\n",
         )
 
@@ -309,6 +238,7 @@ def prepare_saturn_standalone_project(
         manifest_data = {
             "schema": "srk.saturn.standalone-project.v1",
             "mode": "standalone-master",
+            "build_orchestration": "python-native",
             "policy": {
                 "source_trees_read_only": True,
                 "build_executed": False,
