@@ -97,6 +97,35 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("state->playing = 1;", audio_c)
         self.assertIn("UP therefore remains a selector, not a play command", audio_c)
 
+    def test_stage3_sweep_reuses_reviewed_tones_and_volume_levels(self):
+        audio_h = (DIAG / "srk_diag_audio.h").read_text(encoding="utf-8")
+        audio_c = (DIAG / "srk_diag_audio.c").read_text(encoding="utf-8")
+        backend = (STANDALONE / "srk_saturn_audio.c").read_text(encoding="utf-8")
+
+        self.assertIn("SRK_DIAG_AUDIO_SWEEP_STEP_COUNT 48", audio_h)
+        self.assertIn("SRK_DIAG_AUDIO_SWEEP_FRAMES_PER_STEP 15", audio_h)
+        self.assertIn("unsigned int sweep_frame", audio_h)
+        self.assertIn("int sweep_active", audio_h)
+        self.assertIn("sweep_toggle", audio_c)
+        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_DOWN", audio_c)
+        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_B", audio_c)
+        self.assertIn("srk_diag_audio_enter_sweep(state)", audio_c)
+        self.assertIn("srk_diag_audio_leave_sweep(state)", audio_c)
+        self.assertIn("srk_diag_audio_advance_sweep(state)", audio_c)
+        self.assertIn("state->tone = SRK_DIAG_AUDIO_TONE_LOW", audio_c)
+        self.assertIn("state->tone = SRK_DIAG_AUDIO_TONE_MID", audio_c)
+        self.assertIn("state->tone = SRK_DIAG_AUDIO_TONE_HIGH", audio_c)
+        self.assertIn("state->volume = (srk_u8)level", audio_c)
+        self.assertIn("state->volume = (srk_u8)(7u - level)", audio_c)
+        self.assertIn("state->pan = SRK_DIAG_AUDIO_PAN_CENTER", audio_c)
+
+        # Stage 3 intentionally adds no new SCSP pitch constants: it exercises
+        # the already-reviewed LOW/MID/HIGH OCT encodings and DISDL levels.
+        self.assertIn("SRK_AUDIO_PITCH_LOW  0x7800u", backend)
+        self.assertIn("SRK_AUDIO_PITCH_MID  0x0000u", backend)
+        self.assertIn("SRK_AUDIO_PITCH_HIGH 0x0800u", backend)
+        self.assertNotIn("SRK_AUDIO_PITCH_SWEEP", backend)
+
     def test_scsp_backend_uses_reviewed_sound_cpu_and_slot_contract(self):
         audio_c = (STANDALONE / "srk_saturn_audio.c").read_text(encoding="utf-8")
 
