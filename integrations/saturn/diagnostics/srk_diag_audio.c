@@ -23,8 +23,89 @@ static void srk_diag_audio_enter_stereo_pair(SRK_DIAG_AUDIO_STATE *state)
     if(state->tone != SRK_DIAG_AUDIO_TONE_STEREO_PAIR)
         state->mono_tone = state->tone;
     state->stereo_pair = 1;
+    state->sweep_active = 0;
+    state->sweep_frame = 0u;
     state->tone = SRK_DIAG_AUDIO_TONE_STEREO_PAIR;
     state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
+}
+
+
+static void srk_diag_audio_enter_sweep(SRK_DIAG_AUDIO_STATE *state)
+{
+    if(!state)
+        return;
+
+    if(state->tone != SRK_DIAG_AUDIO_TONE_STEREO_PAIR)
+        state->mono_tone = state->tone;
+
+    state->stereo_pair = 0;
+    state->sweep_active = 1;
+    state->sweep_frame = 0u;
+    state->tone = SRK_DIAG_AUDIO_TONE_LOW;
+    state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
+    state->volume = 0u;
+    state->playing = 1;
+    state->muted = 0;
+}
+
+
+static void srk_diag_audio_leave_sweep(SRK_DIAG_AUDIO_STATE *state)
+{
+    if(!state)
+        return;
+
+    state->sweep_active = 0;
+    state->sweep_frame = 0u;
+    state->stereo_pair = 0;
+    state->tone = state->mono_tone;
+    state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
+    state->volume = SRK_DIAG_AUDIO_DEFAULT_VOLUME;
+    state->playing = 0;
+    state->muted = 0;
+}
+
+
+static void srk_diag_audio_advance_sweep(SRK_DIAG_AUDIO_STATE *state)
+{
+    unsigned int step;
+    unsigned int phase;
+    unsigned int level;
+    unsigned int total_frames;
+
+    if(!state || !state->sweep_active)
+        return;
+
+    step = state->sweep_frame / SRK_DIAG_AUDIO_SWEEP_FRAMES_PER_STEP;
+    step %= SRK_DIAG_AUDIO_SWEEP_STEP_COUNT;
+    phase = step / 8u;
+    level = step & 7u;
+
+    if(phase == 0u){
+        state->tone = SRK_DIAG_AUDIO_TONE_LOW;
+        state->volume = (srk_u8)level;
+    }else if(phase == 1u){
+        state->tone = SRK_DIAG_AUDIO_TONE_MID;
+        state->volume = (srk_u8)level;
+    }else if(phase == 2u){
+        state->tone = SRK_DIAG_AUDIO_TONE_HIGH;
+        state->volume = (srk_u8)level;
+    }else if(phase == 3u){
+        state->tone = SRK_DIAG_AUDIO_TONE_HIGH;
+        state->volume = (srk_u8)(7u - level);
+    }else if(phase == 4u){
+        state->tone = SRK_DIAG_AUDIO_TONE_MID;
+        state->volume = (srk_u8)(7u - level);
+    }else{
+        state->tone = SRK_DIAG_AUDIO_TONE_LOW;
+        state->volume = (srk_u8)(7u - level);
+    }
+
+    state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
+    total_frames =
+        SRK_DIAG_AUDIO_SWEEP_STEP_COUNT * SRK_DIAG_AUDIO_SWEEP_FRAMES_PER_STEP;
+    state->sweep_frame += 1u;
+    if(state->sweep_frame >= total_frames)
+        state->sweep_frame = 0u;
 }
 
 
@@ -37,9 +118,11 @@ void srk_diag_audio_reset(SRK_DIAG_AUDIO_STATE *state)
     state->mono_tone = SRK_DIAG_AUDIO_TONE_MID;
     state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
     state->volume = SRK_DIAG_AUDIO_DEFAULT_VOLUME;
+    state->sweep_frame = 0u;
     state->playing = 0;
     state->muted = 0;
     state->stereo_pair = 0;
+    state->sweep_active = 0;
     state->submitted = 0;
 }
 
@@ -51,9 +134,31 @@ void srk_diag_audio_control(
 {
     SRK_DIAG_AUDIO_TONE selected_tone;
     int stereo_both_play;
+    int sweep_toggle;
 
     if(!state)
         return;
+
+    /*
+     * DOWN+B owns Stage 3 automated sweep entry/exit. Give that chord priority
+     * over the ordinary B mode toggle so the control cannot enter two modes on
+     * one controller sample. While the sweep owns the logical tone/volume
+     * sequence, all ordinary audio controls are ignored until DOWN+B exits it.
+     */
+    sweep_toggle =
+        (pressed_buttons & SRK_DIAG_BUTTON_DOWN) &&
+        (pressed_buttons & SRK_DIAG_BUTTON_B);
+
+    if(state->sweep_active){
+        if(sweep_toggle)
+            srk_diag_audio_leave_sweep(state);
+        return;
+    }
+
+    if(sweep_toggle){
+        srk_diag_audio_enter_sweep(state);
+        return;
+    }
 
     /*
      * Stage-2 physical feedback showed that A+UP is a poor activation chord:
@@ -128,12 +233,24 @@ void srk_diag_audio_control(
 
 
 void srk_diag_audio_make_request(
-    const SRK_DIAG_AUDIO_STATE *state,
+    SRK_DIAG_AUDIO_STATE *state,
     SRK_DIAG_AUDIO_REQUEST *request
 )
 {
     if(!state || !request)
         return;
+
+    /*
+     * START is handled by the app shell and forces playing=0 before the audio
+     * screen is left. If that happened during a sweep, cancel the automation on
+     * the next request rather than silently resuming it when the screen reopens.
+     */
+    if(state->sweep_active){
+        if(!state->playing)
+            srk_diag_audio_leave_sweep(state);
+        else
+            srk_diag_audio_advance_sweep(state);
+    }
 
     request->tone_id = (unsigned int)state->tone;
     request->pan_id = (unsigned int)state->pan;
