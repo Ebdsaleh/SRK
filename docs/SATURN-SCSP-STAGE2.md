@@ -41,7 +41,28 @@ The first R11 physical pass exposed an interaction-design problem in the accepta
 
 The correction is to use previously unused `DOWN` together with `A` as a dedicated command. `DOWN+A` has one deterministic meaning: enter stereo-pair mode, select both voices, and play them. The underlying two-slot backend, listener-left/listener-right DIPAN mapping, pitches, waveform, and key-mask design are unchanged.
 
-R11 therefore remains evidence for the successful one-command build/deploy/MATCH pipeline, but SCSP Stage 2 physical acceptance is deferred to the next fresh diagnostic revision carrying this corrected control contract.
+R11 therefore remains evidence for the successful one-command build/deploy/MATCH pipeline, but not for final Stage 2 acceptance.
+
+## R12 physical acceptance — PASSED
+
+R12 carried the corrected `DOWN+A` control contract and passed the preserve-first one-command deployment with a whole-card `MATCH` before physical testing.
+
+Real Saturn hardware then confirmed the complete Stage 2 behavior:
+
+- `DOWN+A` enters `STEREO`, selects both sources, and starts playback;
+- LOW is heard on listener-left;
+- HIGH is heard on listener-right;
+- both sources are audible simultaneously;
+- `LEFT` isolates LOW listener-left;
+- `RIGHT` isolates HIGH listener-right;
+- `UP` restores both sources;
+- `C` mutes/unmutes both;
+- `L/R` changes shared volume;
+- `A` stops both;
+- `B` returns to single-slot mode;
+- `START` stops owned audio and returns without leakage.
+
+**SCSP Stage 2 is physically accepted.**
 
 ## Slot ownership
 
@@ -61,11 +82,11 @@ Mute is intentionally different from Stop:
 
 The bounded dummy MC68EC000 loop from Stage 1 remains running throughout.
 
-## Corrected physical acceptance
+## Accepted physical contract
 
-The next fresh revision should prove:
+The physically accepted Stage 2 contract is:
 
-1. Stage 1 single-slot behavior is unchanged.
+1. Stage 1 single-slot behavior remains available.
 2. `B` changes the dynamic tone label to `STEREO`.
 3. `DOWN+A` produces LOW listener-left and HIGH listener-right simultaneously.
 4. `LEFT` leaves only the LOW left source audible.
@@ -75,7 +96,6 @@ The next fresh revision should prove:
 8. `L`/`R` adjust both voices together.
 9. `A` stops both voices.
 10. `START` leaves no owned tone leaking into another diagnostic screen.
-11. Returning with `B` to single-slot mode restores the preselected X/Y/Z tone and normal pan behavior.
-12. Existing Input, Video and VDP1 diagnostics remain stable.
+11. Returning with `B` to single-slot mode restores normal single-slot operation.
 
-The already physically verified listener-left/listener-right DIPAN mapping is unchanged.
+The physically verified listener-left/listener-right DIPAN mapping is unchanged.
