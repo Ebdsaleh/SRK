@@ -221,6 +221,8 @@ def prepare_saturn_standalone_project(
             "build.bat is only a thin wrapper around the same Python-native command.\n"
             "Python orchestrates the recorded SH-ELF gcc/as and mkisofs executables directly;\n"
             "GNU Make and shell build recipes are not used.\n\n"
+            "The ISO is an internal verification/intermediate artifact.\n"
+            "The deployable SAROO image is build\\SRK-Diagnostics\\SRK-Diagnostics.cue + .bin.\n\n"
             "The first hardware milestone performs no SD writes, dumps, audio, or 3D tests.\n",
         )
 
@@ -239,6 +241,7 @@ def prepare_saturn_standalone_project(
             "schema": "srk.saturn.standalone-project.v1",
             "mode": "standalone-master",
             "build_orchestration": "python-native",
+            "deployable_format": "cue-bin-mode1-2352",
             "policy": {
                 "source_trees_read_only": True,
                 "build_executed": False,
