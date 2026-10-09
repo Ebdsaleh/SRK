@@ -335,6 +335,85 @@ static void srk_diag_render_vdp1(
 }
 
 
+static void srk_diag_render_audio(
+    SRK_DIAG_APP *app,
+    SRK_DIAG_HOST *host,
+    int full_render
+)
+{
+    SRK_DIAG_AUDIO_REQUEST request;
+    SRK_DIAG_AUDIO_STATUS status;
+    char value[7];
+    char number[11];
+    int submitted;
+    int status_ok;
+
+    srk_diag_audio_make_request(&app->audio, &request);
+    submitted = 0;
+    if(host->present_audio_tone)
+        submitted = host->present_audio_tone(host->context, &request);
+    srk_diag_audio_mark_submitted(&app->audio, submitted);
+
+    if(full_render){
+        srk_diag_draw(host, 2, 1, "AUDIO / SCSP TEST");
+        srk_diag_draw(host, 2, 2, "Stage 1: deterministic PCM tone slot");
+        srk_diag_draw(host, 2, 4, "Host submit:");
+        srk_diag_draw(host, 2, 5, "State:");
+        srk_diag_draw(host, 2, 6, "Output:");
+        srk_diag_draw(host, 2, 7, "Tone:");
+        srk_diag_draw(host, 2, 8, "Pan:");
+        srk_diag_draw(host, 2, 9, "Volume:");
+
+        srk_diag_draw(host, 2, 12, "SCSP init:");
+        srk_diag_draw(host, 2, 13, "Common:");
+        srk_diag_draw(host, 2, 14, "Slot 0:");
+        srk_diag_draw(host, 2, 15, "Pitch:");
+        srk_diag_draw(host, 2, 16, "Mixer:");
+
+        srk_diag_draw(host, 2, 20, "A Play/Stop   C Mute/Unmute");
+        srk_diag_draw(host, 2, 21, "LEFT/UP/RIGHT Pan L/C/R");
+        srk_diag_draw(host, 2, 22, "X/Y/Z Tone Low/Mid/High");
+        srk_diag_draw(host, 2, 23, "L/R Volume Down/Up");
+        srk_diag_draw(host, 2, 26, "START Stop + return to diagnostics menu");
+    }
+
+    srk_diag_draw_field(host, 16, 4, 4, app->audio.submitted ? "OK" : "NO");
+    srk_diag_draw_field(host, 12, 5, 10, app->audio.playing ? "PLAYING" : "STOPPED");
+    srk_diag_draw_field(host, 12, 6, 10, app->audio.muted ? "MUTED" : "AUDIBLE");
+    srk_diag_draw_field(host, 12, 7, 10, srk_diag_audio_tone_label(app->audio.tone));
+    srk_diag_draw_field(host, 12, 8, 10, srk_diag_audio_pan_label(app->audio.pan));
+    srk_diag_u32(number, app->audio.volume);
+    srk_diag_draw_field(host, 12, 9, 10, number);
+
+    status.initialized = 0;
+    status.common_control = 0;
+    status.slot_control = 0;
+    status.pitch = 0;
+    status.mixer = 0;
+    status_ok = 0;
+    if(host->read_audio_status)
+        status_ok = host->read_audio_status(host->context, &status);
+
+    if(status_ok){
+        srk_diag_draw_field(host, 16, 12, 5, status.initialized ? "READY" : "NO");
+        srk_diag_hex16(value, status.common_control);
+        srk_diag_draw_field(host, 12, 13, 6, value);
+        srk_diag_hex16(value, status.slot_control);
+        srk_diag_draw_field(host, 12, 14, 6, value);
+        srk_diag_hex16(value, status.pitch);
+        srk_diag_draw_field(host, 12, 15, 6, value);
+        srk_diag_hex16(value, status.mixer);
+        srk_diag_draw_field(host, 12, 16, 6, value);
+    }else{
+        srk_diag_draw_field(host, 16, 12, 10, "UNAVAIL");
+        srk_diag_draw_field(host, 12, 13, 10, "UNAVAIL");
+        srk_diag_draw_field(host, 12, 14, 10, "UNAVAIL");
+        srk_diag_draw_field(host, 12, 15, 10, "UNAVAIL");
+        srk_diag_draw_field(host, 12, 16, 10, "UNAVAIL");
+    }
+}
+
+
 static void srk_diag_render_flight(
     SRK_DIAG_APP *app,
     SRK_DIAG_HOST *host,
@@ -392,6 +471,7 @@ void srk_diag_app_reset(SRK_DIAG_APP *app)
     srk_diag_flight_reset(&app->recorder);
     srk_diag_video_reset(&app->video);
     srk_diag_vdp1_reset(&app->vdp1);
+    srk_diag_audio_reset(&app->audio);
     app->frame = 0;
     app->rendered_screen = 0xffffu;
     app->rendered_screen_valid = 0;
@@ -466,6 +546,16 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
                 app->input.pressed
             );
         }
+    }else if(app->menu.active_screen == SRK_DIAG_SCREEN_AUDIO_TEST){
+        if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_START)){
+            if(host->stop_audio)
+                host->stop_audio(host->context);
+            app->audio.playing = 0;
+            srk_diag_audio_mark_submitted(&app->audio, 0);
+            srk_diag_menu_back(&app->menu);
+        }else{
+            srk_diag_audio_control(&app->audio, app->input.pressed);
+        }
     }else{
         if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_START)){
             srk_diag_menu_back(&app->menu);
@@ -513,6 +603,8 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
         srk_diag_render_video(app, host, full_render);
     else if(app->menu.active_screen == SRK_DIAG_SCREEN_VDP1_3D_TEST)
         srk_diag_render_vdp1(app, host, full_render);
+    else if(app->menu.active_screen == SRK_DIAG_SCREEN_AUDIO_TEST)
+        srk_diag_render_audio(app, host, full_render);
     else if(app->menu.active_screen == SRK_DIAG_SCREEN_FLIGHT_RECORDER)
         srk_diag_render_flight(app, host, full_render);
     else
