@@ -15,6 +15,19 @@ static const char *srk_diag_audio_pans[3] = {
 };
 
 
+static void srk_diag_audio_enter_stereo_pair(SRK_DIAG_AUDIO_STATE *state)
+{
+    if(!state)
+        return;
+
+    if(state->tone != SRK_DIAG_AUDIO_TONE_STEREO_PAIR)
+        state->mono_tone = state->tone;
+    state->stereo_pair = 1;
+    state->tone = SRK_DIAG_AUDIO_TONE_STEREO_PAIR;
+    state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
+}
+
+
 void srk_diag_audio_reset(SRK_DIAG_AUDIO_STATE *state)
 {
     if(!state)
@@ -37,23 +50,36 @@ void srk_diag_audio_control(
 )
 {
     SRK_DIAG_AUDIO_TONE selected_tone;
+    int stereo_both_play;
 
     if(!state)
         return;
 
-    if(pressed_buttons & SRK_DIAG_BUTTON_A)
-        state->playing = !state->playing;
+    /*
+     * Stage-2 physical feedback showed that A+UP is a poor activation chord:
+     * UP already has the stable CENTER/BOTH selection meaning. DOWN is unused
+     * on the audio screen, so DOWN+A is the explicit, deterministic shortcut
+     * for "enter stereo pair, select both voices, and play". The chord has
+     * precedence over the ordinary A toggle and B mode toggle on that sample.
+     */
+    stereo_both_play =
+        (pressed_buttons & SRK_DIAG_BUTTON_DOWN) &&
+        (pressed_buttons & SRK_DIAG_BUTTON_A);
 
-    if(pressed_buttons & SRK_DIAG_BUTTON_B){
-        if(state->stereo_pair){
-            state->stereo_pair = 0;
-            state->tone = state->mono_tone;
-        }else{
-            if(state->tone != SRK_DIAG_AUDIO_TONE_STEREO_PAIR)
-                state->mono_tone = state->tone;
-            state->stereo_pair = 1;
-            state->tone = SRK_DIAG_AUDIO_TONE_STEREO_PAIR;
-            state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
+    if(stereo_both_play){
+        srk_diag_audio_enter_stereo_pair(state);
+        state->playing = 1;
+    }else{
+        if(pressed_buttons & SRK_DIAG_BUTTON_A)
+            state->playing = !state->playing;
+
+        if(pressed_buttons & SRK_DIAG_BUTTON_B){
+            if(state->stereo_pair){
+                state->stereo_pair = 0;
+                state->tone = state->mono_tone;
+            }else{
+                srk_diag_audio_enter_stereo_pair(state);
+            }
         }
     }
 
@@ -63,7 +89,7 @@ void srk_diag_audio_control(
     /*
      * In single-slot mode this is ordinary pan selection. In stereo-pair mode
      * CENTER means both voices, LEFT means left voice only, and RIGHT means
-     * right voice only. The numeric contract stays title-neutral.
+     * right voice only. UP therefore remains a selector, not a play command.
      */
     if(pressed_buttons & SRK_DIAG_BUTTON_UP){
         state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
