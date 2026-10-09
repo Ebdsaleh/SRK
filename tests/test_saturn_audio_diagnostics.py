@@ -87,6 +87,16 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("request->pan_id != 0u", backend)
         self.assertIn("KYONEX executes the KYONB state for all slots at once", backend)
 
+    def test_stage2_down_a_is_explicit_stereo_both_play_chord(self):
+        audio_c = (DIAG / "srk_diag_audio.c").read_text(encoding="utf-8")
+
+        self.assertIn("stereo_both_play", audio_c)
+        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_DOWN", audio_c)
+        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_A", audio_c)
+        self.assertIn("srk_diag_audio_enter_stereo_pair(state);", audio_c)
+        self.assertIn("state->playing = 1;", audio_c)
+        self.assertIn("UP therefore remains a selector, not a play command", audio_c)
+
     def test_scsp_backend_uses_reviewed_sound_cpu_and_slot_contract(self):
         audio_c = (STANDALONE / "srk_saturn_audio.c").read_text(encoding="utf-8")
 
