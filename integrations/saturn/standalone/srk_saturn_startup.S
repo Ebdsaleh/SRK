@@ -42,6 +42,36 @@ halt:
     bra     halt
     nop
 
+!
+! Minimal freestanding memcpy for compiler-emitted aggregate copies.
+!
+! Historical SH-ELF GCC may lower otherwise ordinary C structure copies to a
+! call to external symbol _memcpy even with -ffreestanding -fno-builtin.  The
+! standalone image intentionally uses -nostdlib, so provide the required ABI
+! primitive here rather than introducing a hosted C runtime dependency.
+!
+! SH calling convention:
+!   r4 = destination
+!   r5 = source
+!   r6 = byte count
+!   r0 = returned destination
+!
+.global _memcpy
+_memcpy:
+    mov     r4,r0
+    tst     r6,r6
+    bt      memcpy_done
+memcpy_loop:
+    mov.b   @r5+,r1
+    mov.b   r1,@r4
+    add     #1,r4
+    add     #-1,r6
+    tst     r6,r6
+    bf      memcpy_loop
+memcpy_done:
+    rts
+    nop
+
 .align 2
 main_ptr:   .long __main
 stack_ptr:  .long 0x06004000
