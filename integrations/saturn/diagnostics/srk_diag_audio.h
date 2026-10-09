@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define SRK_DIAG_AUDIO_TONE_COUNT 3
+#define SRK_DIAG_AUDIO_TONE_COUNT 4
 #define SRK_DIAG_AUDIO_VOLUME_MAX 7
 #define SRK_DIAG_AUDIO_DEFAULT_VOLUME 4
 
@@ -15,7 +15,8 @@ extern "C" {
 typedef enum SRK_DIAG_AUDIO_TONE {
     SRK_DIAG_AUDIO_TONE_LOW = 0,
     SRK_DIAG_AUDIO_TONE_MID = 1,
-    SRK_DIAG_AUDIO_TONE_HIGH = 2
+    SRK_DIAG_AUDIO_TONE_HIGH = 2,
+    SRK_DIAG_AUDIO_TONE_STEREO_PAIR = 3
 } SRK_DIAG_AUDIO_TONE;
 
 
@@ -28,10 +29,12 @@ typedef enum SRK_DIAG_AUDIO_PAN {
 
 typedef struct SRK_DIAG_AUDIO_STATE {
     SRK_DIAG_AUDIO_TONE tone;
+    SRK_DIAG_AUDIO_TONE mono_tone;
     SRK_DIAG_AUDIO_PAN pan;
     srk_u8 volume;
     int playing;
     int muted;
+    int stereo_pair;
     int submitted;
 } SRK_DIAG_AUDIO_STATE;
 
