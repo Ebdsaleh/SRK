@@ -17,7 +17,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Build one fresh SRK-generated Saturn diagnostics project using "
             "Python-native orchestration. SH-ELF gcc/as and mkisofs remain the "
-            "code-generation/package backends; make and shell build logic are not used."
+            "code-generation/package backends; make and shell build logic are not used. "
+            "The final deployable image is a verified MODE1/2352 BIN/CUE pair."
         ),
     )
     parser.add_argument(
@@ -68,9 +69,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     print()
     if result.successful:
+        deploy = result.project_root / "build" / "SRK-Diagnostics"
         print("Build result: SUCCESS")
         print("Orchestration: Python-native; shell=False; PATH unchanged.")
-        print("No ISO was deployed to SAROO or physical Saturn hardware.")
+        print("Deployable image: verified single-track MODE1/2352 BIN/CUE")
+        print(f"Deploy folder   : {deploy}")
+        print("No BIN/CUE image was copied to SAROO or physical Saturn hardware.")
         return 0
 
     print("Build result: FAILED")
