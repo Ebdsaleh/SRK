@@ -123,8 +123,18 @@ class SaturnSarooDeployTests(unittest.TestCase):
             )
 
             destination = card / "SAROO" / "ISO" / "SRK-Diagnostics"
-            self.assertEqual(result.destination_bin, destination / "SRK-Diagnostics.bin")
-            self.assertEqual(result.destination_cue, destination / "SRK-Diagnostics.cue")
+            # On Windows, tempfile may expose the same directory through an 8.3
+            # short-path alias (for example DEVELO~1.ERI) while Path.resolve()
+            # inside the deployment code returns the long form.  Compare the
+            # resolved existing files rather than their lexical spellings.
+            self.assertEqual(
+                result.destination_bin.resolve(),
+                (destination / "SRK-Diagnostics.bin").resolve(),
+            )
+            self.assertEqual(
+                result.destination_cue.resolve(),
+                (destination / "SRK-Diagnostics.cue").resolve(),
+            )
             self.assertEqual(_sha(result.destination_bin), result.plan.bin_sha256)
             self.assertEqual(_sha(result.destination_cue), result.plan.cue_sha256)
             self.assertEqual(existing.read_bytes(), before)
