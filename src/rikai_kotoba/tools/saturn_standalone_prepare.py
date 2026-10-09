@@ -72,7 +72,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"Source      : {result.source_root}")
     print(f"IP.BIN      : {result.ip_bin}")
     print(f"Manifest    : {result.manifest}")
-    print(f"Build script: {result.build_script}")
+    print(f"Build wrapper: {result.build_script}")
     print()
     print("Resolved local tools")
     print(f"  sh-elf-gcc : {result.gcc}")
@@ -84,8 +84,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print("  The source IP.BIN was not modified; the generated tree contains a patched copy.")
     print("  No compiler, linker, ISO builder, game image, or SD-card write was executed.")
     print()
-    print("Next step after review:")
-    print(f'  "{result.build_script}"')
+    print("Preferred next step after review (from the SRK virtual environment):")
+    print("  python -m rikai_kotoba.tools.saturn_standalone_build ^")
+    print(f'    --project "{result.output_root}"')
+    print("  build.bat is a convenience wrapper around the same Python-native command.")
     return 0
 
 
