@@ -67,7 +67,9 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("SRK_DIAG_AUDIO_TONE mono_tone", audio_h)
         self.assertIn("int stereo_pair", audio_h)
         self.assertIn('"STEREO"', audio_c)
-        self.assertIn("state->stereo_pair = !", audio_c.replace("if(state->stereo_pair)", "state->stereo_pair = !"))
+        self.assertIn("if(state->stereo_pair)", audio_c)
+        self.assertIn("state->stereo_pair = 0;", audio_c)
+        self.assertIn("state->stereo_pair = 1;", audio_c)
         self.assertIn("state->tone = SRK_DIAG_AUDIO_TONE_STEREO_PAIR", audio_c)
         self.assertIn("state->pan = SRK_DIAG_AUDIO_PAN_CENTER", audio_c)
 
