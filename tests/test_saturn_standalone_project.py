@@ -91,6 +91,8 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertEqual(result.output_root, output.resolve())
             self.assertTrue((output / "src" / "srk_saturn_host.c").is_file())
             self.assertTrue((output / "src" / "srk_diag_app.c").is_file())
+            self.assertTrue((output / "src" / "srk_diag_video.c").is_file())
+            self.assertTrue((output / "src" / "srk_diag_video.h").is_file())
             self.assertTrue((output / "src" / "vga_font.h").is_file())
             self.assertTrue((output / "srk_saturn.ld").is_file())
             self.assertTrue((output / "build.bat").is_file())
@@ -151,9 +153,11 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertEqual(manifest["build_orchestration"], "python-native")
             self.assertEqual(manifest["deployable_format"], "cue-bin-mode1-2352")
             self.assertIn("SRK-Diagnostics.cue + .bin", readme)
+            self.assertIn("Deployment remains a separate guarded operation", readme)
             self.assertIn("0x20100075", host)
             self.assertIn("SRK_DIAG_BUTTON_L", host)
             self.assertIn("SRK_DIAG_BUTTON_R", host)
+            self.assertIn("draw_video_pattern", host)
 
     def test_refuses_to_merge_into_existing_output(self):
         with tempfile.TemporaryDirectory() as temp_dir:
