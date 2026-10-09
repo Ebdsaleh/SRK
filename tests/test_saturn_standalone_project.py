@@ -91,6 +91,8 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertEqual(result.output_root, output.resolve())
             self.assertTrue((output / "src" / "srk_saturn_host.c").is_file())
             self.assertTrue((output / "src" / "srk_diag_app.c").is_file())
+            self.assertTrue((output / "src" / "srk_diag_vdp1.c").is_file())
+            self.assertTrue((output / "src" / "srk_diag_vdp1.h").is_file())
             self.assertTrue((output / "src" / "srk_diag_video.c").is_file())
             self.assertTrue((output / "src" / "srk_diag_video.h").is_file())
             self.assertTrue((output / "src" / "vga_font.h").is_file())
@@ -158,6 +160,9 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertIn("SRK_DIAG_BUTTON_L", host)
             self.assertIn("SRK_DIAG_BUTTON_R", host)
             self.assertIn("draw_video_pattern", host)
+            self.assertIn("present_vdp1_quad", host)
+            self.assertIn("0x25C00000", host)
+            self.assertIn("0x25D00000", host)
 
     def test_refuses_to_merge_into_existing_output(self):
         with tempfile.TemporaryDirectory() as temp_dir:
