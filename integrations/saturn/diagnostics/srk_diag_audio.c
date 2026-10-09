@@ -4,7 +4,8 @@
 static const char *srk_diag_audio_tones[SRK_DIAG_AUDIO_TONE_COUNT] = {
     "LOW",
     "MID",
-    "HIGH"
+    "HIGH",
+    "STEREO"
 };
 
 static const char *srk_diag_audio_pans[3] = {
@@ -20,10 +21,12 @@ void srk_diag_audio_reset(SRK_DIAG_AUDIO_STATE *state)
         return;
 
     state->tone = SRK_DIAG_AUDIO_TONE_MID;
+    state->mono_tone = SRK_DIAG_AUDIO_TONE_MID;
     state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
     state->volume = SRK_DIAG_AUDIO_DEFAULT_VOLUME;
     state->playing = 0;
     state->muted = 0;
+    state->stereo_pair = 0;
     state->submitted = 0;
 }
 
@@ -33,16 +36,35 @@ void srk_diag_audio_control(
     srk_u16 pressed_buttons
 )
 {
+    SRK_DIAG_AUDIO_TONE selected_tone;
+
     if(!state)
         return;
 
     if(pressed_buttons & SRK_DIAG_BUTTON_A)
         state->playing = !state->playing;
 
+    if(pressed_buttons & SRK_DIAG_BUTTON_B){
+        if(state->stereo_pair){
+            state->stereo_pair = 0;
+            state->tone = state->mono_tone;
+        }else{
+            if(state->tone != SRK_DIAG_AUDIO_TONE_STEREO_PAIR)
+                state->mono_tone = state->tone;
+            state->stereo_pair = 1;
+            state->tone = SRK_DIAG_AUDIO_TONE_STEREO_PAIR;
+            state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
+        }
+    }
+
     if(pressed_buttons & SRK_DIAG_BUTTON_C)
         state->muted = !state->muted;
 
-    /* Center takes precedence over the directional extremes on one sample. */
+    /*
+     * In single-slot mode this is ordinary pan selection. In stereo-pair mode
+     * CENTER means both voices, LEFT means left voice only, and RIGHT means
+     * right voice only. The numeric contract stays title-neutral.
+     */
     if(pressed_buttons & SRK_DIAG_BUTTON_UP){
         state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
     }else if(pressed_buttons & SRK_DIAG_BUTTON_LEFT){
@@ -52,12 +74,19 @@ void srk_diag_audio_control(
     }
 
     /* Match the VDP1 palette convention: Z > Y > X if pressed together. */
+    selected_tone = state->mono_tone;
     if(pressed_buttons & SRK_DIAG_BUTTON_Z){
-        state->tone = SRK_DIAG_AUDIO_TONE_HIGH;
+        selected_tone = SRK_DIAG_AUDIO_TONE_HIGH;
     }else if(pressed_buttons & SRK_DIAG_BUTTON_Y){
-        state->tone = SRK_DIAG_AUDIO_TONE_MID;
+        selected_tone = SRK_DIAG_AUDIO_TONE_MID;
     }else if(pressed_buttons & SRK_DIAG_BUTTON_X){
-        state->tone = SRK_DIAG_AUDIO_TONE_LOW;
+        selected_tone = SRK_DIAG_AUDIO_TONE_LOW;
+    }
+
+    if(selected_tone != state->mono_tone){
+        state->mono_tone = selected_tone;
+        if(!state->stereo_pair)
+            state->tone = selected_tone;
     }
 
     if((pressed_buttons & SRK_DIAG_BUTTON_L) &&
