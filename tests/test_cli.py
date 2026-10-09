@@ -48,15 +48,16 @@ def _make_test_iso(path):
     image = bytearray(SECTOR * 40)
 
     boot = bytearray(SECTOR)
-    boot[0:16] = _field("SEGA SEGASATURN", 16)
-    boot[16:32] = _field("SEGA ENTERPRISES", 16)
-    boot[32:48] = _field("CD-1/1", 16)
-    boot[48:56] = _field("JTUB", 8)
-    boot[56:72] = _field("J", 16)
-    boot[72:112] = _field("GENERIC CLI TEST", 40)
-    boot[112:128] = _field("V1.000", 16)
-    boot[128:144] = _field("19960101", 16)
-    boot[144:160] = _field("T-0000G", 16)
+    boot[0x00:0x10] = _field("SEGA SEGASATURN", 16)
+    boot[0x10:0x20] = _field("SEGA ENTERPRISES", 16)
+    boot[0x20:0x2A] = _field("T-0000G", 10)
+    boot[0x2A:0x30] = _field("V1.000", 6)
+    boot[0x30:0x38] = _field("19960101", 8)
+    boot[0x38:0x40] = _field("CD-1/1", 8)
+    boot[0x40:0x4A] = _field("JTUB", 10)
+    boot[0x4A:0x50] = b" " * 6
+    boot[0x50:0x60] = _field("J", 16)
+    boot[0x60:0xD0] = _field("GENERIC CLI TEST", 112)
     image[0:SECTOR] = boot
 
     root_lba = 20
@@ -107,8 +108,12 @@ class CLITests(unittest.TestCase):
             with redirect_stdout(output), redirect_stderr(io.StringIO()):
                 result = main(["inspect-saturn", image])
 
+            rendered = output.getvalue()
             self.assertEqual(result, 0)
-            self.assertIn("GENERIC CLI TEST", output.getvalue())
+            self.assertIn("GENERIC CLI TEST", rendered)
+            self.assertIn("T-0000G", rendered)
+            self.assertIn("V1.000", rendered)
+            self.assertIn("19960101", rendered)
 
     def test_extract_one_file_uses_safe_extractor(self):
         with tempfile.TemporaryDirectory() as temp_dir:
