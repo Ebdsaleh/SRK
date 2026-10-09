@@ -28,6 +28,18 @@
 #define SRK_TEXT_COLUMNS 40
 #define SRK_TEXT_ROWS 28
 
+#define SRK_COLOR_BLACK   0
+#define SRK_COLOR_RED     1
+#define SRK_COLOR_GREEN   2
+#define SRK_COLOR_BLUE    3
+#define SRK_COLOR_YELLOW  4
+#define SRK_COLOR_CYAN    5
+#define SRK_COLOR_MAGENTA 6
+#define SRK_COLOR_GRAY    7
+#define SRK_COLOR_WHITE   15
+#define SRK_GRAY_BASE     16
+#define SRK_GRAY_COUNT    16
+
 #define SRK_PAD_L      (1u << 15)
 #define SRK_PAD_START  (1u << 11)
 #define SRK_PAD_A      (1u << 10)
@@ -150,18 +162,24 @@ static void srk_saturn_begin_frame(void *context)
 }
 
 
-static void srk_saturn_clear(void *context)
+static void srk_saturn_fill_visible(srk_u8 color)
 {
     volatile srk_u8 *row;
     int x;
     int y;
 
-    (void)context;
     for(y=0; y<SRK_VISIBLE_HEIGHT; y++){
         row = SRK_VDP2_VRAM + (y * SRK_BITMAP_STRIDE);
         for(x=0; x<SRK_VISIBLE_WIDTH; x++)
-            row[x] = 0;
+            row[x] = color;
     }
+}
+
+
+static void srk_saturn_clear(void *context)
+{
+    (void)context;
+    srk_saturn_fill_visible(SRK_COLOR_BLACK);
 }
 
 
@@ -192,9 +210,158 @@ static void srk_saturn_draw_text(
                 + ((y * 8 + scanline) * SRK_BITMAP_STRIDE)
                 + (column * 8);
             for(pixel=0; pixel<8; pixel++)
-                row[pixel] = (bits & (0x80u >> pixel)) ? 15 : 0;
+                row[pixel] = (bits & (0x80u >> pixel)) ? SRK_COLOR_WHITE : SRK_COLOR_BLACK;
         }
         column++;
+    }
+}
+
+
+static void srk_saturn_draw_color_bars(void)
+{
+    static const srk_u8 colors[8] = {
+        SRK_COLOR_WHITE,
+        SRK_COLOR_YELLOW,
+        SRK_COLOR_CYAN,
+        SRK_COLOR_GREEN,
+        SRK_COLOR_MAGENTA,
+        SRK_COLOR_RED,
+        SRK_COLOR_BLUE,
+        SRK_COLOR_BLACK
+    };
+    volatile srk_u8 *row;
+    int x;
+    int y;
+    int index;
+
+    for(y=0; y<SRK_VISIBLE_HEIGHT; y++){
+        row = SRK_VDP2_VRAM + (y * SRK_BITMAP_STRIDE);
+        for(x=0; x<SRK_VISIBLE_WIDTH; x++){
+            index = (x * 8) / SRK_VISIBLE_WIDTH;
+            if(index > 7)
+                index = 7;
+            row[x] = colors[index];
+        }
+    }
+}
+
+
+static void srk_saturn_draw_grayscale(void)
+{
+    volatile srk_u8 *row;
+    int x;
+    int y;
+    int level;
+
+    for(y=0; y<SRK_VISIBLE_HEIGHT; y++){
+        row = SRK_VDP2_VRAM + (y * SRK_BITMAP_STRIDE);
+        for(x=0; x<SRK_VISIBLE_WIDTH; x++){
+            level = (x * SRK_GRAY_COUNT) / SRK_VISIBLE_WIDTH;
+            if(level >= SRK_GRAY_COUNT)
+                level = SRK_GRAY_COUNT - 1;
+            row[x] = (srk_u8)(SRK_GRAY_BASE + level);
+        }
+    }
+}
+
+
+static void srk_saturn_draw_checkerboard(void)
+{
+    volatile srk_u8 *row;
+    int x;
+    int y;
+
+    for(y=0; y<SRK_VISIBLE_HEIGHT; y++){
+        row = SRK_VDP2_VRAM + (y * SRK_BITMAP_STRIDE);
+        for(x=0; x<SRK_VISIBLE_WIDTH; x++)
+            row[x] = (((x >> 4) + (y >> 4)) & 1) ? SRK_COLOR_WHITE : SRK_COLOR_BLACK;
+    }
+}
+
+
+static void srk_saturn_draw_grid(void)
+{
+    volatile srk_u8 *row;
+    int x;
+    int y;
+
+    for(y=0; y<SRK_VISIBLE_HEIGHT; y++){
+        row = SRK_VDP2_VRAM + (y * SRK_BITMAP_STRIDE);
+        for(x=0; x<SRK_VISIBLE_WIDTH; x++){
+            if((x & 15) == 0 || (y & 15) == 0)
+                row[x] = SRK_COLOR_WHITE;
+            else if((x & 7) == 0 || (y & 7) == 0)
+                row[x] = SRK_COLOR_GRAY;
+            else
+                row[x] = SRK_COLOR_BLACK;
+        }
+    }
+}
+
+
+static void srk_saturn_draw_safe_area(void)
+{
+    volatile srk_u8 *row;
+    int x;
+    int y;
+    int border;
+    int center;
+
+    for(y=0; y<SRK_VISIBLE_HEIGHT; y++){
+        row = SRK_VDP2_VRAM + (y * SRK_BITMAP_STRIDE);
+        for(x=0; x<SRK_VISIBLE_WIDTH; x++){
+            border = x == 0 || y == 0 || x == SRK_VISIBLE_WIDTH - 1 || y == SRK_VISIBLE_HEIGHT - 1;
+            border = border || x == 8 || y == 8 || x == SRK_VISIBLE_WIDTH - 9 || y == SRK_VISIBLE_HEIGHT - 9;
+            center = x == (SRK_VISIBLE_WIDTH / 2) || y == (SRK_VISIBLE_HEIGHT / 2);
+            if(border)
+                row[x] = SRK_COLOR_WHITE;
+            else if(center)
+                row[x] = SRK_COLOR_GRAY;
+            else
+                row[x] = SRK_COLOR_BLACK;
+        }
+    }
+}
+
+
+static void srk_saturn_draw_video_pattern(void *context, unsigned int pattern_id)
+{
+    (void)context;
+
+    switch(pattern_id){
+        case 0:
+            srk_saturn_fill_visible(SRK_COLOR_BLACK);
+            break;
+        case 1:
+            srk_saturn_fill_visible(SRK_COLOR_WHITE);
+            break;
+        case 2:
+            srk_saturn_fill_visible(SRK_COLOR_RED);
+            break;
+        case 3:
+            srk_saturn_fill_visible(SRK_COLOR_GREEN);
+            break;
+        case 4:
+            srk_saturn_fill_visible(SRK_COLOR_BLUE);
+            break;
+        case 5:
+            srk_saturn_draw_color_bars();
+            break;
+        case 6:
+            srk_saturn_draw_grayscale();
+            break;
+        case 7:
+            srk_saturn_draw_checkerboard();
+            break;
+        case 8:
+            srk_saturn_draw_grid();
+            break;
+        case 9:
+            srk_saturn_draw_safe_area();
+            break;
+        default:
+            srk_saturn_fill_visible(SRK_COLOR_BLACK);
+            break;
     }
 }
 
@@ -217,9 +384,17 @@ static srk_u32 srk_saturn_read_vbr(void *context)
 }
 
 
+static srk_u16 srk_saturn_rgb555(unsigned int red, unsigned int green, unsigned int blue)
+{
+    return (srk_u16)((red & 31u) | ((green & 31u) << 5) | ((blue & 31u) << 10));
+}
+
+
 static void srk_saturn_video_init(void)
 {
     unsigned long i;
+    unsigned int level;
+    unsigned int gray;
 
     SRK_TVMD = 0x0000;
     SRK_RAMCTL = (srk_u16)(SRK_RAMCTL & (srk_u16)~0x3000u);
@@ -235,8 +410,21 @@ static void srk_saturn_video_init(void)
     for(i=0; i<0x1000ul; i++)
         ((volatile srk_u8 *)SRK_VDP2_CRAM)[i] = 0;
 
-    SRK_VDP2_CRAM[0] = 0x0000;
-    SRK_VDP2_CRAM[15] = 0x7FFF;
+    SRK_VDP2_CRAM[SRK_COLOR_BLACK] = srk_saturn_rgb555(0, 0, 0);
+    SRK_VDP2_CRAM[SRK_COLOR_RED] = srk_saturn_rgb555(31, 0, 0);
+    SRK_VDP2_CRAM[SRK_COLOR_GREEN] = srk_saturn_rgb555(0, 31, 0);
+    SRK_VDP2_CRAM[SRK_COLOR_BLUE] = srk_saturn_rgb555(0, 0, 31);
+    SRK_VDP2_CRAM[SRK_COLOR_YELLOW] = srk_saturn_rgb555(31, 31, 0);
+    SRK_VDP2_CRAM[SRK_COLOR_CYAN] = srk_saturn_rgb555(0, 31, 31);
+    SRK_VDP2_CRAM[SRK_COLOR_MAGENTA] = srk_saturn_rgb555(31, 0, 31);
+    SRK_VDP2_CRAM[SRK_COLOR_GRAY] = srk_saturn_rgb555(16, 16, 16);
+    SRK_VDP2_CRAM[SRK_COLOR_WHITE] = srk_saturn_rgb555(31, 31, 31);
+
+    for(level=0; level<SRK_GRAY_COUNT; level++){
+        gray = (level * 31u) / (SRK_GRAY_COUNT - 1u);
+        SRK_VDP2_CRAM[SRK_GRAY_BASE + level] = srk_saturn_rgb555(gray, gray, gray);
+    }
+
     SRK_TVMD = 0x8000;
 }
 
@@ -272,6 +460,7 @@ void srk_saturn_host_init(
     host->begin_frame = srk_saturn_begin_frame;
     host->clear = srk_saturn_clear;
     host->draw_text = srk_saturn_draw_text;
+    host->draw_video_pattern = srk_saturn_draw_video_pattern;
     host->end_frame = srk_saturn_end_frame;
     host->read_vbr = srk_saturn_read_vbr;
 }
