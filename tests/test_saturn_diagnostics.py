@@ -155,6 +155,7 @@ class SaturnDiagnosticsTests(unittest.TestCase):
         vdp1_h = (C_ROOT / "srk_diag_vdp1.h").read_text(encoding="utf-8")
         vdp1_c = (C_ROOT / "srk_diag_vdp1.c").read_text(encoding="utf-8")
         host_c = (STANDALONE_ROOT / "srk_saturn_host.c").read_text(encoding="utf-8")
+        startup_s = (STANDALONE_ROOT / "srk_saturn_startup.S").read_text(encoding="utf-8")
 
         self.assertIn("CONTROLLER / INPUT TEST", app_c)
         self.assertIn("Raw:", app_c)
@@ -186,10 +187,14 @@ class SaturnDiagnosticsTests(unittest.TestCase):
         self.assertIn("SRK_DIAG_VDP1_CUBE_VERTEX_COUNT 8", vdp1_h)
         self.assertIn("SRK_DIAG_VDP1_CUBE_FACE_COUNT   6", vdp1_h)
         self.assertIn("srk_diag_vdp1_sine_quarter", vdp1_c)
-        self.assertIn("srk_diag_vdp1_rotate_vertex", vdp1_c)
-        self.assertIn("srk_diag_vdp1_project", vdp1_c)
+        self.assertIn("static void srk_diag_vdp1_rotate_vertex", vdp1_c)
+        self.assertIn("SRK_DIAG_VDP1_VECTOR3 *result", vdp1_c)
+        self.assertIn("static void srk_diag_vdp1_project", vdp1_c)
+        self.assertIn("SRK_DIAG_VDP1_POINT *point", vdp1_c)
         self.assertIn("srk_diag_vdp1_face_normal_z", vdp1_c)
         self.assertIn("srk_diag_vdp1_face_depth", vdp1_c)
+        self.assertNotIn("transformed[i] = srk_diag_vdp1_rotate_vertex", vdp1_c)
+        self.assertNotIn("quad->vertex[j] = srk_diag_vdp1_project", vdp1_c)
         self.assertNotIn("#include <math.h>", vdp1_c)
 
         self.assertIn("0x25C00000", host_c)
@@ -203,6 +208,14 @@ class SaturnDiagnosticsTests(unittest.TestCase):
         self.assertIn("0x8000", host_c)
         self.assertIn("0x0020", host_c)
         self.assertIn("0x50DF", host_c)
+
+        # Historical SH-ELF GCC may lower aggregate copies to external _memcpy
+        # even in a freestanding -fno-builtin translation unit. The standalone
+        # startup owns that ABI helper so the final image remains -nostdlib.
+        self.assertIn(".global _memcpy", startup_s)
+        self.assertIn("_memcpy:", startup_s)
+        self.assertIn("mov.b   @r5+,r1", startup_s)
+        self.assertIn("mov     r4,r0", startup_s)
 
         # The physical R4 test exposed full-screen flashing because the visible
         # bitmap was cleared every frame. Rendering now clears only on an
