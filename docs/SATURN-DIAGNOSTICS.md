@@ -2,7 +2,7 @@
 
 SRK's standalone Saturn diagnostics program is the controlled hardware-validation environment for the runtime features that will later be reused by resident/injected tooling.
 
-The standalone program is intentionally developed before further commercial-title injection work.  A standalone Saturn application owns its own input, interrupt, video, timing, and memory environment, so failures can be attributed to SRK instead of being mixed with an unknown title engine.
+The standalone program is intentionally developed before further commercial-title injection work. A standalone Saturn application owns its own input, interrupt, video, timing, and memory environment, so failures can be attributed to SRK instead of being mixed with an unknown title engine.
 
 ## Development ladder
 
@@ -12,7 +12,7 @@ SRK now separates three environments:
 2. **Cooperative resident mode** — an SRK-controlled homebrew workload acts like a game while the diagnostic/runtime core proves context save/restore and coexistence.
 3. **Foreign resident mode** — the proven runtime is adapted to an unrelated running title.
 
-Standalone success does not by itself establish foreign-runtime safety.  Machine-owning operations such as changing VBR, configuring VDP state, direct SMPC access, claiming Work RAM, or performing synchronous storage work remain host responsibilities.
+Standalone success does not by itself establish foreign-runtime safety. Machine-owning operations such as changing VBR, configuring VDP state, direct SMPC access, claiming Work RAM, or performing synchronous storage work remain host responsibilities.
 
 ## Diagnostic menu
 
@@ -31,15 +31,15 @@ SRK SATURN DIAGNOSTICS
   System Information
 ```
 
-The first implemented core screens are the menu shell, Controller / Input Test, and Flight Recorder.  Other entries remain explicit placeholders until their hardware backends are implemented and reviewed.
+The menu shell, Controller / Input Test, and Flight Recorder are implemented. Video Pattern Test is the next active hardware tranche. The remaining entries stay explicit placeholders until their hardware backends are implemented and reviewed.
 
 ## Host boundary
 
-The diagnostic core does not know how a controller packet, screen, timer, VBR observation, or future storage operation is obtained.  `srk_diag_host.h` defines the boundary.
+The diagnostic core does not know how a controller packet, screen, timer, VBR observation, video pattern, or future storage operation is obtained. `srk_diag_host.h` defines the boundary.
 
-A standalone Saturn host may use direct Saturn hardware services.  A later resident host can provide the same normalized services through a different safe mechanism.  This keeps menu, recorder, and input-state logic reusable instead of baking SAROO/BIOS or one title's assumptions into the core.
+A standalone Saturn host may use direct Saturn hardware services. A later resident host can provide the same normalized services through a different safe mechanism. This keeps menu, recorder, input-state, and pattern-selection logic reusable instead of baking SAROO/BIOS or one title's assumptions into the core.
 
-The core must therefore not depend on the R9 BIOS snapshot address, SAROO `SS_TIMER`, or SAROO file-writing calls.
+The core must therefore not depend on the R9 BIOS snapshot address, SAROO `SS_TIMER`, SAROO file-writing calls, or direct Saturn video register addresses.
 
 ## Controller / Input Test
 
@@ -51,7 +51,7 @@ raw hardware word
 host-normalized SRK button mask
 ```
 
-The raw value is deliberately visible on screen.  If the host's interpretation is ever wrong, the hardware evidence is still available.
+The raw value is deliberately visible on screen. If the host's interpretation is ever wrong, the hardware evidence is still available.
 
 The normalized state tracks all digital buttons simultaneously and distinguishes:
 
@@ -64,6 +64,8 @@ multi-button combinations
 ```
 
 L+R receives an explicit combination display and duration because a future resident runtime-menu gesture needs physical evidence that both shoulder buttons can be observed continuously for a controlled interval.
+
+START is testable like every other digital button. In Controller / Input Test only, `L+R+START` is the explicit return gesture so START itself can be observed as PRESSED/HELD/RELEASED.
 
 The standalone host, not the core, is responsible for mapping the real Saturn controller protocol to SRK's normalized button mask.
 
@@ -97,34 +99,56 @@ value0
 value1
 ```
 
-`value0` and `value1` are diagnostic-specific telemetry fields.  The initial application shell uses them for the L+R combination hold duration and controller state-change count.
+`value0` and `value1` are diagnostic-specific telemetry fields. The initial application shell uses them for the L+R combination hold duration and controller state-change count.
 
-The recorder can be armed/reset and later frozen.  When full it overwrites the oldest record, preserving the most recent 30 seconds instead of merely collecting the first 30 seconds.
+The recorder can be armed/reset and later frozen. When full it overwrites the oldest record, preserving the most recent 30 seconds instead of merely collecting the first 30 seconds.
 
-Persistent export is deliberately deferred until a standalone Saturn storage backend has itself been validated.  Capture and recording state must remain separable from storage.
+Persistent export is deliberately deferred until a standalone Saturn storage backend has itself been validated. Capture and recording state must remain separable from storage.
 
-## Planned video tests
+## Video Pattern Test architecture
 
-The video test should grow in small, independently validated steps:
+Video Pattern Test deliberately separates **pattern selection** from **pixel generation**.
+
+The title-neutral diagnostic core owns:
 
 ```text
-solid black / white / red / green / blue
-hue sweep
-brightness ramp
-RGB bars
-checkerboards
-fine grid / line patterns
-overscan and safe-area pattern
-VDP2 background tests
-VDP1 primitive tests
-priority / transparency / composition tests
+current pattern identity
+LEFT/RIGHT navigation
+pattern labels
+screen lifecycle
 ```
 
-Every pattern should identify itself on screen so photographs and capture-card recordings remain self-describing.
+The active host owns:
+
+```text
+actual framebuffer / VDP configuration
+palette / CRAM programming
+pixel generation
+hardware-specific presentation
+```
+
+For standalone master mode, the Saturn host may render directly through the already-proven VDP2 bitmap surface. A later cooperative or foreign-resident host can implement the same logical pattern request through a different safe presentation path without introducing Saturn register addresses into the diagnostic core.
+
+The first pattern set is intentionally simple and attributable:
+
+```text
+solid black
+solid white
+solid red
+solid green
+solid blue
+RGB / color bars
+grayscale / brightness ramp
+checkerboard
+fine grid
+overscan / safe-area pattern
+```
+
+Each pattern identifies itself on screen so photographs and capture recordings remain self-describing.
 
 ## Planned VDP1 / 3D test
 
-The first 3D workload is a rotating cube driven by SH-2-side transforms and rendered through VDP1.  It should exercise:
+The first 3D workload is a rotating cube driven by SH-2-side transforms and rendered through VDP1. It should exercise:
 
 ```text
 X/Y/Z rotation
@@ -144,7 +168,7 @@ The audio section is intended to prove SCSP-facing behavior independently with s
 
 ## Planned timing / interrupt test
 
-R8/R9 showed why interrupt assumptions must be measurable.  The timing/interrupt screen should eventually expose quantities such as VBLANK/HBLANK counts, frame duration, current VBR, and reviewed SCU/SMPC status observations.
+Earlier runtime experiments showed why interrupt assumptions must be measurable. The timing/interrupt screen should eventually expose quantities such as VBLANK/HBLANK counts, frame duration, current VBR, and reviewed SCU/SMPC status observations.
 
 ## Planned memory / dump tools
 
@@ -158,10 +182,47 @@ Both Work RAM regions
 
 Future diagnostic targets may include VDP1 VRAM, VDP2 VRAM, CRAM, sound RAM, and a system-state package, but only when their capture semantics are explicit.
 
-Capture and export remain separate operations internally.  No diagnostic core function should assume that a SAROO SD-card filesystem is automatically available to a standalone CD application.
+Capture and export remain separate operations internally. No diagnostic core function should assume that a SAROO SD-card filesystem is automatically available to a standalone CD application.
+
+## Physical hardware validation
+
+### R4 — first physical Saturn boot
+
+R4 established the first end-to-end physical proof of SRK Saturn Diagnostics:
+
+```text
+SRK source
+  -> SH-2 compile/link
+  -> Saturn boot image
+  -> MODE1/2352 BIN/CUE
+  -> SAROO
+  -> physical Sega Saturn
+```
+
+The menu booted and navigated on hardware, and Controller / Input Test received real controller state. R4 also exposed two attributable defects: the visible bitmap was being cleared and repainted every display frame, causing severe flashing, and START was consumed as an exit action before it could be meaningfully tested.
+
+### R5 — accepted physical baseline
+
+R5 corrected both defects and was physically accepted on 2026-10-09.
+
+Validated behavior on the real Saturn includes:
+
+```text
+stable menu rendering without continuous full-screen flashing
+real controller input visible as raw and normalized state
+START visibly reports PRESSED / HELD / RELEASED
+START alone remains inside Controller / Input Test
+L+R+START returns from Controller / Input Test
+menu navigation remains operational
+other diagnostic entries remain reachable
+```
+
+The deployable R5 image was generated as a single-track MODE1/2352 BIN/CUE pair, freshly verified against the intermediate ISO, deployed through SRK's guarded SAROO workflow, and followed by a whole-card inventory verification that matched the pre-deployment baseline except for the explicitly allowed new R5 directory and its BIN/CUE files.
+
+R5 is therefore the current known-good physical-hardware baseline for subsequent standalone Saturn diagnostic work.
 
 ## Current validation boundary
 
-At the current source milestone, the diagnostic contracts and hardware-neutral C core exist, including input edges/holds/combinations, menu state, the 30-second ring recorder, and a host-driven application shell.
+SRK now has a physically proven standalone Saturn host supplying real controller sampling, VBlank-paced timing, VBR observation, stable VDP2 bitmap text presentation, and a bootable verified BIN/CUE deployment path.
 
-This does **not** yet mean a Saturn BIN/CUE has been built or physically booted.  The next hardware milestone is a standalone Saturn host that supplies real timing, direct controller sampling, and a minimal text renderer to this core, followed by construction of a bootable image and physical validation.
+This proves the standalone master-mode foundation; it does **not** establish cooperative-resident or foreign-resident safety. The next milestone is to complete and physically validate Video Pattern Test through the existing host boundary, followed by the VDP1 / 3D diagnostic.
