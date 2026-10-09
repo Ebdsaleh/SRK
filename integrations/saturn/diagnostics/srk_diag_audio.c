@@ -24,6 +24,7 @@ static void srk_diag_audio_enter_stereo_pair(SRK_DIAG_AUDIO_STATE *state)
         state->mono_tone = state->tone;
     state->stereo_pair = 1;
     state->sweep_active = 0;
+    state->sample_mode = 0;
     state->sweep_frame = 0u;
     state->tone = SRK_DIAG_AUDIO_TONE_STEREO_PAIR;
     state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
@@ -39,6 +40,7 @@ static void srk_diag_audio_enter_sweep(SRK_DIAG_AUDIO_STATE *state)
         state->mono_tone = state->tone;
 
     state->stereo_pair = 0;
+    state->sample_mode = 0;
     state->sweep_active = 1;
     state->sweep_frame = 0u;
     state->tone = SRK_DIAG_AUDIO_TONE_LOW;
@@ -57,6 +59,44 @@ static void srk_diag_audio_leave_sweep(SRK_DIAG_AUDIO_STATE *state)
     state->sweep_active = 0;
     state->sweep_frame = 0u;
     state->stereo_pair = 0;
+    state->sample_mode = 0;
+    state->tone = state->mono_tone;
+    state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
+    state->volume = SRK_DIAG_AUDIO_DEFAULT_VOLUME;
+    state->playing = 0;
+    state->muted = 0;
+}
+
+
+static void srk_diag_audio_enter_sample_mode(SRK_DIAG_AUDIO_STATE *state)
+{
+    if(!state)
+        return;
+
+    if(state->tone != SRK_DIAG_AUDIO_TONE_STEREO_PAIR)
+        state->mono_tone = state->tone;
+
+    state->stereo_pair = 0;
+    state->sweep_active = 0;
+    state->sample_mode = 1;
+    state->sweep_frame = 0u;
+    state->tone = state->mono_tone;
+    state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
+    state->volume = SRK_DIAG_AUDIO_DEFAULT_VOLUME;
+    state->playing = 1;
+    state->muted = 0;
+}
+
+
+static void srk_diag_audio_leave_sample_mode(SRK_DIAG_AUDIO_STATE *state)
+{
+    if(!state)
+        return;
+
+    state->sample_mode = 0;
+    state->stereo_pair = 0;
+    state->sweep_active = 0;
+    state->sweep_frame = 0u;
     state->tone = state->mono_tone;
     state->pan = SRK_DIAG_AUDIO_PAN_CENTER;
     state->volume = SRK_DIAG_AUDIO_DEFAULT_VOLUME;
@@ -123,6 +163,7 @@ void srk_diag_audio_reset(SRK_DIAG_AUDIO_STATE *state)
     state->muted = 0;
     state->stereo_pair = 0;
     state->sweep_active = 0;
+    state->sample_mode = 0;
     state->submitted = 0;
 }
 
@@ -135,6 +176,7 @@ void srk_diag_audio_control(
     SRK_DIAG_AUDIO_TONE selected_tone;
     int stereo_both_play;
     int sweep_toggle;
+    int sample_toggle;
 
     if(!state)
         return;
@@ -156,7 +198,28 @@ void srk_diag_audio_control(
     }
 
     if(sweep_toggle){
+        if(state->sample_mode)
+            srk_diag_audio_leave_sample_mode(state);
         srk_diag_audio_enter_sweep(state);
+        return;
+    }
+
+    /*
+     * Stage 4 uses previously unused DOWN+C as an explicit shaped-PCM source
+     * toggle. The chord takes precedence over ordinary C mute/unmute. Unlike
+     * the automated sweep, sample mode still allows the normal play, mute, pan,
+     * pitch and volume controls so the alternate Sound-RAM source can be tested
+     * through the already accepted mixer/pitch path.
+     */
+    sample_toggle =
+        (pressed_buttons & SRK_DIAG_BUTTON_DOWN) &&
+        (pressed_buttons & SRK_DIAG_BUTTON_C);
+
+    if(sample_toggle){
+        if(state->sample_mode)
+            srk_diag_audio_leave_sample_mode(state);
+        else
+            srk_diag_audio_enter_sample_mode(state);
         return;
     }
 
@@ -178,7 +241,7 @@ void srk_diag_audio_control(
         if(pressed_buttons & SRK_DIAG_BUTTON_A)
             state->playing = !state->playing;
 
-        if(pressed_buttons & SRK_DIAG_BUTTON_B){
+        if((pressed_buttons & SRK_DIAG_BUTTON_B) && !state->sample_mode){
             if(state->stereo_pair){
                 state->stereo_pair = 0;
                 state->tone = state->mono_tone;
@@ -254,6 +317,9 @@ void srk_diag_audio_make_request(
 
     request->tone_id = (unsigned int)state->tone;
     request->pan_id = (unsigned int)state->pan;
+    request->waveform_id = state->sample_mode
+        ? (unsigned int)SRK_DIAG_AUDIO_WAVEFORM_SHAPED_PCM
+        : (unsigned int)SRK_DIAG_AUDIO_WAVEFORM_TONE;
     request->volume_level = (unsigned int)state->volume;
     request->playing = state->playing;
     request->muted = state->muted;
@@ -280,4 +346,12 @@ const char *srk_diag_audio_pan_label(SRK_DIAG_AUDIO_PAN pan)
     if((int)pan < 0 || (int)pan > (int)SRK_DIAG_AUDIO_PAN_RIGHT)
         return "UNKNOWN";
     return srk_diag_audio_pans[(int)pan];
+}
+
+
+const char *srk_diag_audio_source_label(const SRK_DIAG_AUDIO_STATE *state)
+{
+    if(!state)
+        return "UNKNOWN";
+    return state->sample_mode ? "SHAPED PCM" : "TONE";
 }
