@@ -49,6 +49,7 @@ srk-saroo-first-read-prepare = "rikai_kotoba.tools.saroo_ingame_entry_prepare:ma
 srk-saturn-standalone-probe = "rikai_kotoba.tools.saturn_standalone_probe:main"
 srk-saturn-standalone-candidates = "rikai_kotoba.tools.saturn_standalone_candidate_probe:main"
 srk-saturn-standalone-template = "rikai_kotoba.tools.saturn_standalone_template_probe:main"
+srk-saturn-standalone-prepare = "rikai_kotoba.tools.saturn_standalone_prepare:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "rikai_kotoba.__version__" }
