@@ -64,6 +64,18 @@ static void srk_diag_u32(char out[11], srk_u32 value)
 }
 
 
+static void srk_diag_s32(char out[12], srk_s32 value)
+{
+    if(value < 0){
+        out[0] = '-';
+        srk_diag_u32(&out[1], (srk_u32)(-value));
+    }else{
+        out[0] = '+';
+        srk_diag_u32(&out[1], (srk_u32)value);
+    }
+}
+
+
 static void srk_diag_draw(SRK_DIAG_HOST *host, int x, int y, const char *text)
 {
     if(host->draw_text)
@@ -234,6 +246,7 @@ static void srk_diag_render_vdp1(
     SRK_DIAG_VDP1_STATUS status;
     char value[7];
     char number[11];
+    char signed_number[12];
     int status_ok;
     int submitted;
 
@@ -246,7 +259,7 @@ static void srk_diag_render_vdp1(
 
     if(full_render){
         srk_diag_draw(host, 2, 1, "VDP1 / 3D TEST");
-        srk_diag_draw(host, 2, 2, "Stage 2: fixed-point rotating cube");
+        srk_diag_draw(host, 2, 2, "Stage 3: interactive cube dynamics");
         srk_diag_draw(host, 2, 4, "Host submit:");
         srk_diag_draw(host, 2, 5, "Frames:");
         srk_diag_draw(host, 2, 6, "Visible faces:");
@@ -254,25 +267,47 @@ static void srk_diag_render_vdp1(
         srk_diag_draw(host, 2, 8, "LOPR:");
         srk_diag_draw(host, 2, 9, "COPR:");
         srk_diag_draw(host, 2, 10, "MODR:");
-        srk_diag_draw(host, 21, 7, "X:");
-        srk_diag_draw(host, 21, 8, "Y:");
-        srk_diag_draw(host, 21, 9, "Z:");
-        srk_diag_draw(host, 2, 24, "Cube should rotate near screen center.");
+
+        srk_diag_draw(host, 20, 4, "State:");
+        srk_diag_draw(host, 20, 5, "Palette:");
+        srk_diag_draw(host, 20, 6, "Speed:");
+        srk_diag_draw(host, 20, 7, "VX:");
+        srk_diag_draw(host, 20, 8, "VY:");
+        srk_diag_draw(host, 20, 9, "VZ:");
+        srk_diag_draw(host, 20, 10, "X:");
+        srk_diag_draw(host, 27, 10, "Y:");
+        srk_diag_draw(host, 34, 10, "Z:");
+
+        srk_diag_draw(host, 2, 22, "D-PAD Pitch/Yaw   L/R Roll");
+        srk_diag_draw(host, 2, 23, "A/B Speed   C Freeze/Run");
+        srk_diag_draw(host, 2, 24, "X Pastel  Y Neon  Z Original");
         srk_diag_draw(host, 2, 26, "START Return to diagnostics menu");
     }
 
-    srk_diag_draw_field(host, 16, 4, 12, app->vdp1.submitted ? "OK" : "UNAVAILABLE");
+    srk_diag_draw_field(host, 16, 4, 4, app->vdp1.submitted ? "OK" : "NO");
     srk_diag_u32(number, app->vdp1.animation_frame);
-    srk_diag_draw_field(host, 16, 5, 10, number);
+    srk_diag_draw_field(host, 16, 5, 4, number);
     srk_diag_u32(number, app->vdp1.visible_face_count);
-    srk_diag_draw_field(host, 16, 6, 10, number);
+    srk_diag_draw_field(host, 16, 6, 4, number);
+
+    srk_diag_draw_field(host, 27, 4, 10, app->vdp1.frozen ? "FROZEN" : "RUN");
+    srk_diag_draw_field(host, 29, 5, 10, srk_diag_vdp1_palette_label(app->vdp1.palette));
+    srk_diag_u32(number, app->vdp1.speed_q8);
+    srk_diag_draw_field(host, 27, 6, 10, number);
+
+    srk_diag_s32(signed_number, app->vdp1.velocity_x);
+    srk_diag_draw_field(host, 24, 7, 8, signed_number);
+    srk_diag_s32(signed_number, app->vdp1.velocity_y);
+    srk_diag_draw_field(host, 24, 8, 8, signed_number);
+    srk_diag_s32(signed_number, app->vdp1.velocity_z);
+    srk_diag_draw_field(host, 24, 9, 8, signed_number);
 
     srk_diag_u32(number, app->vdp1.angle_x & 0x00ffu);
-    srk_diag_draw_field(host, 24, 7, 5, number);
+    srk_diag_draw_field(host, 22, 10, 4, number);
     srk_diag_u32(number, app->vdp1.angle_y & 0x00ffu);
-    srk_diag_draw_field(host, 24, 8, 5, number);
+    srk_diag_draw_field(host, 29, 10, 4, number);
     srk_diag_u32(number, app->vdp1.angle_z & 0x00ffu);
-    srk_diag_draw_field(host, 24, 9, 5, number);
+    srk_diag_draw_field(host, 36, 10, 4, number);
 
     status.edsr = 0;
     status.lopr = 0;
@@ -292,10 +327,10 @@ static void srk_diag_render_vdp1(
         srk_diag_hex16(value, status.modr);
         srk_diag_draw_field(host, 10, 10, 6, value);
     }else{
-        srk_diag_draw_field(host, 10, 7, 12, "UNAVAILABLE");
-        srk_diag_draw_field(host, 10, 8, 12, "UNAVAILABLE");
-        srk_diag_draw_field(host, 10, 9, 12, "UNAVAILABLE");
-        srk_diag_draw_field(host, 10, 10, 12, "UNAVAILABLE");
+        srk_diag_draw_field(host, 10, 7, 10, "UNAVAIL");
+        srk_diag_draw_field(host, 10, 8, 10, "UNAVAIL");
+        srk_diag_draw_field(host, 10, 9, 10, "UNAVAIL");
+        srk_diag_draw_field(host, 10, 10, 10, "UNAVAIL");
     }
 }
 
@@ -424,6 +459,12 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
             if(host->hide_vdp1)
                 host->hide_vdp1(host->context);
             srk_diag_menu_back(&app->menu);
+        }else{
+            srk_diag_vdp1_control(
+                &app->vdp1,
+                app->input.current,
+                app->input.pressed
+            );
         }
     }else{
         if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_START)){
