@@ -17,7 +17,7 @@ arm/freeze the in-RAM 30-second flight recorder
 Not in R1:
 
 ```text
-SD writes
+SD writes from Saturn runtime
 memory dumps
 SCSP/audio
 VDP1 3D test
@@ -233,4 +233,38 @@ refuses a second Python-native build in the same generated tree
 
 The SH-ELF tools are still responsible for code generation. Python is responsible for safe, deterministic orchestration, raw-disc framing, verification, and provenance.
 
-A successful host build is not yet a physical Saturn validation. The generated BIN/CUE and build report must be inspected before launch on hardware.
+## Guarded SAROO deployment boundary
+
+After the BIN/CUE and build report have been reviewed, deployment is a separate guarded operation. The default command is read-only:
+
+```bat
+python -m rikai_kotoba.tools.saturn_saroo_deploy ^
+  --card-root "D:\" ^
+  --project "C:\path\to\SRK-Diagnostics-R1"
+```
+
+Before proposing any write, SRK:
+
+```text
+requires a successful standalone build report
+requires deployable format cue-bin-mode1-2352
+requires verified_against_iso = true
+re-hashes the BIN and CUE against the accepted build report
+re-verifies every MODE1/2352 raw sector against build/srk_diag.iso
+requires an unambiguous modern SAROO layout
+requires an existing SAROO/ISO directory
+requires the destination game directory to be absent
+refuses an existing pending deployment directory
+```
+
+The write path requires the explicit token:
+
+```text
+DEPLOY-SATURN-IMAGE
+```
+
+SRK first copies the two files to a new hidden pending directory, verifies their size and SHA-256, and only then renames that directory to the final game directory. On a copy/verification failure the pending directory is removed. Existing SAROO game directories are never merged, overwritten, renamed, or removed.
+
+The first physical R1 deployment therefore changes only one new directory beneath `SAROO/ISO` and contains only the verified `SRK-Diagnostics.bin` and `SRK-Diagnostics.cue` pair.
+
+A successful host build or card deployment is not yet a physical Saturn validation. The first hardware acceptance remains: boot, visible menu, UP/DOWN navigation, A selection, START return, raw/normalized input, simultaneous L+R timing, and in-RAM flight-recorder arm/freeze.
