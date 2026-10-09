@@ -237,27 +237,42 @@ static void srk_diag_render_vdp1(
     int status_ok;
     int submitted;
 
-    if(full_render){
-        submitted = 0;
-        if(host->present_vdp1_quad)
-            submitted = host->present_vdp1_quad(host->context, &app->vdp1.quad);
-        srk_diag_vdp1_mark_submitted(&app->vdp1, submitted);
+    submitted = 0;
+    if(host->present_vdp1_scene)
+        submitted = host->present_vdp1_scene(host->context, &app->vdp1.scene);
+    else if(host->present_vdp1_quad && app->vdp1.scene.count > 0)
+        submitted = host->present_vdp1_quad(host->context, &app->vdp1.scene.quad[0]);
+    srk_diag_vdp1_mark_submitted(&app->vdp1, submitted);
 
+    if(full_render){
         srk_diag_draw(host, 2, 1, "VDP1 / 3D TEST");
-        srk_diag_draw(host, 2, 2, "Stage 1: static RGB quadrilateral");
+        srk_diag_draw(host, 2, 2, "Stage 2: fixed-point rotating cube");
         srk_diag_draw(host, 2, 4, "Host submit:");
-        srk_diag_draw(host, 2, 5, "Submissions:");
+        srk_diag_draw(host, 2, 5, "Frames:");
+        srk_diag_draw(host, 2, 6, "Visible faces:");
         srk_diag_draw(host, 2, 7, "EDSR:");
         srk_diag_draw(host, 2, 8, "LOPR:");
         srk_diag_draw(host, 2, 9, "COPR:");
         srk_diag_draw(host, 2, 10, "MODR:");
-        srk_diag_draw(host, 2, 24, "Primitive should appear near screen center.");
+        srk_diag_draw(host, 21, 7, "X:");
+        srk_diag_draw(host, 21, 8, "Y:");
+        srk_diag_draw(host, 21, 9, "Z:");
+        srk_diag_draw(host, 2, 24, "Cube should rotate near screen center.");
         srk_diag_draw(host, 2, 26, "START Return to diagnostics menu");
     }
 
     srk_diag_draw_field(host, 16, 4, 12, app->vdp1.submitted ? "OK" : "UNAVAILABLE");
-    srk_diag_u32(number, app->vdp1.submit_count);
+    srk_diag_u32(number, app->vdp1.animation_frame);
     srk_diag_draw_field(host, 16, 5, 10, number);
+    srk_diag_u32(number, app->vdp1.visible_face_count);
+    srk_diag_draw_field(host, 16, 6, 10, number);
+
+    srk_diag_u32(number, app->vdp1.angle_x & 0x00ffu);
+    srk_diag_draw_field(host, 24, 7, 5, number);
+    srk_diag_u32(number, app->vdp1.angle_y & 0x00ffu);
+    srk_diag_draw_field(host, 24, 8, 5, number);
+    srk_diag_u32(number, app->vdp1.angle_z & 0x00ffu);
+    srk_diag_draw_field(host, 24, 9, 5, number);
 
     status.edsr = 0;
     status.lopr = 0;
@@ -420,6 +435,9 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
                 srk_diag_flight_freeze(&app->recorder);
         }
     }
+
+    if(app->menu.active && app->menu.active_screen == SRK_DIAG_SCREEN_VDP1_3D_TEST)
+        srk_diag_vdp1_advance(&app->vdp1);
 
     diagnostic_id = app->menu.active ? (srk_u16)app->menu.active_screen : 0xffffu;
     record.timestamp_us = now;
