@@ -443,13 +443,18 @@ void srk_diag_vdp1_control(
         state->velocity_y = srk_diag_vdp1_clamp_velocity(velocity);
     }
 
+    /*
+     * Positive mathematical Z rotation is counter-clockwise on screen. Keep
+     * that convention in the transform, but map the shoulder buttons by player
+     * expectation: L rolls left/CCW, R rolls right/CW.
+     */
     if((held_buttons & SRK_DIAG_BUTTON_L) &&
        !(held_buttons & SRK_DIAG_BUTTON_R)){
-        velocity = (srk_s32)state->velocity_z - SRK_DIAG_VDP1_ACCEL_Q8;
+        velocity = (srk_s32)state->velocity_z + SRK_DIAG_VDP1_ACCEL_Q8;
         state->velocity_z = srk_diag_vdp1_clamp_velocity(velocity);
     }else if((held_buttons & SRK_DIAG_BUTTON_R) &&
              !(held_buttons & SRK_DIAG_BUTTON_L)){
-        velocity = (srk_s32)state->velocity_z + SRK_DIAG_VDP1_ACCEL_Q8;
+        velocity = (srk_s32)state->velocity_z - SRK_DIAG_VDP1_ACCEL_Q8;
         state->velocity_z = srk_diag_vdp1_clamp_velocity(velocity);
     }
 
