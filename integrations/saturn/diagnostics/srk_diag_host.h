@@ -79,13 +79,14 @@ typedef struct SRK_DIAG_VDP1_STATUS {
 
 
 /*
- * Title-neutral SCSP diagnostic request. Numeric tone/pan IDs belong to the
- * diagnostic contract, not to SCSP register encodings. The standalone host
- * translates them to waveform, pitch, mixer, and sound-CPU hardware state.
+ * Title-neutral SCSP diagnostic request. Numeric tone/pan/waveform IDs belong
+ * to the diagnostic contract, not to SCSP register encodings. The standalone
+ * host translates them to Sound-RAM source, pitch, mixer, and sound-CPU state.
  */
 typedef struct SRK_DIAG_AUDIO_REQUEST {
     unsigned int tone_id;
     unsigned int pan_id;
+    unsigned int waveform_id;
     unsigned int volume_level;
     int playing;
     int muted;
@@ -140,8 +141,8 @@ typedef struct SRK_DIAG_HOST {
 
     /*
      * Audio diagnostics submit only logical state. Sound-RAM layout, SMPC sound
-     * CPU lifecycle, SCSP slot registers, pitch encoding, and pan/send encoding
-     * are standalone-host responsibilities.
+     * CPU lifecycle, SCSP slot registers, source selection, pitch encoding, and
+     * pan/send encoding are standalone-host responsibilities.
      */
     int (*present_audio_tone)(void *context, const SRK_DIAG_AUDIO_REQUEST *request);
     void (*stop_audio)(void *context);
