@@ -57,6 +57,7 @@
 #define SRK_AUDIO_PITCH_HIGH 0x0800u
 
 #define SRK_AUDIO_STAGE2_STEREO_TONE_ID 3u
+#define SRK_AUDIO_STAGE5_MIXED_TONE_ID 4u
 #define SRK_AUDIO_STAGE2_LEFT_SLOT 0u
 #define SRK_AUDIO_STAGE2_RIGHT_SLOT 1u
 #define SRK_AUDIO_STAGE2_LEFT_MASK 0x01u
@@ -273,6 +274,7 @@ static int srk_saturn_audio_initialize(SRK_SATURN_HOST_STATE *state)
     state->audio_playing = 0;
     state->audio_playing_mask = 0u;
     state->audio_waveform_id = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
+    state->audio_right_waveform_id = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
     return 1;
 }
 
@@ -340,6 +342,40 @@ static void srk_saturn_audio_apply_key_mask(unsigned int mask)
 }
 
 
+static void srk_saturn_audio_retarget_sources(
+    SRK_SATURN_HOST_STATE *state,
+    unsigned int left_waveform,
+    unsigned int right_waveform
+)
+{
+    if(!state)
+        return;
+
+    if(left_waveform == state->audio_waveform_id &&
+       right_waveform == state->audio_right_waveform_id)
+        return;
+
+    /*
+     * Do not retarget SA/LEA beneath any keyed owned voice. Stage 5 needs both
+     * slot sources to change independently, so clear the pair once, retarget
+     * whichever slot changed, then let normal desired-mask logic re-key below.
+     */
+    if(state->audio_playing_mask != 0u){
+        srk_saturn_audio_apply_key_mask(0u);
+        state->audio_playing_mask = 0u;
+    }
+
+    if(left_waveform != state->audio_waveform_id){
+        srk_saturn_audio_set_slot_source(SRK_AUDIO_STAGE2_LEFT_SLOT, left_waveform);
+        state->audio_waveform_id = left_waveform;
+    }
+    if(right_waveform != state->audio_right_waveform_id){
+        srk_saturn_audio_set_slot_source(SRK_AUDIO_STAGE2_RIGHT_SLOT, right_waveform);
+        state->audio_right_waveform_id = right_waveform;
+    }
+}
+
+
 static int srk_saturn_audio_present(
     void *context,
     const SRK_DIAG_AUDIO_REQUEST *request
@@ -349,7 +385,8 @@ static int srk_saturn_audio_present(
     volatile srk_u16 *left;
     volatile srk_u16 *right;
     unsigned int desired_mask;
-    unsigned int desired_waveform;
+    unsigned int desired_left_waveform;
+    unsigned int desired_right_waveform;
     int audible;
 
     state = (SRK_SATURN_HOST_STATE *)context;
@@ -363,37 +400,40 @@ static int srk_saturn_audio_present(
     desired_mask = 0u;
     audible = request->playing && !request->muted;
 
-    desired_waveform = request->waveform_id;
-    if(desired_waveform != SRK_AUDIO_STAGE4_WAVEFORM_SHAPED_PCM_ID)
-        desired_waveform = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
-    if(request->tone_id == SRK_AUDIO_STAGE2_STEREO_TONE_ID)
-        desired_waveform = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
-
-    if(desired_waveform != state->audio_waveform_id){
-        /*
-         * Do not retarget SA/LEA beneath a keyed voice. Clear the owned key
-         * mask first, switch slot 0 to the requested deterministic Sound-RAM
-         * region, then let the normal desired-mask path re-key it below.
-         */
-        if(state->audio_playing_mask != 0u){
-            srk_saturn_audio_apply_key_mask(0u);
-            state->audio_playing_mask = 0u;
-        }
-        srk_saturn_audio_set_slot_source(
-            SRK_AUDIO_STAGE2_LEFT_SLOT,
-            desired_waveform
-        );
-        state->audio_waveform_id = desired_waveform;
-    }
+    desired_left_waveform = request->waveform_id;
+    if(desired_left_waveform != SRK_AUDIO_STAGE4_WAVEFORM_SHAPED_PCM_ID)
+        desired_left_waveform = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
+    desired_right_waveform = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
 
     if(request->tone_id == SRK_AUDIO_STAGE2_STEREO_TONE_ID){
-        /*
-         * Stage 2: slot 0 is a distinguishable LOW tone hard-left and slot 1
-         * is a HIGH tone hard-right. CENTER requests both simultaneously;
-         * LEFT/RIGHT isolate the corresponding source without repanning it.
-         */
-        left[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_LOW;
-        right[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_HIGH;
+        desired_left_waveform = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
+        desired_right_waveform = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
+    }else if(request->tone_id == SRK_AUDIO_STAGE5_MIXED_TONE_ID){
+        desired_left_waveform = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
+        desired_right_waveform = SRK_AUDIO_STAGE4_WAVEFORM_SHAPED_PCM_ID;
+    }
+
+    srk_saturn_audio_retarget_sources(
+        state,
+        desired_left_waveform,
+        desired_right_waveform
+    );
+
+    if(request->tone_id == SRK_AUDIO_STAGE2_STEREO_TONE_ID ||
+       request->tone_id == SRK_AUDIO_STAGE5_MIXED_TONE_ID){
+        if(request->tone_id == SRK_AUDIO_STAGE2_STEREO_TONE_ID){
+            /* Accepted Stage 2: same source, distinguishable LOW/HIGH pitches. */
+            left[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_LOW;
+            right[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_HIGH;
+        }else{
+            /*
+             * Stage 5: both slots use MID pitch so physical isolation compares
+             * the square source on listener-left directly against the shaped
+             * PCM source on listener-right without pitch as a confounder.
+             */
+            left[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_MID;
+            right[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_MID;
+        }
 
         left[SRK_AUDIO_SLOT_MIXER] = srk_saturn_audio_mixer_value(
             request->volume_level,
@@ -461,17 +501,28 @@ static int srk_saturn_audio_read_status(
 {
     SRK_SATURN_HOST_STATE *state;
     volatile srk_u16 *left;
+    volatile srk_u16 *right;
 
     state = (SRK_SATURN_HOST_STATE *)context;
     if(!state || !status || !state->audio_initialized)
         return 0;
 
     left = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_LEFT_SLOT);
+    right = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_RIGHT_SLOT);
     status->initialized = 1;
     status->common_control = SRK_AUDIO_SCSP_COMMON[0];
+
     status->slot_control = left[SRK_AUDIO_SLOT_CONTROL];
+    status->slot_source = left[SRK_AUDIO_SLOT_SA_LOW];
+    status->slot_loop_end = left[SRK_AUDIO_SLOT_LEA];
     status->pitch = left[SRK_AUDIO_SLOT_PITCH];
     status->mixer = left[SRK_AUDIO_SLOT_MIXER];
+
+    status->slot1_control = right[SRK_AUDIO_SLOT_CONTROL];
+    status->slot1_source = right[SRK_AUDIO_SLOT_SA_LOW];
+    status->slot1_loop_end = right[SRK_AUDIO_SLOT_LEA];
+    status->slot1_pitch = right[SRK_AUDIO_SLOT_PITCH];
+    status->slot1_mixer = right[SRK_AUDIO_SLOT_MIXER];
     return 1;
 }
 
@@ -488,6 +539,7 @@ void srk_saturn_audio_bind(
     state->audio_playing = 0;
     state->audio_playing_mask = 0u;
     state->audio_waveform_id = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
+    state->audio_right_waveform_id = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
     host->present_audio_tone = srk_saturn_audio_present;
     host->stop_audio = srk_saturn_audio_stop;
     host->read_audio_status = srk_saturn_audio_read_status;
