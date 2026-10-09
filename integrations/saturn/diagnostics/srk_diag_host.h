@@ -4,8 +4,8 @@
 /*
  * Title-neutral host boundary for the SRK Saturn diagnostics core.
  *
- * The standalone Saturn host will own SMPC/VDP/timing directly.  A later
- * injected host may obtain the same logical services differently.  Core
+ * The standalone Saturn host will own SMPC/VDP/timing directly. A later
+ * injected host may obtain the same logical services differently. Core
  * diagnostics must not contain Saturn BIOS snapshot addresses or direct
  * cartridge/game assumptions.
  */
@@ -52,15 +52,22 @@ typedef struct SRK_DIAG_HOST {
     srk_u32 (*time_us)(void *context);
 
     /*
-     * Poll one controller port.  raw_state is shown to the user unchanged;
+     * Poll one controller port. raw_state is shown to the user unchanged;
      * buttons is the host-normalized SRK_DIAG_BUTTON mask.
      */
     int (*poll_pad)(void *context, unsigned int port, SRK_DIAG_PAD_SAMPLE *sample);
 
-    /* Minimal text surface used by the diagnostic shell and input test. */
+    /* Minimal presentation surface used by the diagnostic shell. */
     void (*begin_frame)(void *context);
     void (*clear)(void *context);
     void (*draw_text)(void *context, int x, int y, const char *text);
+
+    /*
+     * Draw one title-neutral video diagnostic pattern by stable numeric ID.
+     * Pixel generation and hardware register access remain host responsibilities.
+     */
+    void (*draw_video_pattern)(void *context, unsigned int pattern_id);
+
     void (*end_frame)(void *context);
 
     /* Optional host observations for telemetry. */
