@@ -144,7 +144,7 @@ class SaturnStandaloneTemplateTests(unittest.TestCase):
             self.assertEqual(status, 0)
             self.assertIn("READ-ONLY", text)
             self.assertIn("SEGA SEGASATURN", text)
-            self.assertIn("product_number : T-0000G", text)
+            self.assertIn("product_number: T-0000G", text)
             self.assertIn("===== makefile [makefile] =====", text)
             self.assertIn("===== OBJECTS [build-list] =====", text)
             self.assertIn("===== run.bat [script] =====", text)
