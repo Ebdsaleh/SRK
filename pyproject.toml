@@ -46,6 +46,7 @@ srk-saroo-card-guard = "rikai_kotoba.tools.saroo_card_guard:main"
 srk-saroo-transition = "rikai_kotoba.tools.saroo_transition:main"
 srk-saroo-capture-import = "rikai_kotoba.tools.saroo_capture_import:main"
 srk-saroo-first-read-prepare = "rikai_kotoba.tools.saroo_ingame_entry_prepare:main"
+srk-saturn-standalone-probe = "rikai_kotoba.tools.saturn_standalone_probe:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "rikai_kotoba.__version__" }
