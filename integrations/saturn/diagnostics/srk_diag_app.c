@@ -225,6 +225,66 @@ static void srk_diag_render_video(
 }
 
 
+static void srk_diag_render_vdp1(
+    SRK_DIAG_APP *app,
+    SRK_DIAG_HOST *host,
+    int full_render
+)
+{
+    SRK_DIAG_VDP1_STATUS status;
+    char value[7];
+    char number[11];
+    int status_ok;
+    int submitted;
+
+    if(full_render){
+        submitted = 0;
+        if(host->present_vdp1_quad)
+            submitted = host->present_vdp1_quad(host->context, &app->vdp1.quad);
+        srk_diag_vdp1_mark_submitted(&app->vdp1, submitted);
+
+        srk_diag_draw(host, 2, 1, "VDP1 / 3D TEST");
+        srk_diag_draw(host, 2, 2, "Stage 1: static RGB quadrilateral");
+        srk_diag_draw(host, 2, 4, "Host submit:");
+        srk_diag_draw(host, 2, 5, "Submissions:");
+        srk_diag_draw(host, 2, 7, "EDSR:");
+        srk_diag_draw(host, 2, 8, "LOPR:");
+        srk_diag_draw(host, 2, 9, "COPR:");
+        srk_diag_draw(host, 2, 10, "MODR:");
+        srk_diag_draw(host, 2, 24, "Primitive should appear near screen center.");
+        srk_diag_draw(host, 2, 26, "START Return to diagnostics menu");
+    }
+
+    srk_diag_draw_field(host, 16, 4, 12, app->vdp1.submitted ? "OK" : "UNAVAILABLE");
+    srk_diag_u32(number, app->vdp1.submit_count);
+    srk_diag_draw_field(host, 16, 5, 10, number);
+
+    status.edsr = 0;
+    status.lopr = 0;
+    status.copr = 0;
+    status.modr = 0;
+    status_ok = 0;
+    if(host->read_vdp1_status)
+        status_ok = host->read_vdp1_status(host->context, &status);
+
+    if(status_ok){
+        srk_diag_hex16(value, status.edsr);
+        srk_diag_draw_field(host, 10, 7, 6, value);
+        srk_diag_hex16(value, status.lopr);
+        srk_diag_draw_field(host, 10, 8, 6, value);
+        srk_diag_hex16(value, status.copr);
+        srk_diag_draw_field(host, 10, 9, 6, value);
+        srk_diag_hex16(value, status.modr);
+        srk_diag_draw_field(host, 10, 10, 6, value);
+    }else{
+        srk_diag_draw_field(host, 10, 7, 12, "UNAVAILABLE");
+        srk_diag_draw_field(host, 10, 8, 12, "UNAVAILABLE");
+        srk_diag_draw_field(host, 10, 9, 12, "UNAVAILABLE");
+        srk_diag_draw_field(host, 10, 10, 12, "UNAVAILABLE");
+    }
+}
+
+
 static void srk_diag_render_flight(
     SRK_DIAG_APP *app,
     SRK_DIAG_HOST *host,
@@ -281,6 +341,7 @@ void srk_diag_app_reset(SRK_DIAG_APP *app)
     srk_diag_input_reset(&app->input);
     srk_diag_flight_reset(&app->recorder);
     srk_diag_video_reset(&app->video);
+    srk_diag_vdp1_reset(&app->vdp1);
     app->frame = 0;
     app->rendered_screen = 0xffffu;
     app->rendered_screen_valid = 0;
@@ -343,6 +404,12 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
                 app->rendered_screen_valid = 0;
             }
         }
+    }else if(app->menu.active_screen == SRK_DIAG_SCREEN_VDP1_3D_TEST){
+        if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_START)){
+            if(host->hide_vdp1)
+                host->hide_vdp1(host->context);
+            srk_diag_menu_back(&app->menu);
+        }
     }else{
         if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_START)){
             srk_diag_menu_back(&app->menu);
@@ -385,6 +452,8 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
         srk_diag_render_input(app, host, full_render);
     else if(app->menu.active_screen == SRK_DIAG_SCREEN_VIDEO_PATTERN_TEST)
         srk_diag_render_video(app, host, full_render);
+    else if(app->menu.active_screen == SRK_DIAG_SCREEN_VDP1_3D_TEST)
+        srk_diag_render_vdp1(app, host, full_render);
     else if(app->menu.active_screen == SRK_DIAG_SCREEN_FLIGHT_RECORDER)
         srk_diag_render_flight(app, host, full_render);
     else
