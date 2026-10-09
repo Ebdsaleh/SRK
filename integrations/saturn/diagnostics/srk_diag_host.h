@@ -96,9 +96,20 @@ typedef struct SRK_DIAG_AUDIO_REQUEST {
 typedef struct SRK_DIAG_AUDIO_STATUS {
     int initialized;
     srk_u16 common_control;
+
+    /* Existing fields remain slot-0 aliases for earlier diagnostic screens. */
     srk_u16 slot_control;
     srk_u16 pitch;
     srk_u16 mixer;
+
+    /* Stage 5 exposes raw source/loop state for both owned diagnostic slots. */
+    srk_u16 slot_source;
+    srk_u16 slot_loop_end;
+    srk_u16 slot1_control;
+    srk_u16 slot1_source;
+    srk_u16 slot1_loop_end;
+    srk_u16 slot1_pitch;
+    srk_u16 slot1_mixer;
 } SRK_DIAG_AUDIO_STATUS;
 
 
