@@ -37,21 +37,6 @@ static void srk_diag_hex16(char out[7], srk_u16 value)
 }
 
 
-static void srk_diag_hex32(char out[11], srk_u32 value)
-{
-    int shift;
-    int i;
-
-    out[0] = '0';
-    out[1] = 'x';
-    for(i=0; i<8; i++){
-        shift = 28 - (i * 4);
-        out[i + 2] = srk_diag_hex[(value >> shift) & 0x0f];
-    }
-    out[10] = '\0';
-}
-
-
 static void srk_diag_u32(char out[11], srk_u32 value)
 {
     char reversed[10];
