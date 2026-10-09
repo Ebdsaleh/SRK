@@ -11,6 +11,8 @@ extern "C" {
 typedef struct SRK_SATURN_HOST_STATE {
     srk_u32 now_us;
     srk_u32 frame_period_us;
+    int audio_initialized;
+    int audio_playing;
 } SRK_SATURN_HOST_STATE;
 
 
@@ -18,8 +20,9 @@ typedef struct SRK_SATURN_HOST_STATE {
  * Configure the standalone/master-mode Saturn host.
  *
  * This host owns the direct controller port and a minimal VDP2 bitmap text
- * surface.  It is intentionally separate from the reusable diagnostic core so
- * a later resident host can provide equivalent services without taking over a
+ * surface. Device-specific helpers such as the SCSP backend bind through the
+ * same host/context state while remaining separate source modules. A later
+ * resident host can provide equivalent services without taking over a
  * commercial title's hardware state.
  */
 void srk_saturn_host_init(
