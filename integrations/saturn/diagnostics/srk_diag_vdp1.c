@@ -107,17 +107,23 @@ static srk_s16 srk_diag_vdp1_q14_pair(
 }
 
 
-static SRK_DIAG_VDP1_VECTOR3 srk_diag_vdp1_rotate_vertex(
+/*
+ * Use caller-owned outputs instead of returning small structs by value. The
+ * legacy SH-ELF compiler may otherwise lower a legal C struct copy into a
+ * runtime memcpy call, which is intentionally unavailable in our -nostdlib
+ * freestanding Saturn image.
+ */
+static void srk_diag_vdp1_rotate_vertex(
     const SRK_DIAG_VDP1_VECTOR3 *source,
     srk_s16 sin_x,
     srk_s16 cos_x,
     srk_s16 sin_y,
     srk_s16 cos_y,
     srk_s16 sin_z,
-    srk_s16 cos_z
+    srk_s16 cos_z,
+    SRK_DIAG_VDP1_VECTOR3 *result
 )
 {
-    SRK_DIAG_VDP1_VECTOR3 result;
     srk_s16 x1;
     srk_s16 y1;
     srk_s16 z1;
@@ -133,18 +139,17 @@ static SRK_DIAG_VDP1_VECTOR3 srk_diag_vdp1_rotate_vertex(
     y2 = y1;
     z2 = srk_diag_vdp1_q14_pair(x1, (srk_s16)-sin_y, z1, cos_y);
 
-    result.x = srk_diag_vdp1_q14_pair(x2, cos_z, y2, (srk_s16)-sin_z);
-    result.y = srk_diag_vdp1_q14_pair(x2, sin_z, y2, cos_z);
-    result.z = z2;
-    return result;
+    result->x = srk_diag_vdp1_q14_pair(x2, cos_z, y2, (srk_s16)-sin_z);
+    result->y = srk_diag_vdp1_q14_pair(x2, sin_z, y2, cos_z);
+    result->z = z2;
 }
 
 
-static SRK_DIAG_VDP1_POINT srk_diag_vdp1_project(
-    const SRK_DIAG_VDP1_VECTOR3 *vertex
+static void srk_diag_vdp1_project(
+    const SRK_DIAG_VDP1_VECTOR3 *vertex,
+    SRK_DIAG_VDP1_POINT *point
 )
 {
-    SRK_DIAG_VDP1_POINT point;
     srk_s32 depth;
     srk_s32 projected;
 
@@ -153,11 +158,10 @@ static SRK_DIAG_VDP1_POINT srk_diag_vdp1_project(
         depth = 1;
 
     projected = ((srk_s32)vertex->x * SRK_DIAG_VDP1_FOCAL_LENGTH) / depth;
-    point.x = (srk_s16)(SRK_DIAG_VDP1_SCREEN_CENTER_X + projected);
+    point->x = (srk_s16)(SRK_DIAG_VDP1_SCREEN_CENTER_X + projected);
 
     projected = ((srk_s32)vertex->y * SRK_DIAG_VDP1_FOCAL_LENGTH) / depth;
-    point.y = (srk_s16)(SRK_DIAG_VDP1_SCREEN_CENTER_Y - projected);
-    return point;
+    point->y = (srk_s16)(SRK_DIAG_VDP1_SCREEN_CENTER_Y - projected);
 }
 
 
@@ -228,14 +232,15 @@ static void srk_diag_vdp1_build_scene(SRK_DIAG_VDP1_STATE *state)
     cos_z = srk_diag_vdp1_cos8(state->angle_z);
 
     for(i=0; i<SRK_DIAG_VDP1_CUBE_VERTEX_COUNT; i++){
-        transformed[i] = srk_diag_vdp1_rotate_vertex(
+        srk_diag_vdp1_rotate_vertex(
             &srk_diag_vdp1_cube_vertices[i],
             sin_x,
             cos_x,
             sin_y,
             cos_y,
             sin_z,
-            cos_z
+            cos_z,
+            &transformed[i]
         );
     }
 
@@ -269,8 +274,12 @@ static void srk_diag_vdp1_build_scene(SRK_DIAG_VDP1_STATE *state)
     for(i=0; i<(int)visible; i++){
         face = &srk_diag_vdp1_cube_faces[face_index[i]];
         quad = &state->scene.quad[i];
-        for(j=0; j<4; j++)
-            quad->vertex[j] = srk_diag_vdp1_project(&transformed[face->vertex[j]]);
+        for(j=0; j<4; j++){
+            srk_diag_vdp1_project(
+                &transformed[face->vertex[j]],
+                &quad->vertex[j]
+            );
+        }
         quad->red = face->red;
         quad->green = face->green;
         quad->blue = face->blue;
