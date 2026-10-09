@@ -206,6 +206,25 @@ static void srk_diag_render_input(
 }
 
 
+static void srk_diag_render_video(
+    SRK_DIAG_APP *app,
+    SRK_DIAG_HOST *host,
+    int full_render
+)
+{
+    if(!full_render)
+        return;
+
+    if(host->draw_video_pattern)
+        host->draw_video_pattern(host->context, (unsigned int)app->video.pattern);
+
+    srk_diag_draw(host, 1, 1, "VIDEO PATTERN TEST");
+    srk_diag_draw(host, 1, 2, srk_diag_video_label(app->video.pattern));
+    srk_diag_draw(host, 1, 25, "LEFT/RIGHT Change pattern");
+    srk_diag_draw(host, 1, 26, "START Return to diagnostics menu");
+}
+
+
 static void srk_diag_render_flight(
     SRK_DIAG_APP *app,
     SRK_DIAG_HOST *host,
@@ -261,6 +280,7 @@ void srk_diag_app_reset(SRK_DIAG_APP *app)
     srk_diag_menu_reset(&app->menu);
     srk_diag_input_reset(&app->input);
     srk_diag_flight_reset(&app->recorder);
+    srk_diag_video_reset(&app->video);
     app->frame = 0;
     app->rendered_screen = 0xffffu;
     app->rendered_screen_valid = 0;
@@ -310,6 +330,19 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
            (app->input.pressed & SRK_DIAG_INPUT_EXIT_MASK) != 0){
             srk_diag_menu_back(&app->menu);
         }
+    }else if(app->menu.active_screen == SRK_DIAG_SCREEN_VIDEO_PATTERN_TEST){
+        if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_START)){
+            srk_diag_menu_back(&app->menu);
+        }else{
+            if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_LEFT)){
+                srk_diag_video_move(&app->video, -1);
+                app->rendered_screen_valid = 0;
+            }
+            if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_RIGHT)){
+                srk_diag_video_move(&app->video, 1);
+                app->rendered_screen_valid = 0;
+            }
+        }
     }else{
         if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_START)){
             srk_diag_menu_back(&app->menu);
@@ -350,6 +383,8 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
         srk_diag_render_main(app, host, full_render);
     else if(app->menu.active_screen == SRK_DIAG_SCREEN_INPUT_TEST)
         srk_diag_render_input(app, host, full_render);
+    else if(app->menu.active_screen == SRK_DIAG_SCREEN_VIDEO_PATTERN_TEST)
+        srk_diag_render_video(app, host, full_render);
     else if(app->menu.active_screen == SRK_DIAG_SCREEN_FLIGHT_RECORDER)
         srk_diag_render_flight(app, host, full_render);
     else
