@@ -34,11 +34,33 @@ link output             : plain binary
 stack region            : 0x06002000-0x06003FFF
 controller route        : direct PDR1/DDR1/IOSEL/EXLE manual I/O
 text surface            : VDP2 NBG0 8-bit bitmap + 8x8 VGA font
-build family            : sh-elf-gcc / sh-elf-as + linker script
-ISO packaging           : mkisofs -generic-boot IP.BIN with cd/0.bin
+code-generation backend : sh-elf-gcc / sh-elf-as
+ISO packaging backend   : mkisofs -generic-boot IP.BIN with cd/0.bin
 ```
 
-The historical Action Replay return path, SH-COFF `stdlib.h` workaround, cartridge communication source, and demo VDP1 workload are intentionally not inherited.
+The historical Action Replay return path, SH-COFF `stdlib.h` workaround, cartridge communication source, demo VDP1 workload, GNU Make orchestration, and shell build recipe are intentionally not inherited.
+
+## Python-native build architecture
+
+"Python-native build" does **not** mean Python replaces the SH-2 compiler. SRK still needs the reviewed `sh-elf-gcc`/`sh-elf-as` toolchain to translate C/assembly into SH-2 machine code, and still uses the reviewed ISO builder for disc packaging.
+
+Python replaces the fragile orchestration layer:
+
+```text
+Python
+  -> verifies generated input hashes
+  -> invokes sh-elf-gcc directly for each C source
+  -> invokes sh-elf-as directly for startup
+  -> invokes sh-elf-gcc directly for the final link
+  -> copies the first-read binary with Python file I/O
+  -> invokes mkisofs directly for the ISO
+  -> re-verifies generated input hashes
+  -> publishes build log/report + artifact SHA-256 values
+```
+
+No GNU Make recipe, MSYS shell, `sh.exe`, global PATH mutation, or shell command composition is required. Child tools are invoked with explicit argument vectors and `shell=False`.
+
+The first direct `build.bat` experiment was intentionally useful evidence: it proved the local SH-ELF compiler/linker and mkisofs command family can build the generated R1 project. The authoritative SRK path is now the Python driver so standalone builds use the same orchestration philosophy already adopted for controlled SAROO builds.
 
 ## Direct controller evidence used by the R1 host
 
@@ -133,19 +155,36 @@ SRK-Diagnostics-R1/
     srk_diag_*.c/.h
 ```
 
-`SRK_STANDALONE_PROJECT.json` records source hashes, generated IP metadata, resolved tool paths, generated-file hashes, and the no-build/no-SD-write policy state.
+`build.bat` is now only a thin wrapper around the Python build command. It contains no compiler/linker/package recipe.
+
+`SRK_STANDALONE_PROJECT.json` records source hashes, generated IP metadata, resolved tool paths, generated-file hashes, `build_orchestration = python-native`, and the no-build/no-SD-write policy state.
 
 ## Build boundary
 
-After the generated tree and manifest are reviewed, `build.bat` is the first execution step. It uses absolute paths resolved from the caller's Saturn development root and does not mutate `PATH`.
+After the generated tree and manifest are reviewed, the authoritative build command is:
 
-The generated build uses:
-
-```text
-sh-elf-gcc  compile C sources
-sh-elf-as   assemble SRK startup
-sh-elf-gcc  link with -nostdlib, SRK linker script, and -lgcc
-mkisofs     create build/srk_diag.iso using generated IP.BIN + cd/0.bin
+```bat
+python -m rikai_kotoba.tools.saturn_standalone_build ^
+  --project "C:\path\to\SRK-Diagnostics-R1"
 ```
 
-A successful host build is not yet a physical Saturn validation. The generated binary/ISO must be inspected before it is launched on hardware.
+The Python build driver:
+
+```text
+verifies every generated input hash before execution
+refuses pre-existing build outputs/provenance
+invokes recorded tools directly with shell=False
+keeps PATH unchanged
+preserves -Wall -Werror
+copies build/srk_diag.bin -> cd/0.bin using Python
+creates build/srk_diag.iso
+verifies generated inputs again after a successful build
+writes SRK_STANDALONE_BUILD_LOG.txt
+writes SRK_STANDALONE_BUILD.json
+hashes the binary, ISO, linker map, and cd/0.bin
+refuses a second Python-native build in the same generated tree
+```
+
+The SH-ELF tools are still responsible for code generation. Python is responsible for safe, deterministic orchestration and provenance.
+
+A successful host build is not yet a physical Saturn validation. The generated binary/ISO and build report must be inspected before launch on hardware.
