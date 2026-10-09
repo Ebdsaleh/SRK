@@ -116,6 +116,8 @@ class SaturnDiagnosticsTests(unittest.TestCase):
             C_ROOT / "srk_diag_menu.c",
             C_ROOT / "srk_diag_flight_recorder.h",
             C_ROOT / "srk_diag_flight_recorder.c",
+            C_ROOT / "srk_diag_app.h",
+            C_ROOT / "srk_diag_app.c",
         )
         for path in files:
             self.assertTrue(path.is_file(), path)
@@ -131,6 +133,20 @@ class SaturnDiagnosticsTests(unittest.TestCase):
         menu_c = (C_ROOT / "srk_diag_menu.c").read_text(encoding="utf-8")
         for _screen, label in DIAGNOSTIC_MENU:
             self.assertIn(label, menu_c)
+
+    def test_c_shell_exposes_input_and_flight_recorder_debug_behaviour(self):
+        app_c = (C_ROOT / "srk_diag_app.c").read_text(encoding="utf-8")
+        self.assertIn("CONTROLLER / INPUT TEST", app_c)
+        self.assertIn("Raw:", app_c)
+        self.assertIn("Normalized:", app_c)
+        self.assertIn("PRESSED", app_c)
+        self.assertIn("HELD", app_c)
+        self.assertIn("RELEASED", app_c)
+        self.assertIn("L+R combination:", app_c)
+        self.assertIn("APPLICATION FLIGHT RECORDER", app_c)
+        self.assertIn("A Arm/reset rolling recorder", app_c)
+        self.assertIn("C Freeze current 30-second window", app_c)
+        self.assertIn("START Return to diagnostics menu", app_c)
 
 
 if __name__ == "__main__":
