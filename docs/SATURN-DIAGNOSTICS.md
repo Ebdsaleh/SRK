@@ -31,7 +31,7 @@ SRK SATURN DIAGNOSTICS
   System Information
 ```
 
-The menu shell, Controller / Input Test, Flight Recorder, Video Pattern Test, VDP1 static primitive path, and VDP1 rotating-cube path are implemented. Video Pattern Test and VDP1 Stage 1 are physically accepted on real Saturn hardware, and R8 physically proves the Stage 2 rotating-cube visual/animation path. VDP1 Stage 3 — interactive deterministic cube dynamics — is now the active hardware tranche. The remaining entries stay explicit placeholders until their hardware backends are implemented and reviewed.
+The menu shell, Controller / Input Test, Flight Recorder, Video Pattern Test, VDP1 static primitive path, rotating-cube path, and interactive cube-dynamics path are implemented. Video Pattern Test and VDP1 Stage 1 are physically accepted on real Saturn hardware; R8 physically proves the Stage 2 rotating-cube visual/animation path; and R9 physically proves the Stage 3 interaction model with one attributable shoulder-roll polarity defect. The next Stage 3 correction maps L/R to player-facing counter-clockwise/clockwise roll without changing the mathematical transform convention. The remaining entries stay explicit placeholders until their hardware backends are implemented and reviewed.
 
 ## Host boundary
 
@@ -206,7 +206,7 @@ Stage 3 turns the rotating cube from a canned animation into a deterministic con
 
 The core owns fixed-point angular velocity, speed, freeze state, palette state, and input-driven acceleration. Controller input changes **velocity**, not absolute orientation, so the existing diagonal motion can be influenced gradually rather than snapped to a fixed axis.
 
-The control contract is:
+The player-facing control contract is:
 
 ```text
 UP / DOWN     pitch acceleration (X velocity)
@@ -219,6 +219,8 @@ Y             exact NEON palette
 Z             restore exact ORIGINAL R8 palette
 START         hide VDP1 and return to diagnostics menu
 ```
+
+Positive mathematical Z rotation is counter-clockwise under the existing transform. The transform remains mathematically conventional; the controller mapping carries the player-facing policy: **L adds positive Z acceleration for counter-clockwise/left roll, while R adds negative Z acceleration for clockwise/right roll.** This deliberately separates coordinate-system convention from control intent.
 
 Opposing controls cancel acceleration on that axis. Releasing a directional/shoulder control preserves angular momentum; there is no automatic damping in the first Stage 3 implementation. Velocity and speed are explicitly clamped.
 
@@ -393,8 +395,23 @@ The supplied R8 clip does not independently show START teardown or post-return l
 
 R8 is therefore the known-good physical visual/animation reference for Stage 3 interactive-dynamics work.
 
+### R9 — VDP1 Stage 3 interactive dynamics physical proof with one polarity defect
+
+R9 was source-gated, compiled with the reviewed SH-ELF toolchain, linked freestanding, packaged as a verified 64-sector MODE1/2352 BIN/CUE image, deployed beside R5-R8, and followed by a whole-card verification returning `MATCH`.
+
+Physical Saturn testing established that the interactive Stage 3 workload is operational: the cube remains a stable VDP1 3D object while real controller input changes its motion state, the Stage 3 telemetry remains visible, and the exact face-palette modes can be exercised on hardware. Direct physical observation identified one attributable control-policy defect: **L produced clockwise roll and R produced counter-clockwise roll**, opposite the intended player-facing contract.
+
+The defect was not a VDP1 rendering or matrix-correctness failure. The existing Z transform follows the conventional positive-angle sign, where positive Z appears counter-clockwise. R9 had mapped L to decreasing Z velocity and R to increasing Z velocity. The correction therefore preserves the transform and swaps only the input-to-Z acceleration policy:
+
+```text
+L -> +Z acceleration -> counter-clockwise / left roll
+R -> -Z acceleration -> clockwise / right roll
+```
+
+R9 is retained unchanged as physical provenance for the Stage 3 interaction proof and the discovered polarity defect. A new parallel candidate is required to physically close Stage 3 after the corrected shoulder mapping is source-gated and built.
+
 ## Current validation boundary
 
-SRK now has a physically proven standalone Saturn host supplying real controller sampling, VBlank-paced timing, VBR observation, stable VDP2 bitmap text presentation, physically accepted Video Pattern diagnostics, a physically accepted VDP1 primitive path, and a physical fixed-point animated-cube visual proof.
+SRK now has a physically proven standalone Saturn host supplying real controller sampling, VBlank-paced timing, VBR observation, stable VDP2 bitmap text presentation, physically accepted Video Pattern diagnostics, a physically accepted VDP1 primitive path, a physical fixed-point animated-cube visual proof, and an operational interactive fixed-point cube workload on physical Saturn hardware.
 
-This proves the current standalone master-mode foundation; it does **not** establish cooperative-resident or foreign-resident safety. The active milestone is VDP1 / 3D Stage 3: use normalized Saturn controller input to deterministically manipulate cube angular velocity, global speed, freeze state, and exact face palettes while retaining live raw VDP1 telemetry and the established host boundary.
+This proves the current standalone master-mode foundation; it does **not** establish cooperative-resident or foreign-resident safety. Stage 3 remains open only for physical confirmation of the corrected player-facing L/R roll polarity; the geometry transform, acceleration/inertia model, speed control, freeze state, exact palette modes, VDP1 host boundary, and live telemetry remain otherwise unchanged.
