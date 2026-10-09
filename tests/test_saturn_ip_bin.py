@@ -1,12 +1,14 @@
-"""Synthetic tests for Sega Saturn IP.BIN parsing."""
+"""Synthetic tests for Sega Saturn IP.BIN parsing and metadata patching."""
 
 import os
 import tempfile
 import unittest
 
 from rikai_kotoba.formats.saturn.ip_bin import (
+    SaturnIPBinError,
     parse_ip_bin,
     parse_saturn_system_id,
+    patch_saturn_system_id,
 )
 
 
@@ -87,6 +89,43 @@ class SaturnIPBinTests(unittest.TestCase):
         self.assertEqual(metadata["slave_stack"], "0x06003000")
         self.assertEqual(metadata["first_read_address"], "0x06004000")
         self.assertEqual(metadata["first_read_size"], "0x00012345")
+
+    def test_patch_changes_only_selected_system_id_fields(self):
+        source = bytearray(_boot_sector())
+        source[0xD0:0xE0] = bytes(range(16))
+        source[0x100:0x110] = b"BOOTSTRAP-PAYLOAD"
+        source = bytes(source)
+
+        patched = patch_saturn_system_id(
+            source,
+            maker_id="SRK PROJECT",
+            product_number="SRK-DIAG",
+            game_version="V0.001",
+            game_date="20261009",
+            area_symbols="JTUE",
+            peripherals="J",
+            game_title="SRK SATURN DIAGNOSTICS",
+            first_read_address=0x06004000,
+            first_read_size=0,
+        )
+        metadata = parse_saturn_system_id(patched)
+
+        self.assertEqual(metadata["maker_id"], "SRK PROJECT")
+        self.assertEqual(metadata["product_number"], "SRK-DIAG")
+        self.assertEqual(metadata["game_title"], "SRK SATURN DIAGNOSTICS")
+        self.assertEqual(metadata["first_read_address"], "0x06004000")
+        self.assertEqual(metadata["first_read_size"], "0x00000000")
+        self.assertEqual(patched[0x00:0x10], source[0x00:0x10])
+        self.assertEqual(patched[0xD0:0xE0], source[0xD0:0xE0])
+        self.assertEqual(patched[0xE0:0xF0], source[0xE0:0xF0])
+        self.assertEqual(patched[0x100:], source[0x100:])
+        self.assertEqual(source[0x10:0x20], _field("SEGA ENTERPRISES", 16))
+
+    def test_patch_rejects_non_ascii_or_oversize_fields(self):
+        with self.assertRaises(SaturnIPBinError):
+            patch_saturn_system_id(_boot_sector(), game_title="SRK ♥")
+        with self.assertRaises(SaturnIPBinError):
+            patch_saturn_system_id(_boot_sector(), product_number="TOO-LONG-123")
 
 
 if __name__ == "__main__":
