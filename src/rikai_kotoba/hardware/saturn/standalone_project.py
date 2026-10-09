@@ -96,7 +96,7 @@ def _build_script() -> str:
     lines = [
         "@echo off",
         "setlocal",
-        "python -m rikai_kotoba.tools.saturn_standalone_build --project \"%~dp0\"",
+        "python -m rikai_kotoba.tools.saturn_standalone_build --project \"%~dp0.\"",
         "exit /b %errorlevel%",
         "",
     ]
