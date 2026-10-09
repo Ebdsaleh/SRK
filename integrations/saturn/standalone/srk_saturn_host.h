@@ -15,6 +15,7 @@ typedef struct SRK_SATURN_HOST_STATE {
     int audio_playing;
     unsigned int audio_playing_mask;
     unsigned int audio_waveform_id;
+    unsigned int audio_right_waveform_id;
 } SRK_SATURN_HOST_STATE;
 
 
