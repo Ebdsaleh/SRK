@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="srk-saturn-saroo-deploy",
         description=(
             "Safely deploy one SRK-verified standalone Saturn MODE1/2352 CUE/BIN "
-            "pair into a new SAROO/ISO directory. The default action is read-only planning."
+            "pair into a new SAROO/ISO game directory. The default action is read-only planning."
         ),
     )
     parser.add_argument("--card-root", required=True, help="Mounted SAROO SD-card root")
@@ -27,7 +27,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--name",
         default=DEFAULT_DESTINATION_NAME,
-        help=f"New SAROO/ISO directory name (default: {DEFAULT_DESTINATION_NAME})",
+        help=f"New game directory name (default: {DEFAULT_DESTINATION_NAME})",
+    )
+    parser.add_argument(
+        "--category",
+        default=None,
+        help=(
+            "Existing direct child of SAROO/ISO in which to place the new game directory; "
+            "SRK never creates a category implicitly"
+        ),
     )
     parser.add_argument(
         "--apply",
@@ -47,6 +55,10 @@ def _print_plan(plan) -> None:
     print("--------------------------------------------")
     print(f"Card root       : {plan.card_root}")
     print(f"Project         : {plan.project_root}")
+    if plan.category_directory is not None:
+        print(f"Category        : {plan.category_directory.name}")
+    else:
+        print("Category        : none (directly beneath SAROO/ISO)")
     print(f"Destination     : {plan.destination_directory}")
     print(f"Source BIN      : {plan.source_bin}")
     print(f"  Size          : {plan.bin_size} bytes")
@@ -69,6 +81,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 args.card_root,
                 args.project,
                 destination_name=args.name,
+                category=args.category,
             )
             _print_plan(plan)
             print()
@@ -81,6 +94,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             args.card_root,
             args.project,
             destination_name=args.name,
+            category=args.category,
             confirmation=args.confirm,
         )
         _print_plan(result.plan)
