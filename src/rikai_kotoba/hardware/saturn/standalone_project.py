@@ -55,6 +55,8 @@ _DIAGNOSTIC_FILES = (
     "srk_diag_input.h",
     "srk_diag_menu.c",
     "srk_diag_menu.h",
+    "srk_diag_video.c",
+    "srk_diag_video.h",
 )
 
 _STANDALONE_FILES = (
@@ -212,8 +214,8 @@ def prepare_saturn_standalone_project(
         _write_text(temp_root / "build.bat", _build_script())
         _write_text(
             temp_root / "README_BUILD.txt",
-            "SRK Saturn Diagnostics R1\n"
-            "=========================\n\n"
+            "SRK Saturn Diagnostics Generated Project\n"
+            "========================================\n\n"
             "This tree was generated separately from the installed Saturn SDK/example tree.\n"
             "The source template and IP.BIN were read only.\n\n"
             "Preferred build (from the SRK virtual environment):\n"
@@ -223,7 +225,8 @@ def prepare_saturn_standalone_project(
             "GNU Make and shell build recipes are not used.\n\n"
             "The ISO is an internal verification/intermediate artifact.\n"
             "The deployable SAROO image is build\\SRK-Diagnostics\\SRK-Diagnostics.cue + .bin.\n\n"
-            "The first hardware milestone performs no SD writes, dumps, audio, or 3D tests.\n",
+            "Project generation and building do not write the SAROO SD card.\n"
+            "Deployment remains a separate guarded operation.\n",
         )
 
         generated_files = []
