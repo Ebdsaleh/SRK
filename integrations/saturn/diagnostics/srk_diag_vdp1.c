@@ -1,12 +1,15 @@
 #include "srk_diag_vdp1.h"
 
 
-#define SRK_DIAG_VDP1_TRIG_SHIFT      14
-#define SRK_DIAG_VDP1_CUBE_HALF       40
-#define SRK_DIAG_VDP1_CAMERA_DISTANCE 320
-#define SRK_DIAG_VDP1_FOCAL_LENGTH    180
-#define SRK_DIAG_VDP1_SCREEN_CENTER_X 160
-#define SRK_DIAG_VDP1_SCREEN_CENTER_Y 140
+#define SRK_DIAG_VDP1_TRIG_SHIFT       14
+#define SRK_DIAG_VDP1_CUBE_HALF        40
+#define SRK_DIAG_VDP1_CAMERA_DISTANCE  320
+#define SRK_DIAG_VDP1_FOCAL_LENGTH     180
+#define SRK_DIAG_VDP1_SCREEN_CENTER_X  160
+#define SRK_DIAG_VDP1_SCREEN_CENTER_Y  140
+#define SRK_DIAG_VDP1_ACCEL_Q8         16
+#define SRK_DIAG_VDP1_SPEED_STEP_Q8    8
+#define SRK_DIAG_VDP1_ANGLE_MASK       0x0000fffful
 
 
 typedef struct SRK_DIAG_VDP1_VECTOR3 {
@@ -18,10 +21,14 @@ typedef struct SRK_DIAG_VDP1_VECTOR3 {
 
 typedef struct SRK_DIAG_VDP1_FACE_DEF {
     srk_u8 vertex[4];
+} SRK_DIAG_VDP1_FACE_DEF;
+
+
+typedef struct SRK_DIAG_VDP1_COLOR {
     srk_u8 red;
     srk_u8 green;
     srk_u8 blue;
-} SRK_DIAG_VDP1_FACE_DEF;
+} SRK_DIAG_VDP1_COLOR;
 
 
 /*
@@ -56,12 +63,41 @@ static const SRK_DIAG_VDP1_VECTOR3 srk_diag_vdp1_cube_vertices[SRK_DIAG_VDP1_CUB
 
 /* All face windings point outwards in object space. */
 static const SRK_DIAG_VDP1_FACE_DEF srk_diag_vdp1_cube_faces[SRK_DIAG_VDP1_CUBE_FACE_COUNT] = {
-    { { 0, 3, 2, 1 }, 255,  64,  32 },
-    { { 4, 5, 6, 7 },  32, 224, 224 },
-    { { 0, 4, 7, 3 },  64, 224,  96 },
-    { { 1, 2, 6, 5 },  64,  96, 255 },
-    { { 0, 1, 5, 4 }, 240, 208,  48 },
-    { { 3, 7, 6, 2 }, 224,  64, 224 }
+    { { 0, 3, 2, 1 } },
+    { { 4, 5, 6, 7 } },
+    { { 0, 4, 7, 3 } },
+    { { 1, 2, 6, 5 } },
+    { { 0, 1, 5, 4 } },
+    { { 3, 7, 6, 2 } }
+};
+
+
+/* Exact deterministic palettes: screenshots can be compared to known RGB8. */
+static const SRK_DIAG_VDP1_COLOR srk_diag_vdp1_palettes[SRK_DIAG_VDP1_PALETTE_COUNT][SRK_DIAG_VDP1_CUBE_FACE_COUNT] = {
+    {
+        { 255,  64,  32 },
+        {  32, 224, 224 },
+        {  64, 224,  96 },
+        {  64,  96, 255 },
+        { 240, 208,  48 },
+        { 224,  64, 224 }
+    },
+    {
+        { 255, 160, 144 },
+        { 144, 240, 240 },
+        { 160, 240, 176 },
+        { 160, 176, 255 },
+        { 248, 232, 152 },
+        { 240, 160, 240 }
+    },
+    {
+        { 255,  32,   0 },
+        {   0, 255, 255 },
+        {  32, 255,  64 },
+        {  32,  64, 255 },
+        { 255, 224,   0 },
+        { 255,   0, 255 }
+    }
 };
 
 
@@ -107,11 +143,20 @@ static srk_s16 srk_diag_vdp1_q14_pair(
 }
 
 
+static srk_s16 srk_diag_vdp1_clamp_velocity(srk_s32 value)
+{
+    if(value > SRK_DIAG_VDP1_VELOCITY_MAX)
+        return SRK_DIAG_VDP1_VELOCITY_MAX;
+    if(value < -SRK_DIAG_VDP1_VELOCITY_MAX)
+        return (srk_s16)-SRK_DIAG_VDP1_VELOCITY_MAX;
+    return (srk_s16)value;
+}
+
+
 /*
  * Use caller-owned outputs instead of returning small structs by value. The
  * legacy SH-ELF compiler may otherwise lower a legal C struct copy into a
- * runtime memcpy call, which is intentionally unavailable in our -nostdlib
- * freestanding Saturn image.
+ * runtime memcpy call in this freestanding Saturn image.
  */
 static void srk_diag_vdp1_rotate_vertex(
     const SRK_DIAG_VDP1_VECTOR3 *source,
@@ -211,6 +256,7 @@ static void srk_diag_vdp1_build_scene(SRK_DIAG_VDP1_STATE *state)
     srk_s32 depth[SRK_DIAG_VDP1_CUBE_FACE_COUNT];
     srk_u8 face_index[SRK_DIAG_VDP1_CUBE_FACE_COUNT];
     const SRK_DIAG_VDP1_FACE_DEF *face;
+    const SRK_DIAG_VDP1_COLOR *color;
     SRK_DIAG_VDP1_QUAD *quad;
     srk_s16 sin_x;
     srk_s16 cos_x;
@@ -220,9 +266,14 @@ static void srk_diag_vdp1_build_scene(SRK_DIAG_VDP1_STATE *state)
     srk_s16 cos_z;
     srk_s32 swap_depth;
     srk_u8 swap_index;
+    unsigned int palette_index;
     unsigned int visible;
     int i;
     int j;
+
+    palette_index = (unsigned int)state->palette;
+    if(palette_index >= SRK_DIAG_VDP1_PALETTE_COUNT)
+        palette_index = SRK_DIAG_VDP1_PALETTE_ORIGINAL;
 
     sin_x = srk_diag_vdp1_sin8(state->angle_x);
     cos_x = srk_diag_vdp1_cos8(state->angle_x);
@@ -273,6 +324,7 @@ static void srk_diag_vdp1_build_scene(SRK_DIAG_VDP1_STATE *state)
 
     for(i=0; i<(int)visible; i++){
         face = &srk_diag_vdp1_cube_faces[face_index[i]];
+        color = &srk_diag_vdp1_palettes[palette_index][face_index[i]];
         quad = &state->scene.quad[i];
         for(j=0; j<4; j++){
             srk_diag_vdp1_project(
@@ -280,10 +332,27 @@ static void srk_diag_vdp1_build_scene(SRK_DIAG_VDP1_STATE *state)
                 &quad->vertex[j]
             );
         }
-        quad->red = face->red;
-        quad->green = face->green;
-        quad->blue = face->blue;
+        quad->red = color->red;
+        quad->green = color->green;
+        quad->blue = color->blue;
     }
+}
+
+
+static void srk_diag_vdp1_integrate_axis(
+    srk_u32 *accumulator,
+    srk_u16 *phase,
+    srk_s16 velocity,
+    srk_u16 speed_q8
+)
+{
+    srk_s32 delta;
+    srk_s32 next;
+
+    delta = ((srk_s32)velocity * (srk_s32)speed_q8) >> SRK_DIAG_VDP1_MOTION_SHIFT;
+    next = (srk_s32)(*accumulator) + delta;
+    *accumulator = ((srk_u32)next) & SRK_DIAG_VDP1_ANGLE_MASK;
+    *phase = (srk_u16)((*accumulator >> SRK_DIAG_VDP1_MOTION_SHIFT) & 0x00ffu);
 }
 
 
@@ -308,6 +377,18 @@ void srk_diag_vdp1_reset(SRK_DIAG_VDP1_STATE *state)
     state->angle_x = 16;
     state->angle_y = 24;
     state->angle_z = 8;
+    state->angle_accum_x = ((srk_u32)state->angle_x << SRK_DIAG_VDP1_MOTION_SHIFT);
+    state->angle_accum_y = ((srk_u32)state->angle_y << SRK_DIAG_VDP1_MOTION_SHIFT);
+    state->angle_accum_z = ((srk_u32)state->angle_z << SRK_DIAG_VDP1_MOTION_SHIFT);
+
+    /* Exactly reproduce the accepted R8 +1/+1/+1 phase step at reset. */
+    state->velocity_x = SRK_DIAG_VDP1_SPEED_ONE;
+    state->velocity_y = SRK_DIAG_VDP1_SPEED_ONE;
+    state->velocity_z = SRK_DIAG_VDP1_SPEED_ONE;
+    state->speed_q8 = SRK_DIAG_VDP1_SPEED_ONE;
+    state->palette = SRK_DIAG_VDP1_PALETTE_ORIGINAL;
+    state->frozen = 0;
+
     state->visible_face_count = 0;
     state->animation_frame = 0;
     state->submit_count = 0;
@@ -316,16 +397,121 @@ void srk_diag_vdp1_reset(SRK_DIAG_VDP1_STATE *state)
 }
 
 
+void srk_diag_vdp1_control(
+    SRK_DIAG_VDP1_STATE *state,
+    srk_u16 held_buttons,
+    srk_u16 pressed_buttons
+)
+{
+    srk_s32 velocity;
+
+    if(!state)
+        return;
+
+    /* Palette selection is edge-triggered and remains available while frozen. */
+    if(pressed_buttons & SRK_DIAG_BUTTON_Z)
+        state->palette = SRK_DIAG_VDP1_PALETTE_ORIGINAL;
+    else if(pressed_buttons & SRK_DIAG_BUTTON_Y)
+        state->palette = SRK_DIAG_VDP1_PALETTE_NEON;
+    else if(pressed_buttons & SRK_DIAG_BUTTON_X)
+        state->palette = SRK_DIAG_VDP1_PALETTE_PASTEL;
+
+    if(pressed_buttons & SRK_DIAG_BUTTON_C)
+        state->frozen = state->frozen ? 0 : 1;
+
+    /* Frozen motion preserves orientation, velocities and speed exactly. */
+    if(state->frozen)
+        return;
+
+    if((held_buttons & SRK_DIAG_BUTTON_UP) &&
+       !(held_buttons & SRK_DIAG_BUTTON_DOWN)){
+        velocity = (srk_s32)state->velocity_x - SRK_DIAG_VDP1_ACCEL_Q8;
+        state->velocity_x = srk_diag_vdp1_clamp_velocity(velocity);
+    }else if((held_buttons & SRK_DIAG_BUTTON_DOWN) &&
+             !(held_buttons & SRK_DIAG_BUTTON_UP)){
+        velocity = (srk_s32)state->velocity_x + SRK_DIAG_VDP1_ACCEL_Q8;
+        state->velocity_x = srk_diag_vdp1_clamp_velocity(velocity);
+    }
+
+    if((held_buttons & SRK_DIAG_BUTTON_LEFT) &&
+       !(held_buttons & SRK_DIAG_BUTTON_RIGHT)){
+        velocity = (srk_s32)state->velocity_y - SRK_DIAG_VDP1_ACCEL_Q8;
+        state->velocity_y = srk_diag_vdp1_clamp_velocity(velocity);
+    }else if((held_buttons & SRK_DIAG_BUTTON_RIGHT) &&
+             !(held_buttons & SRK_DIAG_BUTTON_LEFT)){
+        velocity = (srk_s32)state->velocity_y + SRK_DIAG_VDP1_ACCEL_Q8;
+        state->velocity_y = srk_diag_vdp1_clamp_velocity(velocity);
+    }
+
+    if((held_buttons & SRK_DIAG_BUTTON_L) &&
+       !(held_buttons & SRK_DIAG_BUTTON_R)){
+        velocity = (srk_s32)state->velocity_z - SRK_DIAG_VDP1_ACCEL_Q8;
+        state->velocity_z = srk_diag_vdp1_clamp_velocity(velocity);
+    }else if((held_buttons & SRK_DIAG_BUTTON_R) &&
+             !(held_buttons & SRK_DIAG_BUTTON_L)){
+        velocity = (srk_s32)state->velocity_z + SRK_DIAG_VDP1_ACCEL_Q8;
+        state->velocity_z = srk_diag_vdp1_clamp_velocity(velocity);
+    }
+
+    if((held_buttons & SRK_DIAG_BUTTON_A) &&
+       !(held_buttons & SRK_DIAG_BUTTON_B)){
+        if(state->speed_q8 + SRK_DIAG_VDP1_SPEED_STEP_Q8 >= SRK_DIAG_VDP1_SPEED_MAX)
+            state->speed_q8 = SRK_DIAG_VDP1_SPEED_MAX;
+        else
+            state->speed_q8 = (srk_u16)(state->speed_q8 + SRK_DIAG_VDP1_SPEED_STEP_Q8);
+    }else if((held_buttons & SRK_DIAG_BUTTON_B) &&
+             !(held_buttons & SRK_DIAG_BUTTON_A)){
+        if(state->speed_q8 <= SRK_DIAG_VDP1_SPEED_STEP_Q8)
+            state->speed_q8 = 0;
+        else
+            state->speed_q8 = (srk_u16)(state->speed_q8 - SRK_DIAG_VDP1_SPEED_STEP_Q8);
+    }
+}
+
+
 void srk_diag_vdp1_advance(SRK_DIAG_VDP1_STATE *state)
 {
     if(!state)
         return;
 
-    state->angle_x = (srk_u16)((state->angle_x + 1u) & 0x00ffu);
-    state->angle_y = (srk_u16)((state->angle_y + 1u) & 0x00ffu);
-    state->angle_z = (srk_u16)((state->angle_z + 1u) & 0x00ffu);
+    if(!state->frozen){
+        srk_diag_vdp1_integrate_axis(
+            &state->angle_accum_x,
+            &state->angle_x,
+            state->velocity_x,
+            state->speed_q8
+        );
+        srk_diag_vdp1_integrate_axis(
+            &state->angle_accum_y,
+            &state->angle_y,
+            state->velocity_y,
+            state->speed_q8
+        );
+        srk_diag_vdp1_integrate_axis(
+            &state->angle_accum_z,
+            &state->angle_z,
+            state->velocity_z,
+            state->speed_q8
+        );
+    }
+
+    /* Frame/status/palette presentation remains live even while motion is frozen. */
     state->animation_frame += 1;
     srk_diag_vdp1_build_scene(state);
+}
+
+
+const char *srk_diag_vdp1_palette_label(SRK_DIAG_VDP1_PALETTE palette)
+{
+    switch(palette){
+        case SRK_DIAG_VDP1_PALETTE_PASTEL:
+            return "PASTEL";
+        case SRK_DIAG_VDP1_PALETTE_NEON:
+            return "NEON";
+        case SRK_DIAG_VDP1_PALETTE_ORIGINAL:
+        default:
+            return "ORIGINAL";
+    }
 }
 
 
