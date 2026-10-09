@@ -68,24 +68,64 @@ static void srk_diag_draw(SRK_DIAG_HOST *host, int x, int y, const char *text)
 }
 
 
-static void srk_diag_render_main(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
+static void srk_diag_draw_field(
+    SRK_DIAG_HOST *host,
+    int x,
+    int y,
+    int width,
+    const char *text
+)
 {
+    char field[41];
     int i;
 
-    srk_diag_draw(host, 2, 1, "SRK SATURN DIAGNOSTICS");
-    srk_diag_draw(host, 2, 2, "Standalone hardware validation shell");
+    if(width < 1)
+        return;
+    if(width > 40)
+        width = 40;
 
-    for(i=0; i<SRK_DIAG_MENU_ITEM_COUNT; i++){
-        srk_diag_draw(host, 2, 4 + i, app->menu.selection == i ? ">" : " ");
-        srk_diag_draw(host, 4, 4 + i, srk_diag_menu_label(i));
+    for(i=0; i<width; i++)
+        field[i] = ' ';
+    field[width] = '\0';
+
+    if(text){
+        for(i=0; i<width && text[i]; i++)
+            field[i] = text[i];
     }
 
-    srk_diag_draw(host, 2, 14, "UP/DOWN Navigate   A Select");
-    srk_diag_draw(host, 2, 15, "Raw hardware values remain visible in tests.");
+    srk_diag_draw(host, x, y, field);
 }
 
 
-static void srk_diag_render_input(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
+static void srk_diag_render_main(
+    SRK_DIAG_APP *app,
+    SRK_DIAG_HOST *host,
+    int full_render
+)
+{
+    int i;
+
+    if(full_render){
+        srk_diag_draw(host, 2, 1, "SRK SATURN DIAGNOSTICS");
+        srk_diag_draw(host, 2, 2, "Standalone hardware validation shell");
+
+        for(i=0; i<SRK_DIAG_MENU_ITEM_COUNT; i++)
+            srk_diag_draw(host, 4, 4 + i, srk_diag_menu_label(i));
+
+        srk_diag_draw(host, 2, 14, "UP/DOWN Navigate   A Select");
+        srk_diag_draw(host, 2, 15, "Raw hardware values remain visible in tests.");
+    }
+
+    for(i=0; i<SRK_DIAG_MENU_ITEM_COUNT; i++)
+        srk_diag_draw(host, 2, 4 + i, app->menu.selection == i ? ">" : " ");
+}
+
+
+static void srk_diag_render_input(
+    SRK_DIAG_APP *app,
+    SRK_DIAG_HOST *host,
+    int full_render
+)
 {
     char raw[7];
     char current[7];
@@ -96,16 +136,27 @@ static void srk_diag_render_input(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
     const char *status;
     int i;
 
-    srk_diag_draw(host, 2, 1, "CONTROLLER / INPUT TEST");
-    srk_diag_draw(host, 2, 2, "Connected:");
-    srk_diag_draw(host, 13, 2, app->input.connected ? "YES" : "NO");
+    if(full_render){
+        srk_diag_draw(host, 2, 1, "CONTROLLER / INPUT TEST");
+        srk_diag_draw(host, 2, 2, "Connected:");
+        srk_diag_draw(host, 2, 3, "Raw:");
+        srk_diag_draw(host, 17, 3, "Normalized:");
+
+        for(i=0; i<SRK_DIAG_INPUT_BUTTON_COUNT; i++)
+            srk_diag_draw(host, 2, 5 + i, srk_diag_button_names[i]);
+
+        srk_diag_draw(host, 2, 19, "L+R combination:");
+        srk_diag_draw(host, 2, 20, "Samples:");
+        srk_diag_draw(host, 2, 21, "State changes:");
+        srk_diag_draw(host, 2, 23, "START Return to diagnostics menu");
+    }
+
+    srk_diag_draw_field(host, 13, 2, 3, app->input.connected ? "YES" : "NO");
 
     srk_diag_hex16(raw, app->input.raw_state);
     srk_diag_hex16(current, app->input.current);
-    srk_diag_draw(host, 2, 3, "Raw:");
-    srk_diag_draw(host, 8, 3, raw);
-    srk_diag_draw(host, 17, 3, "Normalized:");
-    srk_diag_draw(host, 29, 3, current);
+    srk_diag_draw_field(host, 8, 3, 6, raw);
+    srk_diag_draw_field(host, 29, 3, 6, current);
 
     for(i=0; i<SRK_DIAG_INPUT_BUTTON_COUNT; i++){
         mask = srk_diag_button_masks[i];
@@ -117,71 +168,82 @@ static void srk_diag_render_input(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
         else if(app->input.released & mask)
             status = "RELEASED";
 
-        srk_diag_draw(host, 2, 5 + i, srk_diag_button_names[i]);
-        srk_diag_draw(host, 10, 5 + i, status);
+        srk_diag_draw_field(host, 10, 5 + i, 9, status);
 
         if((app->input.current | app->input.released) & mask){
             hold_ms = srk_diag_input_hold_us(&app->input, mask) / 1000u;
             srk_diag_u32(number, hold_ms);
-            srk_diag_draw(host, 20, 5 + i, number);
-            srk_diag_draw(host, 31, 5 + i, "ms");
+            srk_diag_draw_field(host, 20, 5 + i, 10, number);
+            srk_diag_draw_field(host, 31, 5 + i, 2, "ms");
+        }else{
+            srk_diag_draw_field(host, 20, 5 + i, 10, "");
+            srk_diag_draw_field(host, 31, 5 + i, 2, "");
         }
     }
 
-    srk_diag_draw(host, 2, 19, "L+R combination:");
     if(srk_diag_input_is_down(&app->input, SRK_DIAG_INPUT_LR_MASK)){
         combo_ms = srk_diag_input_combination_hold_us(
             &app->input,
             SRK_DIAG_INPUT_LR_MASK
         ) / 1000u;
         srk_diag_u32(number, combo_ms);
-        srk_diag_draw(host, 20, 19, "ACTIVE");
-        srk_diag_draw(host, 27, 19, number);
-        srk_diag_draw(host, 38, 19, "ms");
+        srk_diag_draw_field(host, 20, 19, 7, "ACTIVE");
+        srk_diag_draw_field(host, 27, 19, 10, number);
+        srk_diag_draw_field(host, 38, 19, 2, "ms");
     }else{
-        srk_diag_draw(host, 20, 19, "INACTIVE");
+        srk_diag_draw_field(host, 20, 19, 7, "INACTIVE");
+        srk_diag_draw_field(host, 27, 19, 10, "");
+        srk_diag_draw_field(host, 38, 19, 2, "");
     }
 
     srk_diag_u32(number, app->input.sample_count);
-    srk_diag_draw(host, 2, 20, "Samples:");
-    srk_diag_draw(host, 12, 20, number);
+    srk_diag_draw_field(host, 12, 20, 10, number);
     srk_diag_u32(number, app->input.state_change_count);
-    srk_diag_draw(host, 2, 21, "State changes:");
-    srk_diag_draw(host, 17, 21, number);
-
-    srk_diag_draw(host, 2, 23, "START Return to diagnostics menu");
+    srk_diag_draw_field(host, 17, 21, 10, number);
 }
 
 
-static void srk_diag_render_flight(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
+static void srk_diag_render_flight(
+    SRK_DIAG_APP *app,
+    SRK_DIAG_HOST *host,
+    int full_render
+)
 {
     char number[11];
 
-    srk_diag_draw(host, 2, 1, "APPLICATION FLIGHT RECORDER");
-    srk_diag_draw(host, 2, 3, "Rolling window: 30 seconds at up to 60 Hz");
-    srk_diag_draw(host, 2, 4, "Frame record: 32 bytes");
+    if(full_render){
+        srk_diag_draw(host, 2, 1, "APPLICATION FLIGHT RECORDER");
+        srk_diag_draw(host, 2, 3, "Rolling window: 30 seconds at up to 60 Hz");
+        srk_diag_draw(host, 2, 4, "Frame record: 32 bytes");
+        srk_diag_draw(host, 2, 6, "Status:");
+        srk_diag_draw(host, 2, 7, "Records:");
+        srk_diag_draw(host, 2, 10, "A Arm/reset rolling recorder");
+        srk_diag_draw(host, 2, 11, "C Freeze current 30-second window");
+        srk_diag_draw(host, 2, 13, "START Return to diagnostics menu");
+        srk_diag_draw(host, 2, 15, "Export is intentionally deferred until storage is proven.");
+    }
 
-    srk_diag_draw(host, 2, 6, "Status:");
     if(app->recorder.frozen)
-        srk_diag_draw(host, 12, 6, "FROZEN");
+        srk_diag_draw_field(host, 12, 6, 18, "FROZEN");
     else if(app->recorder.armed)
-        srk_diag_draw(host, 12, 6, "ARMED / RECORDING");
+        srk_diag_draw_field(host, 12, 6, 18, "ARMED / RECORDING");
     else
-        srk_diag_draw(host, 12, 6, "IDLE");
+        srk_diag_draw_field(host, 12, 6, 18, "IDLE");
 
     srk_diag_u32(number, srk_diag_flight_count(&app->recorder));
-    srk_diag_draw(host, 2, 7, "Records:");
-    srk_diag_draw(host, 12, 7, number);
-
-    srk_diag_draw(host, 2, 10, "A Arm/reset rolling recorder");
-    srk_diag_draw(host, 2, 11, "C Freeze current 30-second window");
-    srk_diag_draw(host, 2, 13, "START Return to diagnostics menu");
-    srk_diag_draw(host, 2, 15, "Export is intentionally deferred until storage is proven.");
+    srk_diag_draw_field(host, 12, 7, 10, number);
 }
 
 
-static void srk_diag_render_placeholder(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
+static void srk_diag_render_placeholder(
+    SRK_DIAG_APP *app,
+    SRK_DIAG_HOST *host,
+    int full_render
+)
 {
+    if(!full_render)
+        return;
+
     srk_diag_draw(host, 2, 1, srk_diag_menu_label((int)app->menu.active_screen));
     srk_diag_draw(host, 2, 3, "Diagnostic module not implemented in this core tranche.");
     srk_diag_draw(host, 2, 5, "START Return to diagnostics menu");
@@ -197,6 +259,8 @@ void srk_diag_app_reset(SRK_DIAG_APP *app)
     srk_diag_input_reset(&app->input);
     srk_diag_flight_reset(&app->recorder);
     app->frame = 0;
+    app->rendered_screen = 0xffffu;
+    app->rendered_screen_valid = 0;
 }
 
 
@@ -207,6 +271,8 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
     srk_u32 now;
     srk_u32 vbr;
     srk_u16 diagnostic_id;
+    srk_u16 render_screen;
+    int full_render;
     int poll_ok;
 
     if(!app || !host)
@@ -264,22 +330,27 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
     record.value1 = app->input.state_change_count;
     srk_diag_flight_append(&app->recorder, &record);
 
+    render_screen = app->menu.active ? (srk_u16)app->menu.active_screen : 0xffffu;
+    full_render = !app->rendered_screen_valid || app->rendered_screen != render_screen;
+
     if(host->begin_frame)
         host->begin_frame(host->context);
-    if(host->clear)
+    if(full_render && host->clear)
         host->clear(host->context);
 
     if(!app->menu.active)
-        srk_diag_render_main(app, host);
+        srk_diag_render_main(app, host, full_render);
     else if(app->menu.active_screen == SRK_DIAG_SCREEN_INPUT_TEST)
-        srk_diag_render_input(app, host);
+        srk_diag_render_input(app, host, full_render);
     else if(app->menu.active_screen == SRK_DIAG_SCREEN_FLIGHT_RECORDER)
-        srk_diag_render_flight(app, host);
+        srk_diag_render_flight(app, host, full_render);
     else
-        srk_diag_render_placeholder(app, host);
+        srk_diag_render_placeholder(app, host, full_render);
 
     if(host->end_frame)
         host->end_frame(host->context);
 
+    app->rendered_screen = render_screen;
+    app->rendered_screen_valid = 1;
     app->frame += 1;
 }
