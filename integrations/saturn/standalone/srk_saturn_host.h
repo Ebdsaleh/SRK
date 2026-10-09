@@ -13,6 +13,7 @@ typedef struct SRK_SATURN_HOST_STATE {
     srk_u32 frame_period_us;
     int audio_initialized;
     int audio_playing;
+    unsigned int audio_playing_mask;
 } SRK_SATURN_HOST_STATE;
 
 
