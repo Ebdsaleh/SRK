@@ -41,6 +41,13 @@
 #define SRK_AUDIO_SAMPLE_POSITIVE 0x2000u
 #define SRK_AUDIO_SAMPLE_NEGATIVE 0xE000u
 
+#define SRK_AUDIO_STAGE4_SAMPLE_ADDRESS 0x00002400u
+#define SRK_AUDIO_STAGE4_SAMPLE_LOOP_END 256u
+#define SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID 0u
+#define SRK_AUDIO_STAGE4_WAVEFORM_SHAPED_PCM_ID 1u
+#define SRK_AUDIO_STAGE4_SHAPE_LEVEL_COUNT 16u
+#define SRK_AUDIO_STAGE4_SAMPLES_PER_LEVEL 16u
+
 #define SRK_AUDIO_PAN_HARD_RIGHT 0x0Fu
 #define SRK_AUDIO_PAN_CENTER     0x00u
 #define SRK_AUDIO_PAN_HARD_LEFT  0x1Fu
@@ -54,6 +61,14 @@
 #define SRK_AUDIO_STAGE2_RIGHT_SLOT 1u
 #define SRK_AUDIO_STAGE2_LEFT_MASK 0x01u
 #define SRK_AUDIO_STAGE2_RIGHT_MASK 0x02u
+
+
+static const srk_u16 srk_audio_stage4_shape[SRK_AUDIO_STAGE4_SHAPE_LEVEL_COUNT] = {
+    0x0000u, 0x1000u, 0x2800u, 0x1800u,
+    0x3000u, 0x1000u, 0x0800u, 0x0000u,
+    0xF800u, 0xE800u, 0xD000u, 0xE000u,
+    0xF000u, 0xF800u, 0x0000u, 0x0000u
+};
 
 
 static volatile srk_u16 *srk_saturn_audio_slot(unsigned int slot)
@@ -147,6 +162,32 @@ static void srk_saturn_audio_install_waveform(void)
 }
 
 
+static void srk_saturn_audio_install_stage4_sample(void)
+{
+    unsigned int level;
+    unsigned int repeat;
+    unsigned int sample;
+    unsigned int base;
+
+    /*
+     * Stage 4 deliberately uses a second, longer deterministic PCM contour
+     * rather than importing a file format or introducing DSP/envelope state.
+     * Sixteen signed 16-bit levels are each held for sixteen samples, producing
+     * one 256-sample harmonic-rich loop whose endpoint is explicitly zero.
+     */
+    base = SRK_AUDIO_STAGE4_SAMPLE_ADDRESS >> 1;
+    sample = 0u;
+    for(level=0u; level<SRK_AUDIO_STAGE4_SHAPE_LEVEL_COUNT; level++){
+        for(repeat=0u; repeat<SRK_AUDIO_STAGE4_SAMPLES_PER_LEVEL; repeat++){
+            SRK_AUDIO_SOUND_RAM[base + sample] = srk_audio_stage4_shape[level];
+            sample += 1u;
+        }
+    }
+    SRK_AUDIO_SOUND_RAM[base + SRK_AUDIO_STAGE4_SAMPLE_LOOP_END] =
+        srk_audio_stage4_shape[0];
+}
+
+
 static void srk_saturn_audio_register_key_off_all(void)
 {
     volatile srk_u16 *control;
@@ -162,15 +203,33 @@ static void srk_saturn_audio_register_key_off_all(void)
 }
 
 
+static void srk_saturn_audio_set_slot_source(
+    unsigned int slot,
+    unsigned int waveform_id
+)
+{
+    volatile srk_u16 *registers;
+
+    registers = srk_saturn_audio_slot(slot);
+    if(waveform_id == SRK_AUDIO_STAGE4_WAVEFORM_SHAPED_PCM_ID){
+        registers[SRK_AUDIO_SLOT_SA_LOW] = SRK_AUDIO_STAGE4_SAMPLE_ADDRESS;
+        registers[SRK_AUDIO_SLOT_LSA] = 0x0000u;
+        registers[SRK_AUDIO_SLOT_LEA] = SRK_AUDIO_STAGE4_SAMPLE_LOOP_END;
+    }else{
+        registers[SRK_AUDIO_SLOT_SA_LOW] = SRK_AUDIO_WAVE_ADDRESS;
+        registers[SRK_AUDIO_SLOT_LSA] = 0x0000u;
+        registers[SRK_AUDIO_SLOT_LEA] = SRK_AUDIO_LOOP_END;
+    }
+}
+
+
 static void srk_saturn_audio_configure_slot(unsigned int slot)
 {
     volatile srk_u16 *registers;
 
     registers = srk_saturn_audio_slot(slot);
     registers[SRK_AUDIO_SLOT_CONTROL] = SRK_AUDIO_CONTROL_NORMAL_LOOP;
-    registers[SRK_AUDIO_SLOT_SA_LOW] = SRK_AUDIO_WAVE_ADDRESS;
-    registers[SRK_AUDIO_SLOT_LSA] = 0x0000u;
-    registers[SRK_AUDIO_SLOT_LEA] = SRK_AUDIO_LOOP_END;
+    srk_saturn_audio_set_slot_source(slot, SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID);
     registers[SRK_AUDIO_SLOT_EG1] = 0x0000u;
     registers[SRK_AUDIO_SLOT_EG2] = 0x0000u;
     /* SDIR bypasses EG/TL/LFO for the deterministic direct-PCM proof. */
@@ -202,6 +261,7 @@ static int srk_saturn_audio_initialize(SRK_SATURN_HOST_STATE *state)
 
     srk_saturn_audio_install_dummy_cpu();
     srk_saturn_audio_install_waveform();
+    srk_saturn_audio_install_stage4_sample();
     srk_saturn_audio_register_key_off_all();
     srk_saturn_audio_configure_slot(SRK_AUDIO_STAGE2_LEFT_SLOT);
     srk_saturn_audio_configure_slot(SRK_AUDIO_STAGE2_RIGHT_SLOT);
@@ -212,6 +272,7 @@ static int srk_saturn_audio_initialize(SRK_SATURN_HOST_STATE *state)
     state->audio_initialized = 1;
     state->audio_playing = 0;
     state->audio_playing_mask = 0u;
+    state->audio_waveform_id = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
     return 1;
 }
 
@@ -288,6 +349,7 @@ static int srk_saturn_audio_present(
     volatile srk_u16 *left;
     volatile srk_u16 *right;
     unsigned int desired_mask;
+    unsigned int desired_waveform;
     int audible;
 
     state = (SRK_SATURN_HOST_STATE *)context;
@@ -300,6 +362,29 @@ static int srk_saturn_audio_present(
     right = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_RIGHT_SLOT);
     desired_mask = 0u;
     audible = request->playing && !request->muted;
+
+    desired_waveform = request->waveform_id;
+    if(desired_waveform != SRK_AUDIO_STAGE4_WAVEFORM_SHAPED_PCM_ID)
+        desired_waveform = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
+    if(request->tone_id == SRK_AUDIO_STAGE2_STEREO_TONE_ID)
+        desired_waveform = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
+
+    if(desired_waveform != state->audio_waveform_id){
+        /*
+         * Do not retarget SA/LEA beneath a keyed voice. Clear the owned key
+         * mask first, switch slot 0 to the requested deterministic Sound-RAM
+         * region, then let the normal desired-mask path re-key it below.
+         */
+        if(state->audio_playing_mask != 0u){
+            srk_saturn_audio_apply_key_mask(0u);
+            state->audio_playing_mask = 0u;
+        }
+        srk_saturn_audio_set_slot_source(
+            SRK_AUDIO_STAGE2_LEFT_SLOT,
+            desired_waveform
+        );
+        state->audio_waveform_id = desired_waveform;
+    }
 
     if(request->tone_id == SRK_AUDIO_STAGE2_STEREO_TONE_ID){
         /*
@@ -402,6 +487,7 @@ void srk_saturn_audio_bind(
     state->audio_initialized = 0;
     state->audio_playing = 0;
     state->audio_playing_mask = 0u;
+    state->audio_waveform_id = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
     host->present_audio_tone = srk_saturn_audio_present;
     host->stop_audio = srk_saturn_audio_stop;
     host->read_audio_status = srk_saturn_audio_read_status;
