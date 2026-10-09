@@ -24,6 +24,9 @@ static const char *srk_diag_button_names[SRK_DIAG_INPUT_BUTTON_COUNT] = {
     "X", "Y", "Z", "L", "R", "START"
 };
 
+#define SRK_DIAG_INPUT_EXIT_MASK \
+    (SRK_DIAG_BUTTON_L | SRK_DIAG_BUTTON_R | SRK_DIAG_BUTTON_START)
+
 
 static void srk_diag_hex16(char out[7], srk_u16 value)
 {
@@ -148,7 +151,7 @@ static void srk_diag_render_input(
         srk_diag_draw(host, 2, 19, "L+R combination:");
         srk_diag_draw(host, 2, 20, "Samples:");
         srk_diag_draw(host, 2, 21, "State changes:");
-        srk_diag_draw(host, 2, 23, "START Return to diagnostics menu");
+        srk_diag_draw(host, 2, 23, "L+R+START Return to diagnostics menu");
     }
 
     srk_diag_draw_field(host, 13, 2, 3, app->input.connected ? "YES" : "NO");
@@ -302,6 +305,11 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
             srk_diag_menu_move(&app->menu, 1);
         if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_A))
             srk_diag_menu_enter(&app->menu);
+    }else if(app->menu.active_screen == SRK_DIAG_SCREEN_INPUT_TEST){
+        if((app->input.current & SRK_DIAG_INPUT_EXIT_MASK) == SRK_DIAG_INPUT_EXIT_MASK &&
+           (app->input.pressed & SRK_DIAG_INPUT_EXIT_MASK) != 0){
+            srk_diag_menu_back(&app->menu);
+        }
     }else{
         if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_START)){
             srk_diag_menu_back(&app->menu);
