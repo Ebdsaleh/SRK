@@ -15,13 +15,14 @@ Both slots reuse the deterministic signed 16-bit square-wave sample already acce
 
 ## Controls
 
-The Audio / SCSP diagnostic retains the Stage 1 controls and adds one mode toggle:
+The Audio / SCSP diagnostic retains the Stage 1 controls and adds one mode toggle plus one explicit Stage 2 activation chord:
 
 - `A`: Play / Stop
 - `B`: toggle single-slot / stereo-pair mode
+- `DOWN+A`: enter stereo-pair mode if necessary, select BOTH sources, and start playback
 - `C`: Mute / Unmute
 - `LEFT`: single mode = hard-left pan; stereo mode = left source only
-- `UP`: single mode = center pan; stereo mode = both sources simultaneously
+- `UP`: single mode = center pan; stereo mode = both-source selection only
 - `RIGHT`: single mode = hard-right pan; stereo mode = right source only
 - `X`: select LOW single-slot tone
 - `Y`: select MID single-slot tone
@@ -31,6 +32,16 @@ The Audio / SCSP diagnostic retains the Stage 1 controls and adds one mode toggl
 - `START`: stop owned audio and return to diagnostics menu
 
 When stereo-pair mode is entered, the visible tone label becomes `STEREO` and the selection is reset to CENTER/BOTH. X/Y/Z continue to preselect the single-slot tone that will be restored when `B` returns to single mode.
+
+`UP` deliberately remains the existing CENTER/BOTH selector. It is not used as the Stage 2 play chord. This avoids overloading a control that already has a stable meaning in the Stage 1 interface.
+
+## R11 physical-control finding
+
+The first R11 physical pass exposed an interaction-design problem in the acceptance instructions rather than a confirmed SCSP backend fault: the proposed `A+UP` activation overlapped with the already established `UP = CENTER` control. On hardware the observed result was a transition to CENTER rather than a clear, attributable stereo-pair activation.
+
+The correction is to use previously unused `DOWN` together with `A` as a dedicated command. `DOWN+A` has one deterministic meaning: enter stereo-pair mode, select both voices, and play them. The underlying two-slot backend, listener-left/listener-right DIPAN mapping, pitches, waveform, and key-mask design are unchanged.
+
+R11 therefore remains evidence for the successful one-command build/deploy/MATCH pipeline, but SCSP Stage 2 physical acceptance is deferred to the next fresh diagnostic revision carrying this corrected control contract.
 
 ## Slot ownership
 
@@ -50,16 +61,16 @@ Mute is intentionally different from Stop:
 
 The bounded dummy MC68EC000 loop from Stage 1 remains running throughout.
 
-## Physical acceptance for R11
+## Corrected physical acceptance
 
-R11 should prove:
+The next fresh revision should prove:
 
 1. Stage 1 single-slot behavior is unchanged.
 2. `B` changes the dynamic tone label to `STEREO`.
-3. With `A` playing and `UP` selected, LOW is heard only on listener-left while HIGH is heard only on listener-right at the same time.
+3. `DOWN+A` produces LOW listener-left and HIGH listener-right simultaneously.
 4. `LEFT` leaves only the LOW left source audible.
 5. `RIGHT` leaves only the HIGH right source audible.
-6. Returning to `UP` restores both sources simultaneously.
+6. Returning to `UP` restores both-source selection while playback continues.
 7. `C` mutes/unmutes both without losing the selected source state.
 8. `L`/`R` adjust both voices together.
 9. `A` stops both voices.
