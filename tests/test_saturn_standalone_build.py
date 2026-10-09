@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
+from rikai_kotoba.formats.saturn.mode1_image import verify_mode1_bin_against_iso
 from rikai_kotoba.hardware.saturn.standalone_build import (
     SaturnStandaloneBuildError,
     build_saturn_standalone_project,
@@ -86,7 +87,10 @@ class _SuccessfulRunner:
         if "-o" in argv:
             output = root / argv[argv.index("-o") + 1]
             output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_bytes(("artifact:" + output.name).encode("ascii"))
+            if output.suffix.casefold() == ".iso":
+                output.write_bytes(bytes((index * 13) & 0xFF for index in range(4096)))
+            else:
+                output.write_bytes(("artifact:" + output.name).encode("ascii"))
 
         for item in argv:
             if item.startswith("-Wl,-Map,"):
@@ -129,8 +133,22 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             self.assertTrue(result.successful)
             self.assertEqual(len(runner.calls), 9)
             self.assertTrue((project / "build" / "srk_diag.bin").is_file())
-            self.assertTrue((project / "build" / "srk_diag.iso").is_file())
+            iso = project / "build" / "srk_diag.iso"
+            self.assertTrue(iso.is_file())
             self.assertTrue((project / "cd" / "0.bin").is_file())
+            deploy = project / "build" / "SRK-Diagnostics"
+            raw = deploy / "SRK-Diagnostics.bin"
+            cue = deploy / "SRK-Diagnostics.cue"
+            self.assertTrue(raw.is_file())
+            self.assertTrue(cue.is_file())
+            self.assertEqual(verify_mode1_bin_against_iso(iso, raw), 2)
+            self.assertEqual(raw.stat().st_size, 2 * 2352)
+            self.assertEqual(
+                cue.read_bytes(),
+                b'FILE "SRK-Diagnostics.bin" BINARY\r\n'
+                b"  TRACK 01 MODE1/2352\r\n"
+                b"    INDEX 01 00:00:00\r\n",
+            )
             self.assertTrue(result.log_path.is_file())
             self.assertTrue(result.report_path.is_file())
             self.assertEqual(
@@ -142,7 +160,17 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             self.assertTrue(report["successful"])
             self.assertFalse(report["policy"]["shell_used"])
             self.assertFalse(report["policy"]["path_mutated"])
-            self.assertEqual(len(report["artifacts"]), 4)
+            self.assertEqual(len(report["artifacts"]), 6)
+            self.assertEqual(report["deployable"]["format"], "cue-bin-mode1-2352")
+            self.assertEqual(
+                report["deployable"]["cue"],
+                "build/SRK-Diagnostics/SRK-Diagnostics.cue",
+            )
+            self.assertEqual(
+                report["deployable"]["bin"],
+                "build/SRK-Diagnostics/SRK-Diagnostics.bin",
+            )
+            self.assertTrue(report["deployable"]["verified_against_iso"])
 
     def test_failure_stops_at_first_command_and_preserves_report(self):
         with tempfile.TemporaryDirectory() as temp_dir:
