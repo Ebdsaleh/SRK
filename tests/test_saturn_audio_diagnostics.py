@@ -34,6 +34,8 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("SRK_DIAG_AUDIO_PAN_LEFT", audio_h)
         self.assertIn("SRK_DIAG_AUDIO_PAN_CENTER", audio_h)
         self.assertIn("SRK_DIAG_AUDIO_PAN_RIGHT", audio_h)
+        self.assertIn("SRK_DIAG_AUDIO_WAVEFORM_TONE", audio_h)
+        self.assertIn("SRK_DIAG_AUDIO_WAVEFORM_SHAPED_PCM", audio_h)
 
         self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_A", audio_c)
         self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_B", audio_c)
@@ -125,6 +127,35 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("SRK_AUDIO_PITCH_MID  0x0000u", backend)
         self.assertIn("SRK_AUDIO_PITCH_HIGH 0x0800u", backend)
         self.assertNotIn("SRK_AUDIO_PITCH_SWEEP", backend)
+
+    def test_stage4_shaped_pcm_switches_a_second_sound_ram_source_safely(self):
+        host_h = (DIAG / "srk_diag_host.h").read_text(encoding="utf-8")
+        audio_h = (DIAG / "srk_diag_audio.h").read_text(encoding="utf-8")
+        audio_c = (DIAG / "srk_diag_audio.c").read_text(encoding="utf-8")
+        backend = (STANDALONE / "srk_saturn_audio.c").read_text(encoding="utf-8")
+        saturn_host_h = (STANDALONE / "srk_saturn_host.h").read_text(encoding="utf-8")
+
+        self.assertIn("unsigned int waveform_id", host_h)
+        self.assertIn("SRK_DIAG_AUDIO_WAVEFORM_SHAPED_PCM = 1", audio_h)
+        self.assertIn("int sample_mode", audio_h)
+        self.assertIn("sample_toggle", audio_c)
+        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_DOWN", audio_c)
+        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_C", audio_c)
+        self.assertIn("srk_diag_audio_enter_sample_mode(state)", audio_c)
+        self.assertIn("srk_diag_audio_leave_sample_mode(state)", audio_c)
+        self.assertIn("request->waveform_id = state->sample_mode", audio_c)
+        self.assertIn('"SHAPED PCM"', audio_c)
+
+        self.assertIn("unsigned int audio_waveform_id", saturn_host_h)
+        self.assertIn("SRK_AUDIO_STAGE4_SAMPLE_ADDRESS 0x00002400u", backend)
+        self.assertIn("SRK_AUDIO_STAGE4_SAMPLE_LOOP_END 256u", backend)
+        self.assertIn("SRK_AUDIO_STAGE4_SHAPE_LEVEL_COUNT 16u", backend)
+        self.assertIn("SRK_AUDIO_STAGE4_SAMPLES_PER_LEVEL 16u", backend)
+        self.assertIn("srk_saturn_audio_install_stage4_sample()", backend)
+        self.assertIn("srk_saturn_audio_set_slot_source", backend)
+        self.assertIn("desired_waveform != state->audio_waveform_id", backend)
+        self.assertIn("srk_saturn_audio_apply_key_mask(0u)", backend)
+        self.assertIn("state->audio_playing_mask = 0u", backend)
 
     def test_scsp_backend_uses_reviewed_sound_cpu_and_slot_contract(self):
         audio_c = (STANDALONE / "srk_saturn_audio.c").read_text(encoding="utf-8")
