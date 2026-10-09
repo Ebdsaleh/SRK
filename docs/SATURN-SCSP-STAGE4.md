@@ -96,23 +96,21 @@ When a request changes source while an owned slot is keyed:
 
 Stage 2 stereo mode forcibly uses the accepted tone source for both slots.
 
-## R14 physical acceptance target
+## R14 physical acceptance
 
-A fresh R14 candidate should prove:
+R14 physically accepted Stage 4 on real Saturn hardware.
 
-1. R13 Stage 3 and R12 Stage 2 behavior remain intact.
-2. In normal single-slot mode, play the accepted square tone at MID/CENTER/volume 4 as a comparison baseline.
-3. Press `DOWN+C`:
-   - playback remains controlled and stable;
-   - the timbre changes clearly to the shaped PCM source;
-   - pitch/pan/volume remain attributable to the existing logical controls.
-4. `X`, `Y`, `Z` produce LOW/MID/HIGH relative pitch on the shaped source.
-5. `LEFT`, `UP`, `RIGHT` preserve listener-left/center/listener-right behavior.
-6. `L`/`R` adjust direct-send volume and `C` mutes/unmutes normally.
-7. `A` stops and resumes the shaped source without leakage or corruption.
-8. `DOWN+C` exits sample mode to a stopped tone-source state; pressing `A` again produces the original square-tone timbre.
-9. Repeat source entry/exit several times with no crash, hang, stuck tone, or obvious state corruption.
-10. `START` always silences owned audio and returns to the menu with no leakage.
-11. Input, Video and VDP1 diagnostics remain stable, including accepted L=CCW / R=CW roll polarity.
+The observed behavior matched the complete acceptance contract:
 
-Only after those observations should Stage 4 be physically accepted.
+- the shaped PCM source was clearly distinguishable from the accepted square tone;
+- LOW/MID/HIGH relative pitch remained correct;
+- listener-left/center/listener-right pan remained correct;
+- volume, mute, stop and resume remained correct;
+- repeated `DOWN+C` source entry/exit produced no hang, stuck note, stale source or obvious state corruption;
+- leaving shaped mode returned to a stopped tone-source state and the next `A` playback used the original square source;
+- `START` produced immediate silence, returned to the menu and did not silently restart shaped playback on re-entry;
+- the accepted Stage 2 stereo pair, Stage 3 sweep, Input, Video and VDP1 diagnostics remained stable.
+
+R14 deployment had already completed through the preserve-first workflow with `Whole-card result : MATCH` and `VERIFIED AND SAFE TO EJECT`.
+
+Stage 4 is therefore **PHYSICALLY ACCEPTED**.
