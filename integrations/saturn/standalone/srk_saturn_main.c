@@ -1,4 +1,5 @@
 #include "srk_diag_app.h"
+#include "srk_saturn_audio.h"
 #include "srk_saturn_host.h"
 
 
@@ -14,6 +15,7 @@ static SRK_SATURN_HOST_STATE srk_host_state;
 void _main(void)
 {
     srk_saturn_host_init(&srk_host, &srk_host_state);
+    srk_saturn_audio_bind(&srk_host, &srk_host_state);
     srk_diag_app_reset(&srk_app);
 
     for(;;)
