@@ -19,30 +19,42 @@ def _write(path: Path, data: bytes) -> Path:
     return path
 
 
+def _field(text: str, size: int) -> bytes:
+    return text.encode("ascii").ljust(size, b" ")
+
+
 def _ip_bin() -> bytes:
     data = bytearray(2048)
-    fields = (
-        (0, 16, "SEGA SEGASATURN"),
-        (16, 32, "SEGA ENTERPRISES"),
-        (32, 48, "CD-1/1"),
-        (48, 56, "JTUB"),
-        (56, 72, "J"),
-        (72, 112, "SRK DIAGNOSTICS"),
-        (112, 128, "V0.001"),
-        (128, 144, "20261009"),
-        (144, 160, "T-0000G"),
-    )
-    for start, end, text in fields:
-        data[start:end] = text.encode("ascii").ljust(end - start, b" ")
+    data[0x00:0x10] = _field("SEGA SEGASATURN", 16)
+    data[0x10:0x20] = _field("SEGA ENTERPRISES", 16)
+    data[0x20:0x2A] = _field("T-0000G", 10)
+    data[0x2A:0x30] = _field("V0.001", 6)
+    data[0x30:0x38] = _field("20261009", 8)
+    data[0x38:0x40] = _field("CD-1/1", 8)
+    data[0x40:0x4A] = _field("JTUE", 10)
+    data[0x4A:0x50] = b" " * 6
+    data[0x50:0x60] = _field("J", 16)
+    data[0x60:0xD0] = _field("SRK DIAGNOSTICS", 112)
+    data[0xE0:0xE4] = (0x1800).to_bytes(4, "big")
+    data[0xF0:0xF4] = (0x06004000).to_bytes(4, "big")
     return bytes(data)
+
+
+def _shell_link() -> bytes:
+    prefix = bytes.fromhex("4c0000000114020000000000c000000000000046")
+    return prefix + (b"\x00" * 64)
 
 
 def _candidate(root: Path) -> Path:
     candidate = root / "vdp1ex"
     candidate.mkdir()
-    _write(candidate / "makefile", b"CC=sh-elf-gcc\nall:\n\t$(CC) main.c\n")
+    _write(candidate / "makefile", b"include ./OBJECTS\ninclude C:/SaturnOrbit/COMMON/mf_CMD\n")
+    _write(candidate / "OBJECTS", b"TARGET = srk\nOBJS = CRT0.o main.o\n")
+    _write(candidate / "run.bat", b"make\n")
+    _write(candidate / "mf_CMD", b"CC = sh-elf-gcc\n")
     _write(candidate / "CRT0.S", b".section .text\n.global _start\n_start:\n")
-    _write(candidate / "saturn.ld", b"SECTIONS { .text 0x06004000 : { *(.text) } }\n")
+    _write(candidate / "BART.LNK", b"SECTIONS { .text 0x06004000 : { *(.text) } }\n")
+    _write(candidate / "MAKE_ELF.bat.lnk", _shell_link())
     _write(candidate / "main.c", b"int main(void) { return 0; }\n")
     _write(candidate / "smpc.c", b"unsigned read_pad(void) { return 0; }\n")
     _write(candidate / "conio.c", b"void draw_text(void) {}\n")
@@ -74,7 +86,25 @@ class SaturnStandaloneTemplateTests(unittest.TestCase):
             )
             metadata = dict(report.ip_metadata)
             self.assertEqual(metadata["hardware_id"], "SEGA SEGASATURN")
+            self.assertEqual(metadata["product_number"], "T-0000G")
             self.assertEqual(metadata["game_title"], "SRK DIAGNOSTICS")
+            self.assertEqual(metadata["first_read_address"], "0x06004000")
+
+    def test_build_assets_are_text_and_shell_shortcuts_are_not_linkers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            candidate = _candidate(Path(temp_dir))
+            report = inspect_saturn_standalone_template(candidate)
+
+            self.assertEqual(report.file_named("OBJECTS").role, "build-list")
+            self.assertIn("CRT0.o", report.file_named("OBJECTS").text)
+            self.assertEqual(report.file_named("run.bat").role, "script")
+            self.assertEqual(report.file_named("run.bat").text, "make")
+            self.assertEqual(report.file_named("mf_CMD").role, "makefile")
+            self.assertIn("sh-elf-gcc", report.file_named("mf_CMD").text)
+            self.assertEqual(report.file_named("BART.LNK").role, "linker")
+            shortcut = report.file_named("MAKE_ELF.bat.lnk")
+            self.assertEqual(shortcut.role, "shortcut")
+            self.assertIsNone(shortcut.text)
 
     def test_text_capture_is_bounded(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -114,7 +144,11 @@ class SaturnStandaloneTemplateTests(unittest.TestCase):
             self.assertEqual(status, 0)
             self.assertIn("READ-ONLY", text)
             self.assertIn("SEGA SEGASATURN", text)
+            self.assertIn("product_number : T-0000G", text)
             self.assertIn("===== makefile [makefile] =====", text)
+            self.assertIn("===== OBJECTS [build-list] =====", text)
+            self.assertIn("===== run.bat [script] =====", text)
+            self.assertNotIn("===== MAKE_ELF.bat.lnk", text)
             self.assertIn("===== CRT0.S [startup] =====", text)
             self.assertIn("===== smpc.c [priority-source] =====", text)
             self.assertIn("No files were modified.", text)
