@@ -49,6 +49,18 @@
 #define SRK_AUDIO_PITCH_MID  0x0000u
 #define SRK_AUDIO_PITCH_HIGH 0x0800u
 
+#define SRK_AUDIO_STAGE2_STEREO_TONE_ID 3u
+#define SRK_AUDIO_STAGE2_LEFT_SLOT 0u
+#define SRK_AUDIO_STAGE2_RIGHT_SLOT 1u
+#define SRK_AUDIO_STAGE2_LEFT_MASK 0x01u
+#define SRK_AUDIO_STAGE2_RIGHT_MASK 0x02u
+
+
+static volatile srk_u16 *srk_saturn_audio_slot(unsigned int slot)
+{
+    return SRK_AUDIO_SCSP_SLOT0 + (slot * SRK_AUDIO_SLOT_WORDS);
+}
+
 
 static int srk_saturn_audio_wait_smpc_ready(void)
 {
@@ -141,7 +153,7 @@ static void srk_saturn_audio_register_key_off_all(void)
     unsigned int slot;
 
     for(slot=0; slot<SRK_AUDIO_SLOT_COUNT; slot++){
-        control = SRK_AUDIO_SCSP_SLOT0 + (slot * SRK_AUDIO_SLOT_WORDS);
+        control = srk_saturn_audio_slot(slot);
         *control = (srk_u16)(*control & (srk_u16)~SRK_AUDIO_CONTROL_KYONB);
     }
 
@@ -150,21 +162,24 @@ static void srk_saturn_audio_register_key_off_all(void)
 }
 
 
-static void srk_saturn_audio_configure_slot_zero(void)
+static void srk_saturn_audio_configure_slot(unsigned int slot)
 {
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_CONTROL] = SRK_AUDIO_CONTROL_NORMAL_LOOP;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_SA_LOW] = SRK_AUDIO_WAVE_ADDRESS;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_LSA] = 0x0000u;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_LEA] = SRK_AUDIO_LOOP_END;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_EG1] = 0x0000u;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_EG2] = 0x0000u;
-    /* SDIR bypasses EG/TL/LFO for the minimal Stage-1 direct-PCM proof. */
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_TL] = SRK_AUDIO_SOUND_DIRECT;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_FM] = 0x0000u;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_MID;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_LFO] = 0x0000u;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_DSP] = 0x0000u;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_MIXER] = 0x0000u;
+    volatile srk_u16 *registers;
+
+    registers = srk_saturn_audio_slot(slot);
+    registers[SRK_AUDIO_SLOT_CONTROL] = SRK_AUDIO_CONTROL_NORMAL_LOOP;
+    registers[SRK_AUDIO_SLOT_SA_LOW] = SRK_AUDIO_WAVE_ADDRESS;
+    registers[SRK_AUDIO_SLOT_LSA] = 0x0000u;
+    registers[SRK_AUDIO_SLOT_LEA] = SRK_AUDIO_LOOP_END;
+    registers[SRK_AUDIO_SLOT_EG1] = 0x0000u;
+    registers[SRK_AUDIO_SLOT_EG2] = 0x0000u;
+    /* SDIR bypasses EG/TL/LFO for the deterministic direct-PCM proof. */
+    registers[SRK_AUDIO_SLOT_TL] = SRK_AUDIO_SOUND_DIRECT;
+    registers[SRK_AUDIO_SLOT_FM] = 0x0000u;
+    registers[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_MID;
+    registers[SRK_AUDIO_SLOT_LFO] = 0x0000u;
+    registers[SRK_AUDIO_SLOT_DSP] = 0x0000u;
+    registers[SRK_AUDIO_SLOT_MIXER] = 0x0000u;
 }
 
 
@@ -188,13 +203,15 @@ static int srk_saturn_audio_initialize(SRK_SATURN_HOST_STATE *state)
     srk_saturn_audio_install_dummy_cpu();
     srk_saturn_audio_install_waveform();
     srk_saturn_audio_register_key_off_all();
-    srk_saturn_audio_configure_slot_zero();
+    srk_saturn_audio_configure_slot(SRK_AUDIO_STAGE2_LEFT_SLOT);
+    srk_saturn_audio_configure_slot(SRK_AUDIO_STAGE2_RIGHT_SLOT);
 
     if(!srk_saturn_audio_smpc_command(SRK_AUDIO_SMPC_SNDON))
         return 0;
 
     state->audio_initialized = 1;
     state->audio_playing = 0;
+    state->audio_playing_mask = 0u;
     return 1;
 }
 
@@ -219,44 +236,46 @@ static srk_u16 srk_saturn_audio_pan(unsigned int pan_id)
 }
 
 
-static srk_u16 srk_saturn_audio_mixer(
-    const SRK_DIAG_AUDIO_REQUEST *request
+static srk_u16 srk_saturn_audio_mixer_value(
+    unsigned int volume_level,
+    unsigned int pan_value,
+    int audible
 )
 {
     unsigned int level;
-    unsigned int pan;
 
-    level = request->volume_level;
+    level = volume_level;
     if(level > 7u)
         level = 7u;
-    if(request->muted || !request->playing)
+    if(!audible)
         level = 0u;
 
-    pan = srk_saturn_audio_pan(request->pan_id);
-    return (srk_u16)((level << 13) | (pan << 8));
+    return (srk_u16)((level << 13) | ((pan_value & 0x1fu) << 8));
 }
 
 
-static void srk_saturn_audio_key_on(void)
+static void srk_saturn_audio_apply_key_mask(unsigned int mask)
 {
-    srk_u16 base;
+    volatile srk_u16 *left;
+    volatile srk_u16 *right;
+    srk_u16 left_control;
+    srk_u16 right_control;
 
-    base = SRK_AUDIO_CONTROL_NORMAL_LOOP;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_CONTROL] =
-        (srk_u16)(base | SRK_AUDIO_CONTROL_KYONB);
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_CONTROL] =
-        (srk_u16)(base | SRK_AUDIO_CONTROL_KYONB | SRK_AUDIO_CONTROL_KYONEX);
-}
+    left = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_LEFT_SLOT);
+    right = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_RIGHT_SLOT);
 
+    left_control = SRK_AUDIO_CONTROL_NORMAL_LOOP;
+    right_control = SRK_AUDIO_CONTROL_NORMAL_LOOP;
+    if(mask & SRK_AUDIO_STAGE2_LEFT_MASK)
+        left_control = (srk_u16)(left_control | SRK_AUDIO_CONTROL_KYONB);
+    if(mask & SRK_AUDIO_STAGE2_RIGHT_MASK)
+        right_control = (srk_u16)(right_control | SRK_AUDIO_CONTROL_KYONB);
 
-static void srk_saturn_audio_key_off(void)
-{
-    srk_u16 base;
+    left[SRK_AUDIO_SLOT_CONTROL] = left_control;
+    right[SRK_AUDIO_SLOT_CONTROL] = right_control;
 
-    base = SRK_AUDIO_CONTROL_NORMAL_LOOP;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_CONTROL] = base;
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_CONTROL] =
-        (srk_u16)(base | SRK_AUDIO_CONTROL_KYONEX);
+    /* KYONEX executes the KYONB state for all slots at once. */
+    left[SRK_AUDIO_SLOT_CONTROL] = (srk_u16)(left_control | SRK_AUDIO_CONTROL_KYONEX);
 }
 
 
@@ -266,6 +285,10 @@ static int srk_saturn_audio_present(
 )
 {
     SRK_SATURN_HOST_STATE *state;
+    volatile srk_u16 *left;
+    volatile srk_u16 *right;
+    unsigned int desired_mask;
+    int audible;
 
     state = (SRK_SATURN_HOST_STATE *)context;
     if(!state || !request)
@@ -273,18 +296,52 @@ static int srk_saturn_audio_present(
     if(!srk_saturn_audio_initialize(state))
         return 0;
 
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_PITCH] =
-        srk_saturn_audio_pitch(request->tone_id);
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_MIXER] =
-        srk_saturn_audio_mixer(request);
+    left = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_LEFT_SLOT);
+    right = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_RIGHT_SLOT);
+    desired_mask = 0u;
+    audible = request->playing && !request->muted;
 
-    if(request->playing && !state->audio_playing){
-        srk_saturn_audio_key_on();
-        state->audio_playing = 1;
-    }else if(!request->playing && state->audio_playing){
-        srk_saturn_audio_key_off();
-        state->audio_playing = 0;
+    if(request->tone_id == SRK_AUDIO_STAGE2_STEREO_TONE_ID){
+        /*
+         * Stage 2: slot 0 is a distinguishable LOW tone hard-left and slot 1
+         * is a HIGH tone hard-right. CENTER requests both simultaneously;
+         * LEFT/RIGHT isolate the corresponding source without repanning it.
+         */
+        left[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_LOW;
+        right[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_HIGH;
+
+        left[SRK_AUDIO_SLOT_MIXER] = srk_saturn_audio_mixer_value(
+            request->volume_level,
+            SRK_AUDIO_PAN_HARD_LEFT,
+            audible && request->pan_id != 2u
+        );
+        right[SRK_AUDIO_SLOT_MIXER] = srk_saturn_audio_mixer_value(
+            request->volume_level,
+            SRK_AUDIO_PAN_HARD_RIGHT,
+            audible && request->pan_id != 0u
+        );
+
+        if(request->playing && request->pan_id != 2u)
+            desired_mask |= SRK_AUDIO_STAGE2_LEFT_MASK;
+        if(request->playing && request->pan_id != 0u)
+            desired_mask |= SRK_AUDIO_STAGE2_RIGHT_MASK;
+    }else{
+        left[SRK_AUDIO_SLOT_PITCH] = srk_saturn_audio_pitch(request->tone_id);
+        left[SRK_AUDIO_SLOT_MIXER] = srk_saturn_audio_mixer_value(
+            request->volume_level,
+            srk_saturn_audio_pan(request->pan_id),
+            audible
+        );
+        right[SRK_AUDIO_SLOT_MIXER] = 0x0000u;
+        if(request->playing)
+            desired_mask = SRK_AUDIO_STAGE2_LEFT_MASK;
     }
+
+    if(desired_mask != state->audio_playing_mask){
+        srk_saturn_audio_apply_key_mask(desired_mask);
+        state->audio_playing_mask = desired_mask;
+    }
+    state->audio_playing = desired_mask ? 1 : 0;
 
     return 1;
 }
@@ -293,13 +350,19 @@ static int srk_saturn_audio_present(
 static void srk_saturn_audio_stop(void *context)
 {
     SRK_SATURN_HOST_STATE *state;
+    volatile srk_u16 *left;
+    volatile srk_u16 *right;
 
     state = (SRK_SATURN_HOST_STATE *)context;
     if(!state || !state->audio_initialized)
         return;
 
-    SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_MIXER] = 0x0000u;
-    srk_saturn_audio_key_off();
+    left = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_LEFT_SLOT);
+    right = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_RIGHT_SLOT);
+    left[SRK_AUDIO_SLOT_MIXER] = 0x0000u;
+    right[SRK_AUDIO_SLOT_MIXER] = 0x0000u;
+    srk_saturn_audio_apply_key_mask(0u);
+    state->audio_playing_mask = 0u;
     state->audio_playing = 0;
 
     /* Leave the bounded dummy 68000 loop running; do not leave Sound CPU OFF. */
@@ -312,16 +375,18 @@ static int srk_saturn_audio_read_status(
 )
 {
     SRK_SATURN_HOST_STATE *state;
+    volatile srk_u16 *left;
 
     state = (SRK_SATURN_HOST_STATE *)context;
     if(!state || !status || !state->audio_initialized)
         return 0;
 
+    left = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_LEFT_SLOT);
     status->initialized = 1;
     status->common_control = SRK_AUDIO_SCSP_COMMON[0];
-    status->slot_control = SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_CONTROL];
-    status->pitch = SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_PITCH];
-    status->mixer = SRK_AUDIO_SCSP_SLOT0[SRK_AUDIO_SLOT_MIXER];
+    status->slot_control = left[SRK_AUDIO_SLOT_CONTROL];
+    status->pitch = left[SRK_AUDIO_SLOT_PITCH];
+    status->mixer = left[SRK_AUDIO_SLOT_MIXER];
     return 1;
 }
 
@@ -336,6 +401,7 @@ void srk_saturn_audio_bind(
 
     state->audio_initialized = 0;
     state->audio_playing = 0;
+    state->audio_playing_mask = 0u;
     host->present_audio_tone = srk_saturn_audio_present;
     host->stop_audio = srk_saturn_audio_stop;
     host->read_audio_status = srk_saturn_audio_read_status;
