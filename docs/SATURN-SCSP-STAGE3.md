@@ -72,20 +72,21 @@ The core owns:
 
 The standalone backend is unchanged. It continues to translate the existing logical tone IDs and volume levels into the already reviewed SCSP pitch and DISDL encodings.
 
-This is intentional: Stage 3 should prove temporal control of the accepted path, not introduce another hardware variable.
+This is intentional: Stage 3 proves temporal control of the accepted path without introducing another hardware variable.
 
-## Physical acceptance target
+## R13 physical acceptance
 
-A fresh R13 candidate should prove:
+Stage 3 is physically accepted on real Sega Saturn hardware in R13.
 
-1. R12 Stage 2 stereo-pair behavior remains intact before entering the sweep.
-2. `DOWN+B` starts the deterministic automatic sequence.
-3. The audible pitch moves LOW -> MID -> HIGH, then HIGH -> MID -> LOW in the documented phase order.
-4. Within each phase, direct-send level follows the documented 0..7 or 7..0 ramp.
-5. The screen's existing Tone and Volume telemetry follows the automated state.
-6. The sequence wraps cleanly after 48 steps with no click/crash/hang attributable to state corruption.
-7. `DOWN+B` exits the automation and returns to a stopped single-slot state.
-8. `START` during the automation produces silence, returns to the diagnostics menu, and does not resume automatically on re-entry.
-9. Existing Input, Video, VDP1, Stage 1, and Stage 2 regressions remain intact.
+The physical pass confirmed the requested Stage 3 behavior, including the deterministic pitch/volume sequence, repeat behavior, explicit `DOWN+B` stop path, and START teardown/non-resume behavior. The user reported the test worked as specified.
 
-Only after those observations should Stage 3 be physically accepted.
+R13 was built and deployed through the preserve-first one-command workflow before physical testing:
+
+- build result: SUCCESS;
+- MODE1/2352 sectors: 64;
+- BIN SHA-256: `d49ee0b19579ab385cdc7bd5a8df5e52aeaf6370b8e13b89057270d231bf0ad6`;
+- CUE SHA-256: `5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950`;
+- whole-card verification: MATCH;
+- final deployment result: VERIFIED AND SAFE TO EJECT.
+
+Stage 1 and Stage 2 remain preserved physical baselines; Stage 3 does not supersede or rewrite their accepted behavior.
