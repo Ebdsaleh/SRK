@@ -10,6 +10,8 @@ extern "C" {
 #define SRK_DIAG_AUDIO_TONE_COUNT 4
 #define SRK_DIAG_AUDIO_VOLUME_MAX 7
 #define SRK_DIAG_AUDIO_DEFAULT_VOLUME 4
+#define SRK_DIAG_AUDIO_SWEEP_STEP_COUNT 48
+#define SRK_DIAG_AUDIO_SWEEP_FRAMES_PER_STEP 15
 
 
 typedef enum SRK_DIAG_AUDIO_TONE {
@@ -32,9 +34,11 @@ typedef struct SRK_DIAG_AUDIO_STATE {
     SRK_DIAG_AUDIO_TONE mono_tone;
     SRK_DIAG_AUDIO_PAN pan;
     srk_u8 volume;
+    unsigned int sweep_frame;
     int playing;
     int muted;
     int stereo_pair;
+    int sweep_active;
     int submitted;
 } SRK_DIAG_AUDIO_STATE;
 
@@ -45,7 +49,7 @@ void srk_diag_audio_control(
     srk_u16 pressed_buttons
 );
 void srk_diag_audio_make_request(
-    const SRK_DIAG_AUDIO_STATE *state,
+    SRK_DIAG_AUDIO_STATE *state,
     SRK_DIAG_AUDIO_REQUEST *request
 );
 void srk_diag_audio_mark_submitted(SRK_DIAG_AUDIO_STATE *state, int submitted);
