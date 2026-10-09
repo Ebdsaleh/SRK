@@ -1,12 +1,12 @@
 # SRK Saturn Diagnostics
 
-SRK's standalone Saturn diagnostics program is the controlled hardware-validation environment for the runtime features that will later be reused by resident/injected tooling.
+SRK's standalone Saturn diagnostics program is the controlled hardware-validation environment for runtime features that will later be reused by resident/injected tooling.
 
 The standalone program is intentionally developed before further commercial-title injection work. A standalone Saturn application owns its own input, interrupt, video, timing, and memory environment, so failures can be attributed to SRK instead of being mixed with an unknown title engine.
 
 ## Development ladder
 
-SRK now separates three environments:
+SRK separates three environments:
 
 1. **Master mode** — a bootable SRK Saturn program owns the machine and proves each subsystem independently.
 2. **Cooperative resident mode** — an SRK-controlled homebrew workload acts like a game while the diagnostic/runtime core proves context save/restore and coexistence.
@@ -31,13 +31,13 @@ SRK SATURN DIAGNOSTICS
   System Information
 ```
 
-The menu shell, Controller / Input Test, Flight Recorder, and Video Pattern Test are implemented. Video Pattern Test is physically accepted on real Saturn hardware. VDP1 / 3D Test is now the active hardware tranche; the remaining entries stay explicit placeholders until their hardware backends are implemented and reviewed.
+The menu shell, Controller / Input Test, Flight Recorder, Video Pattern Test, and the first VDP1 primitive path are implemented. Video Pattern Test and VDP1 Stage 1 are physically accepted on real Saturn hardware. VDP1 Stage 2 — the rotating-cube workload — is now the active hardware tranche. The remaining entries stay explicit placeholders until their hardware backends are implemented and reviewed.
 
 ## Host boundary
 
 The diagnostic core does not know how a controller packet, screen, timer, VBR observation, video pattern, VDP1 command list, or future storage operation is obtained. `srk_diag_host.h` defines the boundary.
 
-A standalone Saturn host may use direct Saturn hardware services. A later resident host can provide the same normalized services through a different safe mechanism. This keeps menu, recorder, input-state, pattern-selection, and logical-geometry code reusable instead of baking SAROO/BIOS or one title's assumptions into the core.
+A standalone Saturn host may use direct Saturn hardware services. A later resident host can provide the same normalized services through a different safe mechanism. This keeps menu, recorder, input-state, pattern-selection, logical-geometry, and 3D-transform code reusable instead of baking SAROO/BIOS or one title's assumptions into the core.
 
 The core must therefore not depend on the R9 BIOS snapshot address, SAROO `SS_TIMER`, SAROO file-writing calls, or direct Saturn video register addresses.
 
@@ -148,9 +148,9 @@ Each pattern identifies itself on screen so photographs and capture recordings r
 
 ## VDP1 / 3D Test — active milestone
 
-The VDP1 milestone is deliberately split into attributable stages rather than jumping directly to the rotating cube.
+The VDP1 milestone is deliberately split into attributable stages.
 
-### Stage 1 — static primitive proof
+### Stage 1 — static primitive proof — physically accepted
 
 The title-neutral diagnostic core owns one logical RGB quadrilateral and submits that geometry through the host boundary. It does **not** know VDP1 VRAM addresses, command-table layout, framebuffer registers, VDP2 sprite-composition registers, or RGB1555 encoding.
 
@@ -175,25 +175,26 @@ COPR
 MODR
 ```
 
-The first hardware target is therefore a single static colored quadrilateral near the lower-center of the display, with the VDP1 status rows kept unobscured and the normal VDP2 diagnostic shell still visible. START must tear the VDP1 presentation down and return cleanly to the diagnostics menu.
+R7 physically proved this path on a real Saturn. The static colored quadrilateral rendered in the intended lower-center area while the VDP2 diagnostic text stayed visible. The hardware screen reported `Host submit: OK`, one submission, and live raw VDP1 status values. Previous Controller/Input and Video Pattern functions were also rechecked successfully.
 
-The command-list/register choices are based on the supplied Sega VDP1/VDP2 hardware documentation and cross-checked against the supplied Charles MacDonald `vdp1ex` sample. Stage 1 must compile, boot, draw, expose status, and restore cleanly on physical Saturn hardware before transform, projection, face-ordering, or animation code is introduced.
+### Stage 2 — rotating cube — active
 
-### Stage 2 — rotating cube
-
-After Stage 1 is physically accepted, the first 3D workload will be a rotating cube driven by SH-2-side transforms and rendered through the proven VDP1 path. It should exercise:
+Stage 2 reuses the physically proven Stage 1 VDP1 path but moves 3D state and math into the title-neutral core. The core owns:
 
 ```text
-X/Y/Z rotation
+object-space cube vertices
+six logical faces and per-face colors
+animation angles / frame counter
+fixed-point X/Y/Z rotation
 perspective projection
-near/far scaling
-face ordering
-VDP1 command generation
-frame pacing
-changing face hues
+visible-face selection
+far-to-near face ordering
+projected logical quads
 ```
 
-The diagnostic should expose useful raw counters beside the visual result rather than treating the cube as a visual-only demo.
+The standalone Saturn host continues to own VDP1 command-table construction, RGB1555 conversion, hardware drawing control, VDP2 composition, raw status reads, and teardown.
+
+The first animated cube should remain deliberately simple and attributable: deterministic fixed-point transforms, a fixed camera distance and focal length, painter-style face ordering, distinct face colors, and no textures or lighting. The diagnostic keeps raw VDP1 status visible beside animation telemetry so a hardware failure is not reduced to a visual-only observation.
 
 ## Planned audio test
 
@@ -234,7 +235,7 @@ SRK source
 
 The menu booted and navigated on hardware, and Controller / Input Test received real controller state. R4 also exposed two attributable defects: the visible bitmap was being cleared and repainted every display frame, causing severe flashing, and START was consumed as an exit action before it could be meaningfully tested.
 
-### R5 — accepted physical baseline
+### R5 — accepted controller/menu baseline
 
 R5 corrected both defects and was physically accepted on 2026-10-09.
 
@@ -250,15 +251,11 @@ menu navigation remains operational
 other diagnostic entries remain reachable
 ```
 
-The deployable R5 image was generated as a single-track MODE1/2352 BIN/CUE pair, freshly verified against the intermediate ISO, deployed through SRK's guarded SAROO workflow, and followed by a whole-card inventory verification that matched the pre-deployment baseline except for the explicitly allowed new R5 directory and its BIN/CUE files.
-
-R5 remains a known-good physical-hardware rollback/reference baseline for subsequent standalone Saturn diagnostic work.
+R5 remains a known-good physical-hardware rollback/reference baseline.
 
 ### R6 — Video Pattern Test physically accepted
 
 R6 completed the first hardware video-diagnostic tranche and was physically accepted on a real Sega Saturn on 2026-10-09.
-
-The R6 image was built from the source-gated Video Pattern implementation, compiled with the reviewed SH-ELF toolchain, packaged as a verified single-track MODE1/2352 BIN/CUE pair, deployed beside R5 as `TEST/SRK-Diagnostics-R6`, and followed by a whole-card guard verification that returned `MATCH` with only the new R6 directory and its BIN/CUE files allowed.
 
 Physical validation established:
 
@@ -278,10 +275,42 @@ normal diagnostics rendering is restored after returning from the video screen
 
 The accompanying camera recording shows exposure/white-balance shifts while bright and saturated patterns are displayed. Direct human-eye observation of the physical display reported the colors themselves as correct; the camera behavior is therefore recorded as a capture artifact, not as a Saturn rendering defect.
 
-R6 is the current known-good physical-hardware baseline for standalone video diagnostics.
+R6 remains the known-good physical-hardware baseline for standalone video diagnostics.
+
+### R7 — VDP1 Stage 1 physically accepted
+
+R7 completed the first VDP1 hardware tranche and was physically accepted on a real Sega Saturn on 2026-10-09.
+
+The R7 image was source-gated, built with the reviewed SH-ELF toolchain, packaged as a verified MODE1/2352 BIN/CUE pair, deployed beside R5 and R6 as `TEST/SRK-Diagnostics-R7`, and followed by a whole-card guard verification that returned `MATCH` with only the new R7 directory and its BIN/CUE files allowed.
+
+Physical validation established:
+
+```text
+R7 boots through SAROO
+previous Controller/Input and Video Pattern functions remain operational
+VDP1 / 3D Test opens without crash or hang
+VDP2 diagnostic text remains stable and visible
+host reports successful VDP1 submission
+one colored VDP1 quadrilateral appears in the lower-center region
+raw EDSR / LOPR / COPR / MODR values are visible
+no recurrence of uncontrolled full-screen flashing
+```
+
+Photographic evidence records the live Stage 1 screen with:
+
+```text
+Host submit: OK
+Submissions: 1
+EDSR: 0x0003
+LOPR: 0x000C
+COPR: 0x000C
+MODR: 0x1140
+```
+
+R7 is therefore the current known-good physical VDP1 primitive baseline and the rollback point for Stage 2 animation work.
 
 ## Current validation boundary
 
-SRK now has a physically proven standalone Saturn host supplying real controller sampling, VBlank-paced timing, VBR observation, stable VDP2 bitmap text presentation, a physically accepted Video Pattern Test, and a bootable verified BIN/CUE deployment path.
+SRK now has a physically proven standalone Saturn host supplying real controller sampling, VBlank-paced timing, VBR observation, stable VDP2 bitmap text presentation, physically accepted Video Pattern diagnostics, and a physically accepted VDP1 primitive path with raw hardware status.
 
-This proves the current standalone master-mode foundation; it does **not** establish cooperative-resident or foreign-resident safety. The active milestone is now VDP1 / 3D Stage 1: physically prove one static host-rendered VDP1 quadrilateral and its raw status surface before beginning the rotating-cube workload.
+This proves the current standalone master-mode foundation; it does **not** establish cooperative-resident or foreign-resident safety. The active milestone is now VDP1 / 3D Stage 2: animate a title-neutral fixed-point rotating cube through the already-proven host-rendered VDP1 path.
