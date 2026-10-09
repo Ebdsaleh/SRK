@@ -29,6 +29,12 @@ typedef enum SRK_DIAG_AUDIO_PAN {
 } SRK_DIAG_AUDIO_PAN;
 
 
+typedef enum SRK_DIAG_AUDIO_WAVEFORM {
+    SRK_DIAG_AUDIO_WAVEFORM_TONE = 0,
+    SRK_DIAG_AUDIO_WAVEFORM_SHAPED_PCM = 1
+} SRK_DIAG_AUDIO_WAVEFORM;
+
+
 typedef struct SRK_DIAG_AUDIO_STATE {
     SRK_DIAG_AUDIO_TONE tone;
     SRK_DIAG_AUDIO_TONE mono_tone;
@@ -39,6 +45,7 @@ typedef struct SRK_DIAG_AUDIO_STATE {
     int muted;
     int stereo_pair;
     int sweep_active;
+    int sample_mode;
     int submitted;
 } SRK_DIAG_AUDIO_STATE;
 
@@ -55,6 +62,7 @@ void srk_diag_audio_make_request(
 void srk_diag_audio_mark_submitted(SRK_DIAG_AUDIO_STATE *state, int submitted);
 const char *srk_diag_audio_tone_label(SRK_DIAG_AUDIO_TONE tone);
 const char *srk_diag_audio_pan_label(SRK_DIAG_AUDIO_PAN pan);
+const char *srk_diag_audio_source_label(const SRK_DIAG_AUDIO_STATE *state);
 
 #ifdef __cplusplus
 }
