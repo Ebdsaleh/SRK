@@ -61,7 +61,9 @@ class SaturnStandaloneBuildResult:
 _C_SOURCES = (
     "srk_saturn_main.c",
     "srk_saturn_host.c",
+    "srk_saturn_audio.c",
     "srk_diag_app.c",
+    "srk_diag_audio.c",
     "srk_diag_input.c",
     "srk_diag_menu.c",
     "srk_diag_flight_recorder.c",
