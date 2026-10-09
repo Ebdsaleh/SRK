@@ -419,40 +419,12 @@ static void srk_saturn_vdp1_clear_command(volatile srk_u16 *command)
 }
 
 
-static int srk_saturn_present_vdp1_quad(
-    void *context,
+static void srk_saturn_vdp1_write_polygon(
+    volatile srk_u16 *polygon,
     const SRK_DIAG_VDP1_QUAD *quad
 )
 {
-    volatile srk_u16 *skip;
-    volatile srk_u16 *clip;
-    volatile srk_u16 *polygon;
-    volatile srk_u16 *end;
-
-    (void)context;
-    if(!quad)
-        return 0;
-
-    skip = srk_saturn_vdp1_command(0);
-    clip = srk_saturn_vdp1_command(1);
-    polygon = srk_saturn_vdp1_command(2);
-    end = srk_saturn_vdp1_command(3);
-
-    srk_saturn_vdp1_clear_command(skip);
-    srk_saturn_vdp1_clear_command(clip);
     srk_saturn_vdp1_clear_command(polygon);
-    srk_saturn_vdp1_clear_command(end);
-
-    /* Match the reviewed vdp1ex list guard: skip slot zero, then process slot one. */
-    skip[SRK_VDP1_CMDCTRL] = 0x4000;
-
-    /* Sega VDP1 manual: system clipping must be initialized before drawing. */
-    clip[SRK_VDP1_CMDCTRL] = 0x0009;
-    clip[SRK_VDP1_CMDLINK] = 0x0000;
-    clip[SRK_VDP1_CMDXC] = (srk_u16)(SRK_VISIBLE_WIDTH - 1);
-    clip[SRK_VDP1_CMDYC] = (srk_u16)(SRK_VISIBLE_HEIGHT - 1);
-
-    /* Non-textured polygon, RGB color, replace operation. */
     polygon[SRK_VDP1_CMDCTRL] = 0x0004;
     polygon[SRK_VDP1_CMDLINK] = 0x0000;
     polygon[SRK_VDP1_CMDPMOD] = 0x00C0;
@@ -469,8 +441,49 @@ static int srk_saturn_present_vdp1_quad(
     polygon[SRK_VDP1_CMDYC] = (srk_u16)quad->vertex[2].y;
     polygon[SRK_VDP1_CMDXD] = (srk_u16)quad->vertex[3].x;
     polygon[SRK_VDP1_CMDYD] = (srk_u16)quad->vertex[3].y;
+}
+
+
+static int srk_saturn_present_vdp1_scene(
+    void *context,
+    const SRK_DIAG_VDP1_SCENE *scene
+)
+{
+    volatile srk_u16 *skip;
+    volatile srk_u16 *clip;
+    volatile srk_u16 *polygon;
+    volatile srk_u16 *end;
+    unsigned int i;
+
+    (void)context;
+    if(!scene || scene->count > SRK_DIAG_VDP1_MAX_QUADS)
+        return 0;
+
+    /* Disable the automatic trigger while replacing this frame's bounded list. */
+    SRK_VDP1_PTMR = 0x0000;
+
+    for(i=0; i<SRK_DIAG_VDP1_MAX_QUADS + 3u; i++)
+        srk_saturn_vdp1_clear_command(srk_saturn_vdp1_command(i));
+
+    skip = srk_saturn_vdp1_command(0);
+    clip = srk_saturn_vdp1_command(1);
+
+    /* Match the reviewed vdp1ex list guard: skip slot zero, then process slot one. */
+    skip[SRK_VDP1_CMDCTRL] = 0x4000;
+
+    /* Sega VDP1 manual: system clipping must be initialized before drawing. */
+    clip[SRK_VDP1_CMDCTRL] = 0x0009;
+    clip[SRK_VDP1_CMDLINK] = 0x0000;
+    clip[SRK_VDP1_CMDXC] = (srk_u16)(SRK_VISIBLE_WIDTH - 1);
+    clip[SRK_VDP1_CMDYC] = (srk_u16)(SRK_VISIBLE_HEIGHT - 1);
+
+    for(i=0; i<scene->count; i++){
+        polygon = srk_saturn_vdp1_command(2u + i);
+        srk_saturn_vdp1_write_polygon(polygon, &scene->quad[i]);
+    }
 
     /* Sega VDP1 manual: CMDCTRL=0x8000 is the drawing-end command. */
+    end = srk_saturn_vdp1_command(2u + scene->count);
     end[SRK_VDP1_CMDCTRL] = 0x8000;
 
     /* RGB sprite data uses sprite register zero; non-zero priority makes it visible. */
@@ -489,15 +502,33 @@ static int srk_saturn_present_vdp1_quad(
 }
 
 
+static int srk_saturn_present_vdp1_quad(
+    void *context,
+    const SRK_DIAG_VDP1_QUAD *quad
+)
+{
+    SRK_DIAG_VDP1_SCENE scene;
+
+    if(!quad)
+        return 0;
+
+    scene.quad[0] = *quad;
+    scene.count = 1;
+    return srk_saturn_present_vdp1_scene(context, &scene);
+}
+
+
 static void srk_saturn_hide_vdp1(void *context)
 {
     volatile srk_u16 *first;
+    unsigned int i;
     (void)context;
 
     SRK_PRISA = 0x0000;
     SRK_VDP1_PTMR = 0x0000;
+    for(i=0; i<SRK_DIAG_VDP1_MAX_QUADS + 3u; i++)
+        srk_saturn_vdp1_clear_command(srk_saturn_vdp1_command(i));
     first = srk_saturn_vdp1_command(0);
-    srk_saturn_vdp1_clear_command(first);
     first[SRK_VDP1_CMDCTRL] = 0x8000;
 }
 
@@ -616,6 +647,7 @@ void srk_saturn_host_init(
     host->draw_text = srk_saturn_draw_text;
     host->draw_video_pattern = srk_saturn_draw_video_pattern;
     host->present_vdp1_quad = srk_saturn_present_vdp1_quad;
+    host->present_vdp1_scene = srk_saturn_present_vdp1_scene;
     host->hide_vdp1 = srk_saturn_hide_vdp1;
     host->read_vdp1_status = srk_saturn_read_vdp1_status;
     host->end_frame = srk_saturn_end_frame;
