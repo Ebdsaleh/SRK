@@ -15,6 +15,8 @@ typedef struct SRK_DIAG_APP {
     SRK_DIAG_INPUT_STATE input;
     SRK_DIAG_FLIGHT_RECORDER recorder;
     srk_u32 frame;
+    srk_u16 rendered_screen;
+    int rendered_screen_valid;
 } SRK_DIAG_APP;
 
 
