@@ -42,7 +42,7 @@ The historical Action Replay return path, SH-COFF `stdlib.h` workaround, cartrid
 
 ## Python-native build architecture
 
-"Python-native build" does **not** mean Python replaces the SH-2 compiler. SRK still needs the reviewed `sh-elf-gcc`/`sh-elf-as` toolchain to translate C/assembly into SH-2 machine code, and still uses the reviewed ISO builder for disc packaging.
+"Python-native build" does **not** mean Python replaces the SH-2 compiler. SRK still needs the reviewed `sh-elf-gcc`/`sh-elf-as` toolchain to translate C/assembly into SH-2 machine code, and still uses the reviewed ISO builder for the ISO9660 data-track payload.
 
 Python replaces the fragile orchestration layer:
 
@@ -53,7 +53,8 @@ Python
   -> invokes sh-elf-as directly for startup
   -> invokes sh-elf-gcc directly for the final link
   -> copies the first-read binary with Python file I/O
-  -> invokes mkisofs directly for the ISO
+  -> invokes mkisofs directly for the ISO9660 payload
+  -> converts that payload to verified MODE1/2352 BIN/CUE
   -> re-verifies generated input hashes
   -> publishes build log/report + artifact SHA-256 values
 ```
@@ -159,6 +160,49 @@ SRK-Diagnostics-R1/
 
 `SRK_STANDALONE_PROJECT.json` records source hashes, generated IP metadata, resolved tool paths, generated-file hashes, `build_orchestration = python-native`, and the no-build/no-SD-write policy state.
 
+## BIN/CUE packaging boundary
+
+The Saturn optical drive reads CD sectors; it does not consume a PC `.iso` filename. `mkisofs` is retained because it is a convenient reviewed way to construct the ISO9660 **2048-byte user-data payload**. For SAROO deployment, SRK then reframes every logical sector as a complete CD-ROM Mode 1 raw sector:
+
+```text
+12 sync
+ 4 header (BCD MSF + mode 1)
+2048 user data
+ 4 EDC
+ 8 zero/reserved
+276 ECC P/Q
+----------------
+2352 bytes per sector
+```
+
+The header address uses `LBA + 150` frames. EDC is generated over bytes `0x000-0x80F`; ECC-P is written before ECC-Q because Q covers the P parity region.
+
+The Python converter verifies every generated 2352-byte sector by reconstructing it from the original 2048-byte ISO sector and requiring an exact byte match. It also refuses to overwrite an existing BIN or CUE.
+
+A successful standalone build therefore contains:
+
+```text
+build/srk_diag.bin
+    linked SH-2 first-read program; NOT a disc image
+
+build/srk_diag.iso
+    internal 2048-byte-sector ISO9660 verification/intermediate artifact
+
+build/SRK-Diagnostics/
+    SRK-Diagnostics.bin
+    SRK-Diagnostics.cue
+```
+
+The deployable pair is:
+
+```text
+FILE "SRK-Diagnostics.bin" BINARY
+  TRACK 01 MODE1/2352
+    INDEX 01 00:00:00
+```
+
+Only the `build/SRK-Diagnostics` BIN/CUE pair is intended for the SAROO game-image directory. The linked `build/srk_diag.bin` must never be mistaken for a raw CD image.
+
 ## Build boundary
 
 After the generated tree and manifest are reviewed, the authoritative build command is:
@@ -178,13 +222,15 @@ keeps PATH unchanged
 preserves -Wall -Werror
 copies build/srk_diag.bin -> cd/0.bin using Python
 creates build/srk_diag.iso
+converts the ISO payload to a verified single-track MODE1/2352 BIN/CUE pair
 verifies generated inputs again after a successful build
 writes SRK_STANDALONE_BUILD_LOG.txt
 writes SRK_STANDALONE_BUILD.json
-hashes the binary, ISO, linker map, and cd/0.bin
+hashes the linked binary, ISO, map, cd/0.bin, raw BIN, and CUE
+records the deployable BIN/CUE paths and sector counts in the build report
 refuses a second Python-native build in the same generated tree
 ```
 
-The SH-ELF tools are still responsible for code generation. Python is responsible for safe, deterministic orchestration and provenance.
+The SH-ELF tools are still responsible for code generation. Python is responsible for safe, deterministic orchestration, raw-disc framing, verification, and provenance.
 
-A successful host build is not yet a physical Saturn validation. The generated binary/ISO and build report must be inspected before launch on hardware.
+A successful host build is not yet a physical Saturn validation. The generated BIN/CUE and build report must be inspected before launch on hardware.
