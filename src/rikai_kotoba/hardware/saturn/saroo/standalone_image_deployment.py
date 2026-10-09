@@ -3,8 +3,9 @@
 This workflow is intentionally narrow.  It accepts only a successful SRK
 standalone build report whose deployable artifact is the verified single-track
 MODE1/2352 CUE/BIN pair, validates the mounted card as a modern SAROO layout,
-and writes one new game directory below ``SAROO/ISO``.  Existing card content is
-never overwritten or removed.
+and writes one new game directory below ``SAROO/ISO`` or one caller-selected,
+pre-existing SAROO category below it.  Existing card content is never
+overwritten or removed.
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ class SarooStandaloneImageDeploymentPlan:
     card_root: Path
     project_root: Path
     iso_directory: Path
+    category_directory: Path | None
     destination_directory: Path
     source_bin: Path
     source_cue: Path
@@ -73,13 +75,15 @@ def _sha256_file(path: Path) -> str:
 
 def _safe_leaf(name: str) -> str:
     if not isinstance(name, str):
-        raise SarooStandaloneImageDeploymentError("destination name must be text")
+        raise SarooStandaloneImageDeploymentError("destination/category name must be text")
     if not name or name in (".", "..") or name != name.strip():
-        raise SarooStandaloneImageDeploymentError("destination name is not a safe leaf name")
+        raise SarooStandaloneImageDeploymentError("destination/category name is not a safe leaf name")
     if len(name) > 100 or any(ch in _FORBIDDEN_LEAF_CHARS for ch in name):
-        raise SarooStandaloneImageDeploymentError("destination name contains unsafe characters")
+        raise SarooStandaloneImageDeploymentError(
+            "destination/category name contains unsafe characters"
+        )
     if name.endswith(".") or name.endswith(" "):
-        raise SarooStandaloneImageDeploymentError("destination name has an unsafe suffix")
+        raise SarooStandaloneImageDeploymentError("destination/category name has an unsafe suffix")
     return name
 
 
@@ -166,8 +170,14 @@ def plan_saroo_standalone_image_deployment(
     project_directory: os.PathLike[str] | str,
     *,
     destination_name: str = DEFAULT_DESTINATION_NAME,
+    category: str | None = None,
 ) -> SarooStandaloneImageDeploymentPlan:
-    """Return a read-only deployment plan after re-validating all evidence."""
+    """Return a read-only deployment plan after re-validating all evidence.
+
+    ``category`` selects an existing direct child of ``SAROO/ISO``.  SRK never
+    creates a category implicitly because category availability is part of the
+    mounted card's existing SAROO configuration.
+    """
 
     card = _canonical(card_root)
     project = _canonical(project_directory)
@@ -175,6 +185,7 @@ def plan_saroo_standalone_image_deployment(
         raise SarooStandaloneImageDeploymentError(f"project directory is not a directory: {project}")
 
     destination_name = _safe_leaf(destination_name)
+    category_name = _safe_leaf(category) if category is not None else None
     report = _load_build_report(project)
     deployable = report["deployable"]
 
@@ -226,12 +237,22 @@ def plan_saroo_standalone_image_deployment(
     if iso_dir is None or not iso_dir.is_dir():
         raise SarooStandaloneImageDeploymentError("SAROO/ISO directory disappeared during inspection")
 
-    existing = _casefold_child(iso_dir, destination_name)
+    category_dir = None
+    destination_parent = iso_dir
+    if category_name is not None:
+        category_dir = _casefold_child(iso_dir, category_name)
+        if category_dir is None or not category_dir.is_dir():
+            raise SarooStandaloneImageDeploymentError(
+                f"requested SAROO category does not already exist: {iso_dir / category_name}"
+            )
+        destination_parent = category_dir
+
+    existing = _casefold_child(destination_parent, destination_name)
     if existing is not None:
         raise SarooStandaloneImageDeploymentError(
             f"destination already exists; refusing to merge or overwrite: {existing}"
         )
-    pending = _casefold_child(iso_dir, f".{destination_name}.srk-pending")
+    pending = _casefold_child(destination_parent, f".{destination_name}.srk-pending")
     if pending is not None:
         raise SarooStandaloneImageDeploymentError(
             f"pending deployment path already exists; inspect it manually: {pending}"
@@ -241,7 +262,8 @@ def plan_saroo_standalone_image_deployment(
         card_root=card,
         project_root=project,
         iso_directory=iso_dir,
-        destination_directory=iso_dir / destination_name,
+        category_directory=category_dir,
+        destination_directory=destination_parent / destination_name,
         source_bin=source_bin,
         source_cue=source_cue,
         source_iso=source_iso,
@@ -259,6 +281,7 @@ def apply_saroo_standalone_image_deployment(
     project_directory: os.PathLike[str] | str,
     *,
     destination_name: str = DEFAULT_DESTINATION_NAME,
+    category: str | None = None,
     confirmation: str,
 ) -> SarooStandaloneImageDeploymentResult:
     """Copy one verified CUE/BIN pair into a new SAROO/ISO game directory."""
@@ -272,8 +295,9 @@ def apply_saroo_standalone_image_deployment(
         card_root,
         project_directory,
         destination_name=destination_name,
+        category=category,
     )
-    pending = plan.iso_directory / f".{plan.destination_directory.name}.srk-pending"
+    pending = plan.destination_directory.parent / f".{plan.destination_directory.name}.srk-pending"
     if pending.exists():
         raise SarooStandaloneImageDeploymentError(f"pending deployment path already exists: {pending}")
 
