@@ -94,6 +94,8 @@ Z      bit 0
 
 `srk_saturn_host.c` keeps the packed pre-inversion word as the diagnostic `raw_state` and converts the active-high sample into SRK's host-neutral button mask.
 
+The physical R4 test proved the standalone controller path on real Saturn hardware. It also exposed a usability problem: START itself could not be observed because START immediately returned to the parent menu. The input test therefore reserves `L+R+START` as its return chord while START alone remains available for normal raw/normalized/press/held/release feedback. Other diagnostic screens retain START as their ordinary return action.
+
 ## Video/text host
 
 R1 owns VDP2 because it is a standalone master-mode program. It configures NBG0 as the reviewed 8-bit bitmap surface, clears VDP2 VRAM/CRAM, installs a black/white palette, and uses the reviewed local `vga_font.h` only in the generated output tree.
@@ -101,6 +103,8 @@ R1 owns VDP2 because it is a standalone master-mode program. It configures NBG0 
 The font is not committed to SRK. The preparation command copies it from the caller's reviewed local template while leaving that source file unchanged.
 
 The host samples input once per application frame. Its microsecond-scale clock is frame-derived for R1: VDP2 `TVSTAT` selects PAL (`20000 us`) or NTSC (`16667 us`) cadence. A later timing diagnostic can replace this with independently measured hardware timing after the first boot/input milestone is physically established.
+
+The first physical R4 run also exposed severe visible flashing. R4 cleared the complete 320x224 bitmap every frame and then repainted text into the same visible buffer. The post-R4 rendering contract therefore clears the screen only on the initial frame or an actual screen transition. Static labels are emitted only during that full render, while changing values overwrite fixed-width text fields in place. This change is intended to remove continuous destructive clear/repaint flashing; it must still be re-validated on hardware before being called physically proven.
 
 ## IP.BIN policy
 
@@ -265,6 +269,49 @@ DEPLOY-SATURN-IMAGE
 
 SRK first copies the two files to a new hidden pending directory, verifies their size and SHA-256, and only then renames that directory to the final game directory. On a copy/verification failure the pending directory is removed. Existing SAROO game directories are never merged, overwritten, renamed, or removed.
 
-The first physical R1 deployment therefore changes only one new directory beneath `SAROO/ISO` and contains only the verified `SRK-Diagnostics.bin` and `SRK-Diagnostics.cue` pair.
+### SAROO category directories
 
-A successful host build or card deployment is not yet a physical Saturn validation. The first hardware acceptance remains: boot, visible menu, UP/DOWN navigation, A selection, START return, raw/normalized input, simultaneous L+R timing, and in-RAM flight-recorder arm/freeze.
+Upstream SAROO supports configurable game categories. A category name corresponds to a directory immediately below `SAROO/ISO`; the names themselves are organizational labels. A directory named `US`, `JP`, `EU`, `TEST`, or anything else does **not** by itself select NTSC-U, NTSC-J, or PAL execution timing.
+
+When a card is configured to expose category directories, games placed directly below `SAROO/ISO` may not be visible in the category-oriented menu. SRK therefore accepts an explicit existing category:
+
+```bat
+python -m rikai_kotoba.tools.saturn_saroo_deploy ^
+  --card-root "D:\" ^
+  --project "C:\path\to\SRK-Diagnostics-R1" ^
+  --category TEST
+```
+
+The selected category must already exist. SRK does not create categories implicitly. With `--category TEST`, the destination is:
+
+```text
+SAROO/ISO/TEST/SRK-Diagnostics/
+    SRK-Diagnostics.bin
+    SRK-Diagnostics.cue
+```
+
+Category selection affects only where SAROO discovers/displays the image. The standalone diagnostic's own IP.BIN remains multi-area (`JTUE`), and its PAL/NTSC timing observation comes from Saturn VDP2 state rather than the category directory name.
+
+## Physical R4 acceptance and remaining fixes
+
+The first guarded R4 deployment was independently hash-verified and then launched successfully on a real Saturn through SAROO. Physical evidence established:
+
+```text
+SAROO can launch the generated CUE/BIN image
+SRK standalone first-read code executes
+SRK diagnostics menu is visible
+menu navigation and selection work
+controller 1 direct polling produces live raw/normalized feedback
+simultaneous input feedback is present
+```
+
+The same run exposed two concrete follow-ups:
+
+```text
+continuous full-frame flashing from destructive clear/repaint behavior
+START could not be observed because it doubled as immediate Input Test return
+```
+
+The next generated revision therefore uses transition-only full clears/fixed-width dynamic redraws and reserves `L+R+START` for leaving the Controller/Input Test. Those fixes remain source/test changes until a subsequent physical run confirms them.
+
+A successful host build or guarded card deployment is not by itself proof of physical behavior; hardware acceptance is recorded only from an actual Saturn run.
