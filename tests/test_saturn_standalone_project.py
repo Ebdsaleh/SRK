@@ -136,6 +136,7 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
                 release_date="20261009",
             )
             script = (output / "build.bat").read_text(encoding="utf-8")
+            readme = (output / "README_BUILD.txt").read_text(encoding="utf-8")
             host = (output / "src" / "srk_saturn_host.c").read_text(encoding="utf-8")
             manifest = json.loads(
                 (output / "SRK_STANDALONE_PROJECT.json").read_text(encoding="utf-8")
@@ -148,6 +149,8 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertNotIn("mkisofs.exe", script)
             self.assertNotIn("sat -x", script)
             self.assertEqual(manifest["build_orchestration"], "python-native")
+            self.assertEqual(manifest["deployable_format"], "cue-bin-mode1-2352")
+            self.assertIn("SRK-Diagnostics.cue + .bin", readme)
             self.assertIn("0x20100075", host)
             self.assertIn("SRK_DIAG_BUTTON_L", host)
             self.assertIn("SRK_DIAG_BUTTON_R", host)
