@@ -2,7 +2,7 @@
 
 Candidate ranking identifies directories worth reviewing.  This module performs
 that review gate without copying or building anything: it fingerprints the
-candidate files, decodes the local IP.BIN header when present, and returns
+candidate files, decodes the local IP.BIN System ID when present, and returns
 bounded text excerpts from build/startup/input/video sources.
 """
 
@@ -12,6 +12,11 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 import os
+
+from rikai_kotoba.formats.saturn.ip_bin import (
+    SATURN_SYSTEM_ID_SIZE,
+    parse_saturn_system_id,
+)
 
 
 class SaturnStandaloneTemplateError(RuntimeError):
@@ -54,12 +59,14 @@ _TEXT_SUFFIXES = {
     ".asm",
     ".ld",
     ".lds",
-    ".lnk",
     ".mak",
     ".mk",
     ".txt",
+    ".bat",
+    ".cmd",
 }
 _MAKEFILE_NAMES = {"makefile", "makefile.mk", "makefile.win"}
+_BUILD_LIST_NAMES = {"objects"}
 _STARTUP_NAMES = {
     "cinit.c",
     "crt0.c",
@@ -77,6 +84,8 @@ _PRIORITY_SOURCE_NAMES = {
     "conio.h",
     "video.c",
     "video.h",
+    "vdp.c",
+    "vdp.h",
     "vdp1.c",
     "vdp1.h",
     "vdp2.c",
@@ -85,6 +94,11 @@ _PRIORITY_SOURCE_NAMES = {
 _MAX_FILE_BYTES = 2 * 1024 * 1024
 _DEFAULT_TEXT_LINES = 220
 _MAX_TEXT_FILES = 32
+
+# Windows Shell Link header: HeaderSize 0x4C followed by the ShellLink CLSID.
+_SHELL_LINK_PREFIX = bytes.fromhex(
+    "4c0000000114020000000000c000000000000046"
+)
 
 
 def _canonical(path: os.PathLike[str] | str) -> Path:
@@ -99,13 +113,29 @@ def _hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _is_windows_shell_link(path: Path) -> bool:
+    if path.suffix.casefold() != ".lnk":
+        return False
+    try:
+        with path.open("rb") as handle:
+            return handle.read(len(_SHELL_LINK_PREFIX)) == _SHELL_LINK_PREFIX
+    except OSError:
+        return False
+
+
 def _role_for(path: Path) -> str:
     folded = path.name.casefold()
     suffix = path.suffix.casefold()
     if folded == "ip.bin":
         return "ip-bin"
-    if folded in _MAKEFILE_NAMES or suffix == ".mak":
+    if _is_windows_shell_link(path):
+        return "shortcut"
+    if folded in _MAKEFILE_NAMES or suffix == ".mak" or folded.startswith("mf_"):
         return "makefile"
+    if folded in _BUILD_LIST_NAMES:
+        return "build-list"
+    if suffix in {".bat", ".cmd"}:
+        return "script"
     if folded in _STARTUP_NAMES:
         return "startup"
     if suffix in {".ld", ".lds", ".lnk"}:
@@ -120,8 +150,17 @@ def _role_for(path: Path) -> str:
 
 
 def _should_capture_text(path: Path, role: str) -> bool:
-    if role in {"makefile", "startup", "linker", "priority-source"}:
+    if role in {
+        "makefile",
+        "build-list",
+        "script",
+        "startup",
+        "linker",
+        "priority-source",
+    }:
         return True
+    if role == "shortcut":
+        return False
     return path.suffix.casefold() in _TEXT_SUFFIXES
 
 
@@ -143,29 +182,12 @@ def _read_bounded_text(path: Path, *, max_lines: int) -> tuple[str, bool]:
     return "\n".join(lines), truncated
 
 
-def _decode_ascii(data: bytes) -> str:
-    return data.decode("ascii", errors="replace").rstrip("\x00 ").strip()
-
-
 def _parse_ip_header(path: Path) -> tuple[tuple[str, str], ...]:
     try:
-        data = path.read_bytes()[:160]
+        data = path.read_bytes()[:SATURN_SYSTEM_ID_SIZE]
     except OSError as exc:
         raise SaturnStandaloneTemplateError(f"cannot read IP.BIN: {path}: {exc}") from exc
-    if len(data) < 160:
-        return (("error", f"IP.BIN is too short: {len(data)} bytes"),)
-    fields = (
-        ("hardware_id", 0, 16),
-        ("maker_id", 16, 32),
-        ("device_info", 32, 48),
-        ("area_symbols", 48, 56),
-        ("peripherals", 56, 72),
-        ("game_title", 72, 112),
-        ("game_version", 112, 128),
-        ("game_date", 128, 144),
-        ("game_serial", 144, 160),
-    )
-    return tuple((name, _decode_ascii(data[start:end])) for name, start, end in fields)
+    return tuple(parse_saturn_system_id(data).items())
 
 
 def inspect_saturn_standalone_template(
