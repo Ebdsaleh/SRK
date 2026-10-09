@@ -88,9 +88,6 @@ def _safe_leaf(name: str) -> str:
 
 
 def _casefold_child(parent: Path, name: str) -> Path | None:
-    direct = parent / name
-    if direct.exists():
-        return direct
     wanted = name.casefold()
     matches = [child for child in parent.iterdir() if child.name.casefold() == wanted]
     if len(matches) > 1:
