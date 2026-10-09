@@ -1,6 +1,7 @@
 #ifndef SRK_DIAG_APP_H
 #define SRK_DIAG_APP_H
 
+#include "srk_diag_audio.h"
 #include "srk_diag_flight_recorder.h"
 #include "srk_diag_input.h"
 #include "srk_diag_menu.h"
@@ -18,6 +19,7 @@ typedef struct SRK_DIAG_APP {
     SRK_DIAG_FLIGHT_RECORDER recorder;
     SRK_DIAG_VIDEO_STATE video;
     SRK_DIAG_VDP1_STATE vdp1;
+    SRK_DIAG_AUDIO_STATE audio;
     srk_u32 frame;
     srk_u16 rendered_screen;
     int rendered_screen_valid;
