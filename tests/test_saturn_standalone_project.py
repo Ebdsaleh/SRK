@@ -3,6 +3,7 @@
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+import json
 import tempfile
 import unittest
 
@@ -121,7 +122,7 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertEqual(generated[0x100:], source[0x100:])
             self.assertEqual(ip_bin.read_bytes(), source)
 
-    def test_build_script_uses_resolved_tools_and_drops_historical_baggage(self):
+    def test_build_wrapper_delegates_to_python_native_builder(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             saturn, template, ip_bin = _fixture(root)
@@ -136,16 +137,17 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             )
             script = (output / "build.bat").read_text(encoding="utf-8")
             host = (output / "src" / "srk_saturn_host.c").read_text(encoding="utf-8")
+            manifest = json.loads(
+                (output / "SRK_STANDALONE_PROJECT.json").read_text(encoding="utf-8")
+            )
 
-            self.assertIn("sh-elf-gcc.exe", script)
-            self.assertIn("sh-elf-as.exe", script)
-            self.assertIn("mkisofs.exe", script)
-            self.assertIn("-nostdlib", script)
-            self.assertIn("-lgcc", script)
-            self.assertIn("-generic-boot", script)
-            self.assertNotIn("C:/SaturnOrbit", script)
-            self.assertNotIn("SH_COFF", script)
+            self.assertIn("python -m rikai_kotoba.tools.saturn_standalone_build", script)
+            self.assertIn('--project "%~dp0."', script)
+            self.assertNotIn("sh-elf-gcc.exe", script)
+            self.assertNotIn("sh-elf-as.exe", script)
+            self.assertNotIn("mkisofs.exe", script)
             self.assertNotIn("sat -x", script)
+            self.assertEqual(manifest["build_orchestration"], "python-native")
             self.assertIn("0x20100075", host)
             self.assertIn("SRK_DIAG_BUTTON_L", host)
             self.assertIn("SRK_DIAG_BUTTON_R", host)
