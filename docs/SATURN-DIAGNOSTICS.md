@@ -219,7 +219,33 @@ other diagnostic entries remain reachable
 
 The deployable R5 image was generated as a single-track MODE1/2352 BIN/CUE pair, freshly verified against the intermediate ISO, deployed through SRK's guarded SAROO workflow, and followed by a whole-card inventory verification that matched the pre-deployment baseline except for the explicitly allowed new R5 directory and its BIN/CUE files.
 
-R5 is therefore the current known-good physical-hardware baseline for subsequent standalone Saturn diagnostic work.
+R5 remains a known-good physical-hardware rollback/reference baseline for subsequent standalone Saturn diagnostic work.
+
+### R6 — Video Pattern Test physically accepted
+
+R6 completed the first hardware video-diagnostic tranche and was physically accepted on a real Sega Saturn on 2026-10-09.
+
+The R6 image was built from the source-gated Video Pattern implementation, compiled with the reviewed SH-ELF toolchain, packaged as a verified single-track MODE1/2352 BIN/CUE pair, deployed beside R5 as `TEST/SRK-Diagnostics-R6`, and followed by a whole-card guard verification that returned `MATCH` with only the new R6 directory and its BIN/CUE files allowed.
+
+Physical validation established:
+
+```text
+R6 boots through SAROO
+stable diagnostics menu with no recurrence of R4 full-screen flashing
+Video Pattern Test opens and remains stable
+LEFT/RIGHT advances through the diagnostic pattern set
+solid black / white / red / green / blue patterns render correctly
+RGB / color bars render correctly
+grayscale / brightness ramp renders correctly
+checkerboard renders correctly
+fine-grid and safe-area geometry render correctly
+START returns cleanly to the diagnostics menu
+normal diagnostics rendering is restored after returning from the video screen
+```
+
+The accompanying camera recording shows exposure/white-balance shifts while bright and saturated patterns are displayed. Direct human-eye observation of the physical display reported the colors themselves as correct; the camera behavior is therefore recorded as a capture artifact, not as a Saturn rendering defect.
+
+R6 is the current known-good physical-hardware baseline for standalone video diagnostics.
 
 ## Current validation boundary
 
