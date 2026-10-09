@@ -90,7 +90,11 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertEqual(_snapshot(watched), before)
             self.assertEqual(result.output_root, output.resolve())
             self.assertTrue((output / "src" / "srk_saturn_host.c").is_file())
+            self.assertTrue((output / "src" / "srk_saturn_audio.c").is_file())
+            self.assertTrue((output / "src" / "srk_saturn_audio.h").is_file())
             self.assertTrue((output / "src" / "srk_diag_app.c").is_file())
+            self.assertTrue((output / "src" / "srk_diag_audio.c").is_file())
+            self.assertTrue((output / "src" / "srk_diag_audio.h").is_file())
             self.assertTrue((output / "src" / "srk_diag_vdp1.c").is_file())
             self.assertTrue((output / "src" / "srk_diag_vdp1.h").is_file())
             self.assertTrue((output / "src" / "srk_diag_video.c").is_file())
@@ -142,6 +146,7 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             script = (output / "build.bat").read_text(encoding="utf-8")
             readme = (output / "README_BUILD.txt").read_text(encoding="utf-8")
             host = (output / "src" / "srk_saturn_host.c").read_text(encoding="utf-8")
+            audio = (output / "src" / "srk_saturn_audio.c").read_text(encoding="utf-8")
             manifest = json.loads(
                 (output / "SRK_STANDALONE_PROJECT.json").read_text(encoding="utf-8")
             )
@@ -163,6 +168,10 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertIn("present_vdp1_quad", host)
             self.assertIn("0x25C00000", host)
             self.assertIn("0x25D00000", host)
+            self.assertIn("0x25A00000", audio)
+            self.assertIn("0x25B00000", audio)
+            self.assertIn("SRK_AUDIO_SMPC_SNDON", audio)
+            self.assertIn("SRK_AUDIO_SMPC_SNDOFF", audio)
 
     def test_refuses_to_merge_into_existing_output(self):
         with tempfile.TemporaryDirectory() as temp_dir:
