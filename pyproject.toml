@@ -50,6 +50,7 @@ srk-saturn-standalone-probe = "rikai_kotoba.tools.saturn_standalone_probe:main"
 srk-saturn-standalone-candidates = "rikai_kotoba.tools.saturn_standalone_candidate_probe:main"
 srk-saturn-standalone-template = "rikai_kotoba.tools.saturn_standalone_template_probe:main"
 srk-saturn-standalone-prepare = "rikai_kotoba.tools.saturn_standalone_prepare:main"
+srk-saturn-standalone-build = "rikai_kotoba.tools.saturn_standalone_build:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "rikai_kotoba.__version__" }
