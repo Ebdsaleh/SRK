@@ -4,6 +4,7 @@
 #include "srk_diag_flight_recorder.h"
 #include "srk_diag_input.h"
 #include "srk_diag_menu.h"
+#include "srk_diag_vdp1.h"
 #include "srk_diag_video.h"
 
 #ifdef __cplusplus
@@ -16,6 +17,7 @@ typedef struct SRK_DIAG_APP {
     SRK_DIAG_INPUT_STATE input;
     SRK_DIAG_FLIGHT_RECORDER recorder;
     SRK_DIAG_VIDEO_STATE video;
+    SRK_DIAG_VDP1_STATE vdp1;
     srk_u32 frame;
     srk_u16 rendered_screen;
     int rendered_screen_valid;
