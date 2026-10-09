@@ -7,7 +7,7 @@ checked before and after the build, and one immutable-style build report is
 published into the generated project.
 
 The ISO9660 image produced by mkisofs is retained as an internal verification
-artifact.  Python then converts it to a verified single-track MODE1/2352 BIN/CUE
+artifact. Python then converts it to a verified single-track MODE1/2352 BIN/CUE
 pair suitable for SRK's SAROO deployment workflow.
 """
 
@@ -65,6 +65,7 @@ _C_SOURCES = (
     "srk_diag_input.c",
     "srk_diag_menu.c",
     "srk_diag_flight_recorder.c",
+    "srk_diag_video.c",
 )
 
 _OBJECTS = tuple(f"build/{Path(source).stem}.o" for source in _C_SOURCES)
