@@ -131,7 +131,10 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             result = build_saturn_standalone_project(project, _runner=runner)
 
             self.assertTrue(result.successful)
-            self.assertEqual(len(runner.calls), 10)
+            self.assertEqual(len(runner.calls), 11)
+            self.assertTrue(
+                any("src/srk_diag_vdp1.c" in call[0] for call in runner.calls)
+            )
             self.assertTrue((project / "build" / "srk_diag.bin").is_file())
             iso = project / "build" / "srk_diag.iso"
             self.assertTrue(iso.is_file())
