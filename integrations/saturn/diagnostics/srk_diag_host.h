@@ -4,7 +4,7 @@
 /*
  * Title-neutral host boundary for the SRK Saturn diagnostics core.
  *
- * The standalone Saturn host will own SMPC/VDP/timing directly. A later
+ * The standalone Saturn host will own SMPC/VDP/SCSP/timing directly. A later
  * injected host may obtain the same logical services differently. Core
  * diagnostics must not contain Saturn BIOS snapshot addresses or direct
  * cartridge/game assumptions.
@@ -78,6 +78,29 @@ typedef struct SRK_DIAG_VDP1_STATUS {
 } SRK_DIAG_VDP1_STATUS;
 
 
+/*
+ * Title-neutral SCSP diagnostic request. Numeric tone/pan IDs belong to the
+ * diagnostic contract, not to SCSP register encodings. The standalone host
+ * translates them to waveform, pitch, mixer, and sound-CPU hardware state.
+ */
+typedef struct SRK_DIAG_AUDIO_REQUEST {
+    unsigned int tone_id;
+    unsigned int pan_id;
+    unsigned int volume_level;
+    int playing;
+    int muted;
+} SRK_DIAG_AUDIO_REQUEST;
+
+
+typedef struct SRK_DIAG_AUDIO_STATUS {
+    int initialized;
+    srk_u16 common_control;
+    srk_u16 slot_control;
+    srk_u16 pitch;
+    srk_u16 mixer;
+} SRK_DIAG_AUDIO_STATUS;
+
+
 typedef struct SRK_DIAG_HOST {
     void *context;
 
@@ -114,6 +137,15 @@ typedef struct SRK_DIAG_HOST {
     int (*present_vdp1_scene)(void *context, const SRK_DIAG_VDP1_SCENE *scene);
     void (*hide_vdp1)(void *context);
     int (*read_vdp1_status)(void *context, SRK_DIAG_VDP1_STATUS *status);
+
+    /*
+     * Audio diagnostics submit only logical state. Sound-RAM layout, SMPC sound
+     * CPU lifecycle, SCSP slot registers, pitch encoding, and pan/send encoding
+     * are standalone-host responsibilities.
+     */
+    int (*present_audio_tone)(void *context, const SRK_DIAG_AUDIO_REQUEST *request);
+    void (*stop_audio)(void *context);
+    int (*read_audio_status)(void *context, SRK_DIAG_AUDIO_STATUS *status);
 
     void (*end_frame)(void *context);
 
