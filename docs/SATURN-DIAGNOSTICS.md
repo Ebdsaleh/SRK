@@ -31,13 +31,13 @@ SRK SATURN DIAGNOSTICS
   System Information
 ```
 
-The menu shell, Controller / Input Test, Flight Recorder, Video Pattern Test, and the first VDP1 primitive path are implemented. Video Pattern Test and VDP1 Stage 1 are physically accepted on real Saturn hardware. VDP1 Stage 2 — the rotating-cube workload — is now the active hardware tranche. The remaining entries stay explicit placeholders until their hardware backends are implemented and reviewed.
+The menu shell, Controller / Input Test, Flight Recorder, Video Pattern Test, VDP1 static primitive path, and VDP1 rotating-cube path are implemented. Video Pattern Test and VDP1 Stage 1 are physically accepted on real Saturn hardware, and R8 physically proves the Stage 2 rotating-cube visual/animation path. VDP1 Stage 3 — interactive deterministic cube dynamics — is now the active hardware tranche. The remaining entries stay explicit placeholders until their hardware backends are implemented and reviewed.
 
 ## Host boundary
 
 The diagnostic core does not know how a controller packet, screen, timer, VBR observation, video pattern, VDP1 command list, or future storage operation is obtained. `srk_diag_host.h` defines the boundary.
 
-A standalone Saturn host may use direct Saturn hardware services. A later resident host can provide the same normalized services through a different safe mechanism. This keeps menu, recorder, input-state, pattern-selection, logical-geometry, and 3D-transform code reusable instead of baking SAROO/BIOS or one title's assumptions into the core.
+A standalone Saturn host may use direct Saturn hardware services. A later resident host can provide the same normalized services through a different safe mechanism. This keeps menu, recorder, input-state, pattern-selection, logical-geometry, 3D-transform, and interactive-dynamics code reusable instead of baking SAROO/BIOS or one title's assumptions into the core.
 
 The core must therefore not depend on the R9 BIOS snapshot address, SAROO `SS_TIMER`, SAROO file-writing calls, or direct Saturn video register addresses.
 
@@ -104,6 +104,8 @@ value1
 The recorder can be armed/reset and later frozen. When full it overwrites the oldest record, preserving the most recent 30 seconds instead of merely collecting the first 30 seconds.
 
 Persistent export is deliberately deferred until a standalone Saturn storage backend has itself been validated. Capture and recording state must remain separable from storage.
+
+For VDP1 Stage 3, the existing frame-by-frame raw/normalized/pressed/released/held controller samples already provide the input stream needed to replay deterministic cube dynamics from a known reset state. A future recorder-format extension may add direct cube-state snapshots, but that is deliberately deferred until the control model itself is physically accepted.
 
 ## Video Pattern Test architecture
 
@@ -177,7 +179,7 @@ MODR
 
 R7 physically proved this path on a real Saturn. The static colored quadrilateral rendered in the intended lower-center area while the VDP2 diagnostic text stayed visible. The hardware screen reported `Host submit: OK`, one submission, and live raw VDP1 status values. Previous Controller/Input and Video Pattern functions were also rechecked successfully.
 
-### Stage 2 — rotating cube — active
+### Stage 2 — rotating cube — physical visual/animation proof
 
 Stage 2 reuses the physically proven Stage 1 VDP1 path but moves 3D state and math into the title-neutral core. The core owns:
 
@@ -194,7 +196,64 @@ projected logical quads
 
 The standalone Saturn host continues to own VDP1 command-table construction, RGB1555 conversion, hardware drawing control, VDP2 composition, raw status reads, and teardown.
 
-The first animated cube should remain deliberately simple and attributable: deterministic fixed-point transforms, a fixed camera distance and focal length, painter-style face ordering, distinct face colors, and no textures or lighting. The diagnostic keeps raw VDP1 status visible beside animation telemetry so a hardware failure is not reduced to a visual-only observation.
+R8 physically proves the central Stage 2 visual/animation goal. The supplied hardware video shows a clearly three-dimensional cube continuously changing orientation with different colored face combinations visible over time while the VDP2 diagnostic shell remains present and stable. The cube remains bounded near screen center and the raw VDP1 status/animation telemetry remains visible.
+
+The R8 recording does not independently demonstrate the START teardown/no-leak sequence, so those lifecycle checks remain mandatory regressions for subsequent physical builds rather than being inferred from the video.
+
+### Stage 3 — interactive deterministic cube dynamics — active
+
+Stage 3 turns the rotating cube from a canned animation into a deterministic controller-to-render hardware manipulation test.
+
+The core owns fixed-point angular velocity, speed, freeze state, palette state, and input-driven acceleration. Controller input changes **velocity**, not absolute orientation, so the existing diagonal motion can be influenced gradually rather than snapped to a fixed axis.
+
+The control contract is:
+
+```text
+UP / DOWN     pitch acceleration (X velocity)
+LEFT / RIGHT  yaw acceleration (Y velocity)
+L / R         counter-clockwise / clockwise roll acceleration (Z velocity)
+A / B         increase / decrease global speed scalar
+C             toggle frozen / running motion
+X             exact PASTEL palette
+Y             exact NEON palette
+Z             restore exact ORIGINAL R8 palette
+START         hide VDP1 and return to diagnostics menu
+```
+
+Opposing controls cancel acceleration on that axis. Releasing a directional/shoulder control preserves angular momentum; there is no automatic damping in the first Stage 3 implementation. Velocity and speed are explicitly clamped.
+
+The motion representation is Q8 fixed point:
+
+```text
+angle accumulators: Q8 phase
+angular velocities: signed Q8 phase/frame
+speed scalar: Q8, where 256 = 1.0x
+initial VX/VY/VZ: +256
+initial speed: 256
+velocity clamp: +/-1536
+speed clamp: 0..1024
+```
+
+With no Stage 3 input, reset therefore reproduces the accepted R8 motion exactly: +1 phase/frame on X, Y, and Z at 1.0x speed.
+
+C freeze preserves current orientation, velocity, and speed exactly. While frozen the frame/status surface and palette selection stay live; motion integration stops. Unfreezing resumes from the preserved state.
+
+The palette controls select three fixed six-face RGB8 tables rather than performing subjective runtime saturation math. This keeps photographic/capture expectations deterministic. The Saturn host still owns RGB8-to-RGB1555 conversion.
+
+Stage 3 telemetry exposes:
+
+```text
+RUN / FROZEN
+palette mode
+speed Q8
+VX / VY / VZ
+X / Y / Z phase
+visible face count
+animation frame
+EDSR / LOPR / COPR / MODR
+```
+
+The VDP2 bitmap must still never be globally cleared every frame; only dynamic fields are overwritten in place, preserving the R5+ anti-flashing architecture.
 
 ## Planned audio test
 
@@ -307,10 +366,35 @@ COPR: 0x000C
 MODR: 0x1140
 ```
 
-R7 is therefore the current known-good physical VDP1 primitive baseline and the rollback point for Stage 2 animation work.
+R7 is therefore the known-good physical VDP1 primitive baseline and the rollback point for later animation work.
+
+### R8 — VDP1 Stage 2 rotating-cube visual proof
+
+R8 completed the first fixed-point animated 3D workload on physical Sega Saturn hardware on 2026-10-09.
+
+The initial R8 generated project exposed one historical-toolchain compatibility issue: SH-ELF GCC lowered legal small aggregate copies into external `_memcpy` calls while the image deliberately links with `-nostdlib`. SRK retained the freestanding contract by changing cube transform/projection helpers to caller-owned outputs and adding a minimal SH-2 `_memcpy` compiler-ABI helper to the standalone startup runtime. Regression coverage locks both behaviours.
+
+The fixed R8 project then passed all compile, assemble, link, ISO, and MODE1/2352 packaging gates. It was deployed in parallel as `TEST/SRK-Diagnostics-R8`, followed by a whole-card verification returning `MATCH` with only the new R8 directory and its BIN/CUE files allowed.
+
+Physical video evidence establishes:
+
+```text
+R8 boots and reaches VDP1 / 3D Test
+a clearly three-dimensional cube renders through VDP1
+cube orientation changes continuously across the recording
+multiple differently colored faces become visible over time
+perspective remains bounded near the intended screen-center area
+VDP2 diagnostic text remains visible around the VDP1 scene
+raw VDP1 status and animation telemetry remain visible
+no obvious recurrence of the R4 whole-screen flashing defect
+```
+
+The supplied R8 clip does not independently show START teardown or post-return leakage checks. Those lifecycle behaviours remain required regression checks in the next physical validation cycle.
+
+R8 is therefore the known-good physical visual/animation reference for Stage 3 interactive-dynamics work.
 
 ## Current validation boundary
 
-SRK now has a physically proven standalone Saturn host supplying real controller sampling, VBlank-paced timing, VBR observation, stable VDP2 bitmap text presentation, physically accepted Video Pattern diagnostics, and a physically accepted VDP1 primitive path with raw hardware status.
+SRK now has a physically proven standalone Saturn host supplying real controller sampling, VBlank-paced timing, VBR observation, stable VDP2 bitmap text presentation, physically accepted Video Pattern diagnostics, a physically accepted VDP1 primitive path, and a physical fixed-point animated-cube visual proof.
 
-This proves the current standalone master-mode foundation; it does **not** establish cooperative-resident or foreign-resident safety. The active milestone is now VDP1 / 3D Stage 2: animate a title-neutral fixed-point rotating cube through the already-proven host-rendered VDP1 path.
+This proves the current standalone master-mode foundation; it does **not** establish cooperative-resident or foreign-resident safety. The active milestone is VDP1 / 3D Stage 3: use normalized Saturn controller input to deterministically manipulate cube angular velocity, global speed, freeze state, and exact face palettes while retaining live raw VDP1 telemetry and the established host boundary.
