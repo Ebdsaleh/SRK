@@ -31,7 +31,7 @@ SRK SATURN DIAGNOSTICS
   System Information
 ```
 
-The menu shell, Controller / Input Test, and Flight Recorder are implemented. Video Pattern Test is the next active hardware tranche. The remaining entries stay explicit placeholders until their hardware backends are implemented and reviewed.
+The menu shell, Controller / Input Test, Flight Recorder, and Video Pattern Test are implemented. Video Pattern Test is physically accepted on real Saturn hardware. VDP1 / 3D Test is now the active hardware tranche; the remaining entries stay explicit placeholders until their hardware backends are implemented and reviewed.
 
 ## Host boundary
 
@@ -146,7 +146,7 @@ overscan / safe-area pattern
 
 Each pattern identifies itself on screen so photographs and capture recordings remain self-describing.
 
-## Planned VDP1 / 3D test
+## VDP1 / 3D Test — active milestone
 
 The first 3D workload is a rotating cube driven by SH-2-side transforms and rendered through VDP1. It should exercise:
 
@@ -249,6 +249,6 @@ R6 is the current known-good physical-hardware baseline for standalone video dia
 
 ## Current validation boundary
 
-SRK now has a physically proven standalone Saturn host supplying real controller sampling, VBlank-paced timing, VBR observation, stable VDP2 bitmap text presentation, and a bootable verified BIN/CUE deployment path.
+SRK now has a physically proven standalone Saturn host supplying real controller sampling, VBlank-paced timing, VBR observation, stable VDP2 bitmap text presentation, a physically accepted Video Pattern Test, and a bootable verified BIN/CUE deployment path.
 
-This proves the standalone master-mode foundation; it does **not** establish cooperative-resident or foreign-resident safety. The next milestone is to complete and physically validate Video Pattern Test through the existing host boundary, followed by the VDP1 / 3D diagnostic.
+This proves the current standalone master-mode foundation; it does **not** establish cooperative-resident or foreign-resident safety. The active milestone is now the VDP1 / 3D diagnostic, beginning with a minimal attributable VDP1 primitive path before the rotating cube workload.
