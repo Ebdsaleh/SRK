@@ -136,6 +136,7 @@ class SaturnDiagnosticsTests(unittest.TestCase):
 
     def test_c_shell_exposes_input_and_flight_recorder_debug_behaviour(self):
         app_c = (C_ROOT / "srk_diag_app.c").read_text(encoding="utf-8")
+        app_h = (C_ROOT / "srk_diag_app.h").read_text(encoding="utf-8")
         self.assertIn("CONTROLLER / INPUT TEST", app_c)
         self.assertIn("Raw:", app_c)
         self.assertIn("Normalized:", app_c)
@@ -143,10 +144,21 @@ class SaturnDiagnosticsTests(unittest.TestCase):
         self.assertIn("HELD", app_c)
         self.assertIn("RELEASED", app_c)
         self.assertIn("L+R combination:", app_c)
+        self.assertIn("L+R+START Return to diagnostics menu", app_c)
+        self.assertIn("SRK_DIAG_INPUT_EXIT_MASK", app_c)
         self.assertIn("APPLICATION FLIGHT RECORDER", app_c)
         self.assertIn("A Arm/reset rolling recorder", app_c)
         self.assertIn("C Freeze current 30-second window", app_c)
         self.assertIn("START Return to diagnostics menu", app_c)
+
+        # The physical R4 test exposed full-screen flashing because the visible
+        # bitmap was cleared every frame.  Rendering now clears only on an
+        # initial screen/transition and overwrites dynamic fields in place.
+        self.assertIn("rendered_screen_valid", app_h)
+        self.assertIn("full_render", app_c)
+        self.assertIn("if(full_render && host->clear)", app_c)
+        self.assertIn("srk_diag_draw_field", app_c)
+        self.assertNotIn("if(host->clear)\n        host->clear(host->context);", app_c)
 
 
 if __name__ == "__main__":
