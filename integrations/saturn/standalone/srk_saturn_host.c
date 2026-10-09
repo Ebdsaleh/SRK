@@ -9,6 +9,18 @@
 #define SRK_IOSEL  (*(volatile srk_u8 *)0x2010007D)
 #define SRK_EXLE   (*(volatile srk_u8 *)0x2010007F)
 
+#define SRK_VDP1_VRAM ((volatile srk_u16 *)0x25C00000)
+#define SRK_VDP1_TVMR (*(volatile srk_u16 *)0x25D00000)
+#define SRK_VDP1_FBCR (*(volatile srk_u16 *)0x25D00002)
+#define SRK_VDP1_PTMR (*(volatile srk_u16 *)0x25D00004)
+#define SRK_VDP1_EWDR (*(volatile srk_u16 *)0x25D00006)
+#define SRK_VDP1_EWLR (*(volatile srk_u16 *)0x25D00008)
+#define SRK_VDP1_EWRR (*(volatile srk_u16 *)0x25D0000A)
+#define SRK_VDP1_EDSR (*(volatile srk_u16 *)0x25D00010)
+#define SRK_VDP1_LOPR (*(volatile srk_u16 *)0x25D00012)
+#define SRK_VDP1_COPR (*(volatile srk_u16 *)0x25D00014)
+#define SRK_VDP1_MODR (*(volatile srk_u16 *)0x25D00016)
+
 #define SRK_VDP2_VRAM ((volatile srk_u8 *)0x25E00000)
 #define SRK_VDP2_CRAM ((volatile srk_u16 *)0x25F00000)
 #define SRK_TVMD      (*(volatile srk_u16 *)0x25F80000)
@@ -20,6 +32,8 @@
 #define SRK_SCXIN0    (*(volatile srk_u16 *)0x25F80070)
 #define SRK_SCXDN0    (*(volatile srk_u16 *)0x25F80072)
 #define SRK_SCYIN0    (*(volatile srk_u16 *)0x25F80074)
+#define SRK_SPCTL     (*(volatile srk_u16 *)0x25F800E0)
+#define SRK_PRISA     (*(volatile srk_u16 *)0x25F800F0)
 
 #define SRK_PAD_DELAY 16
 #define SRK_BITMAP_STRIDE 1024
@@ -39,6 +53,20 @@
 #define SRK_COLOR_WHITE   15
 #define SRK_GRAY_BASE     16
 #define SRK_GRAY_COUNT    16
+
+#define SRK_VDP1_COMMAND_WORDS 16
+#define SRK_VDP1_CMDCTRL 0
+#define SRK_VDP1_CMDLINK 1
+#define SRK_VDP1_CMDPMOD 2
+#define SRK_VDP1_CMDCOLR 3
+#define SRK_VDP1_CMDXA   6
+#define SRK_VDP1_CMDYA   7
+#define SRK_VDP1_CMDXB   8
+#define SRK_VDP1_CMDYB   9
+#define SRK_VDP1_CMDXC   10
+#define SRK_VDP1_CMDYC   11
+#define SRK_VDP1_CMDXD   12
+#define SRK_VDP1_CMDYD   13
 
 #define SRK_PAD_L      (1u << 15)
 #define SRK_PAD_START  (1u << 11)
@@ -366,6 +394,131 @@ static void srk_saturn_draw_video_pattern(void *context, unsigned int pattern_id
 }
 
 
+static srk_u16 srk_saturn_vdp1_rgb(srk_u8 red, srk_u8 green, srk_u8 blue)
+{
+    return (srk_u16)(
+        0x8000u |
+        (((srk_u16)(blue >> 3) & 31u) << 10) |
+        (((srk_u16)(green >> 3) & 31u) << 5) |
+        ((srk_u16)(red >> 3) & 31u)
+    );
+}
+
+
+static volatile srk_u16 *srk_saturn_vdp1_command(unsigned int index)
+{
+    return SRK_VDP1_VRAM + (index * SRK_VDP1_COMMAND_WORDS);
+}
+
+
+static void srk_saturn_vdp1_clear_command(volatile srk_u16 *command)
+{
+    int i;
+    for(i=0; i<SRK_VDP1_COMMAND_WORDS; i++)
+        command[i] = 0;
+}
+
+
+static int srk_saturn_present_vdp1_quad(
+    void *context,
+    const SRK_DIAG_VDP1_QUAD *quad
+)
+{
+    volatile srk_u16 *skip;
+    volatile srk_u16 *clip;
+    volatile srk_u16 *polygon;
+    volatile srk_u16 *end;
+
+    (void)context;
+    if(!quad)
+        return 0;
+
+    skip = srk_saturn_vdp1_command(0);
+    clip = srk_saturn_vdp1_command(1);
+    polygon = srk_saturn_vdp1_command(2);
+    end = srk_saturn_vdp1_command(3);
+
+    srk_saturn_vdp1_clear_command(skip);
+    srk_saturn_vdp1_clear_command(clip);
+    srk_saturn_vdp1_clear_command(polygon);
+    srk_saturn_vdp1_clear_command(end);
+
+    /* Match the reviewed vdp1ex list guard: skip slot zero, then process slot one. */
+    skip[SRK_VDP1_CMDCTRL] = 0x4000;
+
+    /* Sega VDP1 manual: system clipping must be initialized before drawing. */
+    clip[SRK_VDP1_CMDCTRL] = 0x0009;
+    clip[SRK_VDP1_CMDLINK] = 0x0000;
+    clip[SRK_VDP1_CMDXC] = (srk_u16)(SRK_VISIBLE_WIDTH - 1);
+    clip[SRK_VDP1_CMDYC] = (srk_u16)(SRK_VISIBLE_HEIGHT - 1);
+
+    /* Non-textured polygon, RGB color, replace operation. */
+    polygon[SRK_VDP1_CMDCTRL] = 0x0004;
+    polygon[SRK_VDP1_CMDLINK] = 0x0000;
+    polygon[SRK_VDP1_CMDPMOD] = 0x00C0;
+    polygon[SRK_VDP1_CMDCOLR] = srk_saturn_vdp1_rgb(
+        quad->red,
+        quad->green,
+        quad->blue
+    );
+    polygon[SRK_VDP1_CMDXA] = (srk_u16)quad->vertex[0].x;
+    polygon[SRK_VDP1_CMDYA] = (srk_u16)quad->vertex[0].y;
+    polygon[SRK_VDP1_CMDXB] = (srk_u16)quad->vertex[1].x;
+    polygon[SRK_VDP1_CMDYB] = (srk_u16)quad->vertex[1].y;
+    polygon[SRK_VDP1_CMDXC] = (srk_u16)quad->vertex[2].x;
+    polygon[SRK_VDP1_CMDYC] = (srk_u16)quad->vertex[2].y;
+    polygon[SRK_VDP1_CMDXD] = (srk_u16)quad->vertex[3].x;
+    polygon[SRK_VDP1_CMDYD] = (srk_u16)quad->vertex[3].y;
+
+    /* Sega VDP1 manual: CMDCTRL=0x8000 is the drawing-end command. */
+    end[SRK_VDP1_CMDCTRL] = 0x8000;
+
+    /* RGB sprite data uses sprite register zero; non-zero priority makes it visible. */
+    SRK_SPCTL = 0x0020;
+    SRK_PRISA = 0x0001;
+
+    SRK_VDP1_TVMR = 0x0000;
+    SRK_VDP1_FBCR = 0x0000;
+    SRK_VDP1_EWDR = 0x0000;
+    SRK_VDP1_EWLR = 0x0000;
+    SRK_VDP1_EWRR = 0x50DF;
+
+    /* PTM=10B: automatically start drawing at frame-buffer switching. */
+    SRK_VDP1_PTMR = 0x0002;
+    return 1;
+}
+
+
+static void srk_saturn_hide_vdp1(void *context)
+{
+    volatile srk_u16 *first;
+    (void)context;
+
+    SRK_PRISA = 0x0000;
+    SRK_VDP1_PTMR = 0x0000;
+    first = srk_saturn_vdp1_command(0);
+    srk_saturn_vdp1_clear_command(first);
+    first[SRK_VDP1_CMDCTRL] = 0x8000;
+}
+
+
+static int srk_saturn_read_vdp1_status(
+    void *context,
+    SRK_DIAG_VDP1_STATUS *status
+)
+{
+    (void)context;
+    if(!status)
+        return 0;
+
+    status->edsr = SRK_VDP1_EDSR;
+    status->lopr = SRK_VDP1_LOPR;
+    status->copr = SRK_VDP1_COPR;
+    status->modr = SRK_VDP1_MODR;
+    return 1;
+}
+
+
 static void srk_saturn_end_frame(void *context)
 {
     SRK_SATURN_HOST_STATE *state;
@@ -449,6 +602,7 @@ void srk_saturn_host_init(
 
     srk_saturn_video_init();
     srk_saturn_pad_init();
+    srk_saturn_hide_vdp1(state);
 
     state->now_us = 0;
     /* VDP2 TVSTAT bit 0 identifies PAL timing; input is sampled once/frame. */
@@ -461,6 +615,9 @@ void srk_saturn_host_init(
     host->clear = srk_saturn_clear;
     host->draw_text = srk_saturn_draw_text;
     host->draw_video_pattern = srk_saturn_draw_video_pattern;
+    host->present_vdp1_quad = srk_saturn_present_vdp1_quad;
+    host->hide_vdp1 = srk_saturn_hide_vdp1;
+    host->read_vdp1_status = srk_saturn_read_vdp1_status;
     host->end_frame = srk_saturn_end_frame;
     host->read_vbr = srk_saturn_read_vbr;
 }
