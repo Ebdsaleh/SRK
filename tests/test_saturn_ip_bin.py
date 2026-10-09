@@ -4,7 +4,10 @@ import os
 import tempfile
 import unittest
 
-from rikai_kotoba.formats.saturn.ip_bin import parse_ip_bin
+from rikai_kotoba.formats.saturn.ip_bin import (
+    parse_ip_bin,
+    parse_saturn_system_id,
+)
 
 
 SECTOR = 2048
@@ -14,17 +17,28 @@ def _field(text, size):
     return text.encode("ascii").ljust(size, b" ")
 
 
+def _put_u32be(data, offset, value):
+    data[offset : offset + 4] = int(value).to_bytes(4, byteorder="big", signed=False)
+
+
 def _boot_sector():
     data = bytearray(SECTOR)
-    data[0:16] = _field("SEGA SEGASATURN", 16)
-    data[16:32] = _field("SEGA ENTERPRISES", 16)
-    data[32:48] = _field("CD-1/1", 16)
-    data[48:56] = _field("JTUB", 8)
-    data[56:72] = _field("J", 16)
-    data[72:112] = _field("GENERIC TEST DISC", 40)
-    data[112:128] = _field("V1.000", 16)
-    data[128:144] = _field("19960101", 16)
-    data[144:160] = _field("T-0000G", 16)
+    data[0x00:0x10] = _field("SEGA SEGASATURN", 16)
+    data[0x10:0x20] = _field("SEGA ENTERPRISES", 16)
+    data[0x20:0x2A] = _field("T-0000G", 10)
+    data[0x2A:0x30] = _field("V1.000", 6)
+    data[0x30:0x38] = _field("20261009", 8)
+    data[0x38:0x40] = _field("CD-1/1", 8)
+    data[0x40:0x4A] = _field("JTUE", 10)
+    data[0x4A:0x50] = b" " * 6
+    data[0x50:0x60] = _field("J", 16)
+    data[0x60:0xD0] = _field("GENERIC TEST DISC", 112)
+
+    _put_u32be(data, 0xE0, 0x00001800)
+    _put_u32be(data, 0xE8, 0x06002000)
+    _put_u32be(data, 0xEC, 0x06003000)
+    _put_u32be(data, 0xF0, 0x06004000)
+    _put_u32be(data, 0xF4, 0x00012345)
     return bytes(data)
 
 
@@ -41,8 +55,14 @@ class SaturnIPBinTests(unittest.TestCase):
 
         self.assertEqual(metadata["hardware_id"], "SEGA SEGASATURN")
         self.assertEqual(metadata["maker_id"], "SEGA ENTERPRISES")
-        self.assertEqual(metadata["game_title"], "GENERIC TEST DISC")
+        self.assertEqual(metadata["product_number"], "T-0000G")
         self.assertEqual(metadata["game_serial"], "T-0000G")
+        self.assertEqual(metadata["game_version"], "V1.000")
+        self.assertEqual(metadata["game_date"], "20261009")
+        self.assertEqual(metadata["device_info"], "CD-1/1")
+        self.assertEqual(metadata["area_symbols"], "JTUE")
+        self.assertEqual(metadata["peripherals"], "J")
+        self.assertEqual(metadata["game_title"], "GENERIC TEST DISC")
 
     def test_path_input_uses_generic_disc_source_layer(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -57,6 +77,16 @@ class SaturnIPBinTests(unittest.TestCase):
 
             self.assertEqual(metadata["game_title"], "GENERIC TEST DISC")
             self.assertEqual(metadata["game_version"], "V1.000")
+            self.assertEqual(metadata["product_number"], "T-0000G")
+
+    def test_parses_big_endian_boot_control_fields(self):
+        metadata = parse_saturn_system_id(_boot_sector())
+
+        self.assertEqual(metadata["ip_size"], "0x00001800")
+        self.assertEqual(metadata["master_stack"], "0x06002000")
+        self.assertEqual(metadata["slave_stack"], "0x06003000")
+        self.assertEqual(metadata["first_read_address"], "0x06004000")
+        self.assertEqual(metadata["first_read_size"], "0x00012345")
 
 
 if __name__ == "__main__":
