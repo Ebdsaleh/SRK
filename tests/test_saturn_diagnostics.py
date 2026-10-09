@@ -17,6 +17,7 @@ from rikai_kotoba.hardware.saturn.diagnostics import (
 
 ROOT = Path(__file__).resolve().parents[1]
 C_ROOT = ROOT / "integrations" / "saturn" / "diagnostics"
+STANDALONE_ROOT = ROOT / "integrations" / "saturn" / "standalone"
 
 
 class SaturnDiagnosticsTests(unittest.TestCase):
@@ -116,6 +117,8 @@ class SaturnDiagnosticsTests(unittest.TestCase):
             C_ROOT / "srk_diag_menu.c",
             C_ROOT / "srk_diag_flight_recorder.h",
             C_ROOT / "srk_diag_flight_recorder.c",
+            C_ROOT / "srk_diag_video.h",
+            C_ROOT / "srk_diag_video.c",
             C_ROOT / "srk_diag_app.h",
             C_ROOT / "srk_diag_app.c",
         )
@@ -124,11 +127,14 @@ class SaturnDiagnosticsTests(unittest.TestCase):
 
         combined = "\n".join(path.read_text(encoding="utf-8") for path in files)
         self.assertNotIn("0x06020232", combined)
+        self.assertNotIn("0x25E00000", combined)
+        self.assertNotIn("0x25F80000", combined)
         self.assertNotIn("SS_TIMER", combined)
         self.assertNotIn("write_file(", combined)
         self.assertIn("raw_state", combined)
         self.assertIn("SRK_DIAG_BUTTON_L", combined)
         self.assertIn("SRK_DIAG_BUTTON_R", combined)
+        self.assertIn("draw_video_pattern", combined)
 
         menu_c = (C_ROOT / "srk_diag_menu.c").read_text(encoding="utf-8")
         for _screen, label in DIAGNOSTIC_MENU:
@@ -152,13 +158,48 @@ class SaturnDiagnosticsTests(unittest.TestCase):
         self.assertIn("START Return to diagnostics menu", app_c)
 
         # The physical R4 test exposed full-screen flashing because the visible
-        # bitmap was cleared every frame.  Rendering now clears only on an
+        # bitmap was cleared every frame. Rendering now clears only on an
         # initial screen/transition and overwrites dynamic fields in place.
         self.assertIn("rendered_screen_valid", app_h)
         self.assertIn("full_render", app_c)
         self.assertIn("if(full_render && host->clear)", app_c)
         self.assertIn("srk_diag_draw_field", app_c)
         self.assertNotIn("if(host->clear)\n        host->clear(host->context);", app_c)
+
+    def test_video_pattern_contract_is_title_neutral_and_host_rendered(self):
+        video_h = (C_ROOT / "srk_diag_video.h").read_text(encoding="utf-8")
+        video_c = (C_ROOT / "srk_diag_video.c").read_text(encoding="utf-8")
+        app_c = (C_ROOT / "srk_diag_app.c").read_text(encoding="utf-8")
+        host_c = (STANDALONE_ROOT / "srk_saturn_host.c").read_text(encoding="utf-8")
+
+        self.assertIn("SRK_DIAG_VIDEO_PATTERN_COUNT 10", video_h)
+        for label in (
+            "Solid Black",
+            "Solid White",
+            "Solid Red",
+            "Solid Green",
+            "Solid Blue",
+            "RGB / Color Bars",
+            "Grayscale / Brightness Ramp",
+            "Checkerboard",
+            "Fine Grid",
+            "Overscan / Safe Area",
+        ):
+            self.assertIn(label, video_c)
+
+        self.assertIn("SRK_DIAG_SCREEN_VIDEO_PATTERN_TEST", app_c)
+        self.assertIn("LEFT/RIGHT Change pattern", app_c)
+        self.assertIn("srk_diag_video_move", app_c)
+        self.assertIn("host->draw_video_pattern", app_c)
+
+        self.assertIn("SRK_VDP2_VRAM", host_c)
+        self.assertIn("SRK_VDP2_CRAM", host_c)
+        self.assertIn("srk_saturn_draw_color_bars", host_c)
+        self.assertIn("srk_saturn_draw_grayscale", host_c)
+        self.assertIn("srk_saturn_draw_checkerboard", host_c)
+        self.assertIn("srk_saturn_draw_grid", host_c)
+        self.assertIn("srk_saturn_draw_safe_area", host_c)
+        self.assertIn("host->draw_video_pattern = srk_saturn_draw_video_pattern", host_c)
 
 
 if __name__ == "__main__":
