@@ -25,6 +25,7 @@ def _card(root: Path) -> Path:
     saroo = card / "SAROO"
     iso = saroo / "ISO"
     iso.mkdir(parents=True)
+    (iso / "TEST").mkdir()
     (saroo / "update").mkdir()
     (saroo / "ssfirm.bin").write_bytes(b"firmware")
     (saroo / "mcuapp.bin").write_bytes(b"mcu")
@@ -88,6 +89,7 @@ class SaturnSarooDeployTests(unittest.TestCase):
 
             self.assertEqual(plan.sector_count, 2)
             self.assertEqual(plan.raw_bytes, 4704)
+            self.assertIsNone(plan.category_directory)
             self.assertFalse(plan.destination_directory.exists())
             self.assertEqual(
                 (card / "SAROO" / "ISO" / "Existing Game" / "keep.bin").read_bytes(),
@@ -139,6 +141,43 @@ class SaturnSarooDeployTests(unittest.TestCase):
             self.assertEqual(_sha(result.destination_cue), result.plan.cue_sha256)
             self.assertEqual(existing.read_bytes(), before)
             self.assertFalse((card / "SAROO" / "ISO" / ".SRK-Diagnostics.srk-pending").exists())
+
+    def test_existing_category_can_be_selected_case_insensitively(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            card = _card(root)
+            project = _project(root)
+
+            plan = plan_saroo_standalone_image_deployment(
+                card,
+                project,
+                category="test",
+            )
+
+            self.assertIsNotNone(plan.category_directory)
+            self.assertEqual(plan.category_directory.name, "TEST")
+            self.assertEqual(
+                plan.destination_directory,
+                plan.category_directory / "SRK-Diagnostics",
+            )
+            self.assertFalse(plan.destination_directory.exists())
+
+    def test_missing_category_is_rejected_without_creating_it(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            card = _card(root)
+            project = _project(root)
+            missing = card / "SAROO" / "ISO" / "MISSING"
+
+            with self.assertRaises(SarooStandaloneImageDeploymentError):
+                plan_saroo_standalone_image_deployment(
+                    card,
+                    project,
+                    category="MISSING",
+                )
+
+            self.assertFalse(missing.exists())
+            self.assertFalse((card / "SAROO" / "ISO" / "SRK-Diagnostics").exists())
 
     def test_existing_destination_is_never_merged_or_overwritten(self):
         with tempfile.TemporaryDirectory() as temp_dir:
