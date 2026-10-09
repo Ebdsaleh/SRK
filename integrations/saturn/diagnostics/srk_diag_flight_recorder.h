@@ -26,6 +26,11 @@ typedef struct SRK_DIAG_FLIGHT_RECORD {
     srk_u32 value1;
 } SRK_DIAG_FLIGHT_RECORD;
 
+/* Export tooling and the Python contract both require an exact 32-byte record. */
+typedef char SRK_DIAG_FLIGHT_RECORD_must_be_32_bytes[
+    (sizeof(SRK_DIAG_FLIGHT_RECORD) == 32) ? 1 : -1
+];
+
 
 typedef struct SRK_DIAG_FLIGHT_RECORDER {
     SRK_DIAG_FLIGHT_RECORD records[SRK_DIAG_FLIGHT_CAPACITY];
