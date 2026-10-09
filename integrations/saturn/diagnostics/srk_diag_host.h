@@ -15,6 +15,7 @@ extern "C" {
 #endif
 
 
+typedef signed short   srk_s16;
 typedef unsigned char  srk_u8;
 typedef unsigned short srk_u16;
 typedef unsigned long  srk_u32;
@@ -45,6 +46,28 @@ typedef struct SRK_DIAG_PAD_SAMPLE {
 } SRK_DIAG_PAD_SAMPLE;
 
 
+typedef struct SRK_DIAG_VDP1_POINT {
+    srk_s16 x;
+    srk_s16 y;
+} SRK_DIAG_VDP1_POINT;
+
+
+typedef struct SRK_DIAG_VDP1_QUAD {
+    SRK_DIAG_VDP1_POINT vertex[4];
+    srk_u8 red;
+    srk_u8 green;
+    srk_u8 blue;
+} SRK_DIAG_VDP1_QUAD;
+
+
+typedef struct SRK_DIAG_VDP1_STATUS {
+    srk_u16 edsr;
+    srk_u16 lopr;
+    srk_u16 copr;
+    srk_u16 modr;
+} SRK_DIAG_VDP1_STATUS;
+
+
 typedef struct SRK_DIAG_HOST {
     void *context;
 
@@ -67,6 +90,15 @@ typedef struct SRK_DIAG_HOST {
      * Pixel generation and hardware register access remain host responsibilities.
      */
     void (*draw_video_pattern)(void *context, unsigned int pattern_id);
+
+    /*
+     * VDP1 diagnostics submit logical geometry through the host boundary.
+     * Command-table layout, registers, framebuffer state, and RGB encoding remain
+     * host responsibilities so the reusable core contains no Saturn addresses.
+     */
+    int (*present_vdp1_quad)(void *context, const SRK_DIAG_VDP1_QUAD *quad);
+    void (*hide_vdp1)(void *context);
+    int (*read_vdp1_status)(void *context, SRK_DIAG_VDP1_STATUS *status);
 
     void (*end_frame)(void *context);
 
