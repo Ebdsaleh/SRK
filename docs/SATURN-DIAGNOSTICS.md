@@ -35,9 +35,9 @@ The menu shell, Controller / Input Test, Flight Recorder, and Video Pattern Test
 
 ## Host boundary
 
-The diagnostic core does not know how a controller packet, screen, timer, VBR observation, video pattern, or future storage operation is obtained. `srk_diag_host.h` defines the boundary.
+The diagnostic core does not know how a controller packet, screen, timer, VBR observation, video pattern, VDP1 command list, or future storage operation is obtained. `srk_diag_host.h` defines the boundary.
 
-A standalone Saturn host may use direct Saturn hardware services. A later resident host can provide the same normalized services through a different safe mechanism. This keeps menu, recorder, input-state, and pattern-selection logic reusable instead of baking SAROO/BIOS or one title's assumptions into the core.
+A standalone Saturn host may use direct Saturn hardware services. A later resident host can provide the same normalized services through a different safe mechanism. This keeps menu, recorder, input-state, pattern-selection, and logical-geometry code reusable instead of baking SAROO/BIOS or one title's assumptions into the core.
 
 The core must therefore not depend on the R9 BIOS snapshot address, SAROO `SS_TIMER`, SAROO file-writing calls, or direct Saturn video register addresses.
 
@@ -148,7 +148,40 @@ Each pattern identifies itself on screen so photographs and capture recordings r
 
 ## VDP1 / 3D Test — active milestone
 
-The first 3D workload is a rotating cube driven by SH-2-side transforms and rendered through VDP1. It should exercise:
+The VDP1 milestone is deliberately split into attributable stages rather than jumping directly to the rotating cube.
+
+### Stage 1 — static primitive proof
+
+The title-neutral diagnostic core owns one logical RGB quadrilateral and submits that geometry through the host boundary. It does **not** know VDP1 VRAM addresses, command-table layout, framebuffer registers, VDP2 sprite-composition registers, or RGB1555 encoding.
+
+The standalone Saturn host owns:
+
+```text
+VDP1 command-table construction
+system-clipping initialization
+non-textured polygon command generation
+RGB1555 conversion
+VDP1 framebuffer / drawing control
+VDP2 sprite RGB/composition setup
+primitive teardown on diagnostic exit
+```
+
+Stage 1 also exposes these raw VDP1 registers on screen:
+
+```text
+EDSR
+LOPR
+COPR
+MODR
+```
+
+The first hardware target is therefore a single static colored quadrilateral near the lower-center of the display, with the VDP1 status rows kept unobscured and the normal VDP2 diagnostic shell still visible. START must tear the VDP1 presentation down and return cleanly to the diagnostics menu.
+
+The command-list/register choices are based on the supplied Sega VDP1/VDP2 hardware documentation and cross-checked against the supplied Charles MacDonald `vdp1ex` sample. Stage 1 must compile, boot, draw, expose status, and restore cleanly on physical Saturn hardware before transform, projection, face-ordering, or animation code is introduced.
+
+### Stage 2 — rotating cube
+
+After Stage 1 is physically accepted, the first 3D workload will be a rotating cube driven by SH-2-side transforms and rendered through the proven VDP1 path. It should exercise:
 
 ```text
 X/Y/Z rotation
@@ -251,4 +284,4 @@ R6 is the current known-good physical-hardware baseline for standalone video dia
 
 SRK now has a physically proven standalone Saturn host supplying real controller sampling, VBlank-paced timing, VBR observation, stable VDP2 bitmap text presentation, a physically accepted Video Pattern Test, and a bootable verified BIN/CUE deployment path.
 
-This proves the current standalone master-mode foundation; it does **not** establish cooperative-resident or foreign-resident safety. The active milestone is now the VDP1 / 3D diagnostic, beginning with a minimal attributable VDP1 primitive path before the rotating cube workload.
+This proves the current standalone master-mode foundation; it does **not** establish cooperative-resident or foreign-resident safety. The active milestone is now VDP1 / 3D Stage 1: physically prove one static host-rendered VDP1 quadrilateral and its raw status surface before beginning the rotating-cube workload.
