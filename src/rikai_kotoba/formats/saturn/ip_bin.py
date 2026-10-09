@@ -1,4 +1,4 @@
-"""Sega Saturn IP.BIN (Initial Program) System ID parsing.
+"""Sega Saturn IP.BIN (Initial Program) System ID parsing and safe metadata patching.
 
 The parser operates on SRK's logical read-only disc sources rather than on a
 hardcoded raw-sector reader.  It therefore works with both standalone images
@@ -21,7 +21,7 @@ SATURN_SYSTEM_ID_SIZE = 0x100
 
 
 class SaturnIPBinError(Exception):
-    """Raised when a Saturn boot header cannot be read safely."""
+    """Raised when a Saturn boot header cannot be read or patched safely."""
 
 
 def _read_user_sector(source: object, lba: int) -> bytes:
@@ -49,6 +49,26 @@ def _decode_ascii_field(data: bytes) -> str:
 
 def _u32be_hex(data: bytes) -> str:
     return f"0x{int.from_bytes(data, byteorder='big', signed=False):08X}"
+
+
+def _encode_ascii_field(name: str, value: str, size: int) -> bytes:
+    text = str(value)
+    try:
+        encoded = text.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise SaturnIPBinError(f"{name} must contain ASCII characters only") from exc
+    if len(encoded) > size:
+        raise SaturnIPBinError(
+            f"{name} is too long: {len(encoded)} bytes; maximum is {size}"
+        )
+    return encoded.ljust(size, b" ")
+
+
+def _u32be_bytes(name: str, value: int) -> bytes:
+    integer = int(value)
+    if integer < 0 or integer > 0xFFFFFFFF:
+        raise SaturnIPBinError(f"{name} must fit in an unsigned 32-bit value")
+    return integer.to_bytes(4, byteorder="big", signed=False)
 
 
 def parse_saturn_system_id(data: bytes) -> Dict[str, str]:
@@ -86,6 +106,58 @@ def parse_saturn_system_id(data: bytes) -> Dict[str, str]:
         "first_read_address": _u32be_hex(data[0xF0:0xF4]),
         "first_read_size": _u32be_hex(data[0xF4:0xF8]),
     }
+
+
+def patch_saturn_system_id(
+    data: bytes,
+    *,
+    maker_id: str | None = None,
+    product_number: str | None = None,
+    game_version: str | None = None,
+    game_date: str | None = None,
+    device_info: str | None = None,
+    area_symbols: str | None = None,
+    peripherals: str | None = None,
+    game_title: str | None = None,
+    first_read_address: int | None = None,
+    first_read_size: int | None = None,
+) -> bytes:
+    """Return a copy of ``data`` with selected Saturn System ID fields patched.
+
+    The source bytes are never modified in place.  Fields not explicitly
+    supplied are preserved byte-for-byte, including the hardware ID, security
+    program/bootstrap payload, IP size, stack values, and reserved bytes.  This
+    lets standalone-project preparation derive a title-neutral IP.BIN from a
+    reviewed local boot asset without committing or mutating that binary.
+    """
+
+    if len(data) < SATURN_SYSTEM_ID_SIZE:
+        raise SaturnIPBinError(
+            f"Saturn System ID is too short: {len(data)} bytes; "
+            f"need at least {SATURN_SYSTEM_ID_SIZE}"
+        )
+
+    patched = bytearray(data)
+    fields = (
+        ("maker_id", maker_id, 0x10, 0x20),
+        ("product_number", product_number, 0x20, 0x2A),
+        ("game_version", game_version, 0x2A, 0x30),
+        ("game_date", game_date, 0x30, 0x38),
+        ("device_info", device_info, 0x38, 0x40),
+        ("area_symbols", area_symbols, 0x40, 0x4A),
+        ("peripherals", peripherals, 0x50, 0x60),
+        ("game_title", game_title, 0x60, 0xD0),
+    )
+    for name, value, start, end in fields:
+        if value is not None:
+            patched[start:end] = _encode_ascii_field(name, value, end - start)
+
+    if first_read_address is not None:
+        patched[0xF0:0xF4] = _u32be_bytes("first_read_address", first_read_address)
+    if first_read_size is not None:
+        patched[0xF4:0xF8] = _u32be_bytes("first_read_size", first_read_size)
+
+    return bytes(patched)
 
 
 def parse_ip_bin(
