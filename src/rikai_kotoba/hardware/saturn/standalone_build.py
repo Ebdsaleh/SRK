@@ -1,6 +1,6 @@
 """Python-native build orchestration for generated SRK Saturn projects.
 
-The SH-ELF tools remain the actual compiler/assembler/linker backend.  Python
+The SH-ELF tools remain the actual compiler/assembler/linker backend. Python
 replaces the fragile historical make/shell orchestration: every child process is
 invoked directly with an argv list, PATH is not mutated, source/input hashes are
 checked before and after the build, and one immutable-style build report is
@@ -161,6 +161,7 @@ def _write_report(
     commands: Sequence[SaturnStandaloneBuildCommand],
     artifacts: Sequence[SaturnStandaloneBuildArtifact],
     successful: bool,
+    inputs_verified_after: bool,
 ) -> None:
     data = {
         "schema": "srk.saturn.standalone-build.v1",
@@ -172,7 +173,7 @@ def _write_report(
             "shell_used": False,
             "path_mutated": False,
             "source_inputs_verified_before_build": True,
-            "source_inputs_verified_after_build": bool(successful),
+            "source_inputs_verified_after_build": bool(inputs_verified_after),
             "sd_writes": False,
             "commercial_image_changes": False,
         },
@@ -203,7 +204,7 @@ def build_saturn_standalone_project(
 ) -> SaturnStandaloneBuildResult:
     """Build one fresh generated Saturn project without make or shell scripts.
 
-    GCC/binutils are still the SH-2 code-generation backend.  Python owns the
+    GCC/binutils are still the SH-2 code-generation backend. Python owns the
     orchestration and invokes each recorded executable directly with shell=False.
     A project that already contains a Python-native build report is refused so
     every generated tree preserves one build attempt as provenance.
@@ -316,8 +317,11 @@ def build_saturn_standalone_project(
             shutil.copy2(binary, cd_dir / "0.bin")
 
     if successful:
+        iso_prefix: tuple[str, ...] = (str(iso_builder),)
+        if iso_builder.name.casefold().startswith("xorriso"):
+            iso_prefix = (str(iso_builder), "-as", "mkisofs")
         iso_argv = (
-            str(iso_builder),
+            *iso_prefix,
             "-quiet",
             "-sysid", "SEGA SATURN",
             "-volid", "SRKDIAG",
@@ -344,6 +348,22 @@ def build_saturn_standalone_project(
             )
         )
 
+    inputs_verified_after = False
+    if successful:
+        try:
+            _verify_generated_inputs(root, manifest)
+            inputs_verified_after = True
+        except SaturnStandaloneBuildError as exc:
+            successful = False
+            commands.append(
+                SaturnStandaloneBuildCommand(
+                    label="verify generated inputs",
+                    argv=tuple(),
+                    returncode=1,
+                    output=str(exc),
+                )
+            )
+
     artifacts: list[SaturnStandaloneBuildArtifact] = []
     for relative in (
         "build/srk_diag.bin",
@@ -355,9 +375,6 @@ def build_saturn_standalone_project(
         if path.is_file():
             artifacts.append(_artifact(path))
 
-    if successful:
-        _verify_generated_inputs(root, manifest)
-
     _write_log(log_path, commands)
     _write_report(
         report_path,
@@ -366,6 +383,7 @@ def build_saturn_standalone_project(
         commands,
         artifacts,
         successful,
+        inputs_verified_after,
     )
 
     return SaturnStandaloneBuildResult(
