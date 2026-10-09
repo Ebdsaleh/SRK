@@ -1,4 +1,4 @@
-"""Regression contracts for Saturn Audio / SCSP Stage 1 diagnostics."""
+"""Regression contracts for Saturn Audio / SCSP diagnostics."""
 
 from pathlib import Path
 import unittest
@@ -30,11 +30,13 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("SRK_DIAG_AUDIO_TONE_LOW", audio_h)
         self.assertIn("SRK_DIAG_AUDIO_TONE_MID", audio_h)
         self.assertIn("SRK_DIAG_AUDIO_TONE_HIGH", audio_h)
+        self.assertIn("SRK_DIAG_AUDIO_TONE_STEREO_PAIR", audio_h)
         self.assertIn("SRK_DIAG_AUDIO_PAN_LEFT", audio_h)
         self.assertIn("SRK_DIAG_AUDIO_PAN_CENTER", audio_h)
         self.assertIn("SRK_DIAG_AUDIO_PAN_RIGHT", audio_h)
 
         self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_A", audio_c)
+        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_B", audio_c)
         self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_C", audio_c)
         self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_LEFT", audio_c)
         self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_UP", audio_c)
@@ -46,7 +48,6 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_R", audio_c)
 
         self.assertIn("AUDIO / SCSP TEST", app_c)
-        self.assertIn("Stage 1: deterministic PCM tone slot", app_c)
         self.assertIn("A Play/Stop   C Mute/Unmute", app_c)
         self.assertIn("LEFT/UP/RIGHT Pan L/C/R", app_c)
         self.assertIn("X/Y/Z Tone Low/Mid/High", app_c)
@@ -54,6 +55,35 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("host->present_audio_tone", app_c)
         self.assertIn("host->stop_audio", app_c)
         self.assertIn("host->read_audio_status", app_c)
+
+    def test_stage2_stereo_pair_preserves_single_slot_mode_and_isolates_sources(self):
+        audio_h = (DIAG / "srk_diag_audio.h").read_text(encoding="utf-8")
+        audio_c = (DIAG / "srk_diag_audio.c").read_text(encoding="utf-8")
+        backend = (STANDALONE / "srk_saturn_audio.c").read_text(encoding="utf-8")
+        host_h = (STANDALONE / "srk_saturn_host.h").read_text(encoding="utf-8")
+
+        self.assertIn("SRK_DIAG_AUDIO_TONE_COUNT 4", audio_h)
+        self.assertIn("SRK_DIAG_AUDIO_TONE_STEREO_PAIR = 3", audio_h)
+        self.assertIn("SRK_DIAG_AUDIO_TONE mono_tone", audio_h)
+        self.assertIn("int stereo_pair", audio_h)
+        self.assertIn('"STEREO"', audio_c)
+        self.assertIn("state->stereo_pair = !", audio_c.replace("if(state->stereo_pair)", "state->stereo_pair = !"))
+        self.assertIn("state->tone = SRK_DIAG_AUDIO_TONE_STEREO_PAIR", audio_c)
+        self.assertIn("state->pan = SRK_DIAG_AUDIO_PAN_CENTER", audio_c)
+
+        self.assertIn("unsigned int audio_playing_mask", host_h)
+        self.assertIn("SRK_AUDIO_STAGE2_STEREO_TONE_ID 3u", backend)
+        self.assertIn("SRK_AUDIO_STAGE2_LEFT_SLOT 0u", backend)
+        self.assertIn("SRK_AUDIO_STAGE2_RIGHT_SLOT 1u", backend)
+        self.assertIn("SRK_AUDIO_STAGE2_LEFT_MASK 0x01u", backend)
+        self.assertIn("SRK_AUDIO_STAGE2_RIGHT_MASK 0x02u", backend)
+        self.assertIn("srk_saturn_audio_configure_slot(SRK_AUDIO_STAGE2_LEFT_SLOT)", backend)
+        self.assertIn("srk_saturn_audio_configure_slot(SRK_AUDIO_STAGE2_RIGHT_SLOT)", backend)
+        self.assertIn("left[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_LOW", backend)
+        self.assertIn("right[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_HIGH", backend)
+        self.assertIn("request->pan_id != 2u", backend)
+        self.assertIn("request->pan_id != 0u", backend)
+        self.assertIn("KYONEX executes the KYONB state for all slots at once", backend)
 
     def test_scsp_backend_uses_reviewed_sound_cpu_and_slot_contract(self):
         audio_c = (STANDALONE / "srk_saturn_audio.c").read_text(encoding="utf-8")
