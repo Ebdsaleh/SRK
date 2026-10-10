@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from rikai_kotoba.hardware.saturn.standalone_build import SaturnStage6BDependencies
 from rikai_kotoba.tools.saturn_stage6b_link_probe import (
     SaturnStage6BLinkProbeError,
     _mixed_link_tail,
@@ -46,19 +47,29 @@ def _elf32_sh_rel() -> bytes:
 
 
 class SaturnStage6BLinkProbeTests(unittest.TestCase):
-    def test_mixed_link_tail_scopes_coff_only_to_cdc_then_restores_elf(self):
-        gfs = Path("GFS/sega_gfs.a")
-        cdc = Path("GFS/SEGA_CDC.A")
+    def test_mixed_link_tail_scopes_only_cdc_as_coff_and_uses_dedicated_support(self):
+        deps = SaturnStage6BDependencies(
+            include_dir=Path("INCLUDE"),
+            gfs_header=Path("INCLUDE/SEGA_GFS.H"),
+            gfs_library=Path("LIB_ELF/sega_gfs.a"),
+            cdc_library=Path("LIB_ELF/SEGA_CDC.A"),
+            dma_library=Path("LIB_ELF/sega_dma.a"),
+            csh_library=Path("LIB_ELF/sega_csh.a"),
+            int_library=Path("LIB_ELF/sega_int.a"),
+        )
 
-        tail = _mixed_link_tail(gfs, cdc)
+        tail = _mixed_link_tail(deps)
 
         self.assertEqual(
             tail,
             (
-                str(gfs),
+                "LIB_ELF/sega_gfs.a",
                 "-Wl,--format=coff-sh",
-                str(cdc),
+                "LIB_ELF/SEGA_CDC.A",
                 "-Wl,--format=elf32-sh",
+                "LIB_ELF/sega_dma.a",
+                "LIB_ELF/sega_csh.a",
+                "LIB_ELF/sega_int.a",
                 "-lgcc",
             ),
         )
@@ -67,9 +78,7 @@ class SaturnStage6BLinkProbeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "sega_gfs.a"
             path.write_bytes(_archive("gfs.o", _elf32_sh_rel()))
-
             summary = _validate_gfs_elf_archive(path)
-
             self.assertEqual(summary.object_format, "elf32-sh")
             self.assertEqual(summary.payload_members, 1)
             self.assertIn("ELF32 big-endian SH", summary.detail)
@@ -78,9 +87,7 @@ class SaturnStage6BLinkProbeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "SEGA_CDC.A"
             path.write_bytes(_archive("cdc_cmn.o", coff_sh_fixture()))
-
             summary = _validate_cdc_coff_archive(path)
-
             self.assertEqual(summary.object_format, "coff-sh")
             self.assertEqual(summary.payload_members, 1)
             self.assertIn("magic 0x0500", summary.detail)
@@ -89,7 +96,6 @@ class SaturnStage6BLinkProbeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "SEGA_CDC.A"
             path.write_bytes(_archive("cdc_cmn.o", _elf32_sh_rel()))
-
             with self.assertRaises(SaturnStage6BLinkProbeError):
                 _validate_cdc_coff_archive(path)
 
