@@ -26,6 +26,9 @@ typedef struct SRK_SATURN_MIDI_68K_RUNTIME_OPS {
     unsigned short (*read_mailbox_word)(unsigned int word_index);
 } SRK_SATURN_MIDI_68K_RUNTIME_OPS;
 
+/* The silent-batch tranche deliberately reuses the physically proven adapter shape. */
+typedef SRK_SATURN_MIDI_68K_RUNTIME_OPS SRK_SATURN_MIDI_68K_SILENT_BATCH_RUNTIME_OPS;
+
 /* Production does not provide or call a hardware adapter in this tranche. */
 unsigned int srk_saturn_midi_68k_protocol_begin(
     const SRK_SATURN_MIDI_68K_RUNTIME_OPS *ops
