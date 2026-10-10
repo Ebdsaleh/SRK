@@ -1,10 +1,12 @@
-"""Silent runtime orchestration contract for SRK's Saturn MIDI 68K proof.
+"""Silent runtime-orchestration contract for SRK's Saturn MIDI 68K proof.
 
-This module defines and renders the first bounded runtime path that can stop the
-Saturn sound CPU, install the already-reviewed protocol-only MC68EC000 image,
-publish and verify the deterministic MIDI preload, then restart the sound CPU.
-The committed C implementation remains uncalled by the diagnostic shell in this
-tranche, so merely adding this module enables no new Saturn runtime behavior.
+This module locks the order and telemetry of the first runtime protocol proof
+without binding that proof directly to Saturn MMIO.  The committed C layer is a
+small operation-table orchestrator: a later, separately reviewed hardware
+adapter will supply the already-accepted SMPC stop/start behavior, bounded 68K
+installer, preload publisher/verifier and mailbox reads.
+
+Nothing in the production diagnostic calls this layer yet.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from enum import IntEnum
 from .midi_mailbox import SATURN_MIDI_MAILBOX_FLAG_READY
 
 
+# Accepted Saturn anchors reserved for the later hardware adapter review.
 SATURN_MIDI_SMPC_COMREG_ADDRESS = 0x2010001F
 SATURN_MIDI_SMPC_SF_ADDRESS = 0x20100063
 SATURN_MIDI_TVSTAT_ADDRESS = 0x25F80004
@@ -22,6 +25,7 @@ SATURN_MIDI_SOUND_RAM_SH2_BASE = 0x25A00000
 SATURN_MIDI_SMPC_SNDON = 0x06
 SATURN_MIDI_SMPC_SNDOFF = 0x07
 SATURN_MIDI_SMPC_TIMEOUT = 1_000_000
+
 SATURN_MIDI_ACK_READ_INDEX = 1
 SATURN_MIDI_ACK_READ_SEQUENCE = 1
 
@@ -66,7 +70,7 @@ def classify_srk_saturn_midi_68k_protocol_snapshot(
 
 
 def render_srk_saturn_midi_68k_runtime_header() -> str:
-    """Render the C89 header for the still-uncalled silent protocol runtime."""
+    """Render the C89 header for the still-uncalled orchestration layer."""
 
     return "\n".join(
         (
@@ -89,9 +93,21 @@ def render_srk_saturn_midi_68k_runtime_header() -> str:
             "    unsigned short last_error;",
             "} SRK_SATURN_MIDI_68K_TELEMETRY;",
             "",
-            "/* This source tranche defines the path but production does not call it yet. */",
-            "unsigned int srk_saturn_midi_68k_protocol_begin(void);",
+            "typedef struct SRK_SATURN_MIDI_68K_RUNTIME_OPS {",
+            "    int (*stop_sound_cpu)(void);",
+            "    int (*install_program)(void);",
+            "    void (*publish_preload)(void);",
+            "    int (*verify_preload)(void);",
+            "    int (*start_sound_cpu)(void);",
+            "    unsigned short (*read_mailbox_word)(unsigned int word_index);",
+            "} SRK_SATURN_MIDI_68K_RUNTIME_OPS;",
+            "",
+            "/* Production does not provide or call a hardware adapter in this tranche. */",
+            "unsigned int srk_saturn_midi_68k_protocol_begin(",
+            "    const SRK_SATURN_MIDI_68K_RUNTIME_OPS *ops",
+            ");",
             "unsigned int srk_saturn_midi_68k_protocol_poll(",
+            "    const SRK_SATURN_MIDI_68K_RUNTIME_OPS *ops,",
             "    SRK_SATURN_MIDI_68K_TELEMETRY *telemetry",
             ");",
             "",
@@ -102,120 +118,48 @@ def render_srk_saturn_midi_68k_runtime_header() -> str:
 
 
 def render_srk_saturn_midi_68k_runtime_source() -> str:
-    """Render C89 runtime orchestration with no SCSP register access."""
+    """Render C89 sequencing logic with no direct Saturn MMIO."""
 
     return "\n".join(
         (
             '#include "srk_saturn_midi_68k_runtime.h"',
-            '#include "srk_saturn_midi_68k_installer.h"',
-            '#include "srk_saturn_midi_mailbox.h"',
             '#include "srk_saturn_midi_generated.h"',
+            '#include "srk_saturn_midi_mailbox.h"',
             "",
-            "#define SRK_MIDI_RUNTIME_SMPC_COMREG (*(volatile unsigned char *)0x2010001FUL)",
-            "#define SRK_MIDI_RUNTIME_SMPC_SF     (*(volatile unsigned char *)0x20100063UL)",
-            "#define SRK_MIDI_RUNTIME_TVSTAT      (*(volatile unsigned short *)0x25F80004UL)",
-            "#define SRK_MIDI_RUNTIME_SOUND_RAM   ((volatile unsigned short *)0x25A00000UL)",
-            "",
-            "#define SRK_MIDI_RUNTIME_SMPC_SNDON  0x06u",
-            "#define SRK_MIDI_RUNTIME_SMPC_SNDOFF 0x07u",
-            "#define SRK_MIDI_RUNTIME_SMPC_TIMEOUT 1000000UL",
-            "",
-            "static int srk_saturn_midi_runtime_wait_smpc_ready(void)",
+            "static int srk_saturn_midi_68k_runtime_ops_valid(",
+            "    const SRK_SATURN_MIDI_68K_RUNTIME_OPS *ops",
+            ")",
             "{",
-            "    unsigned long remaining;",
-            "",
-            "    remaining = SRK_MIDI_RUNTIME_SMPC_TIMEOUT;",
-            "    while(SRK_MIDI_RUNTIME_SMPC_SF & 0x01u){",
-            "        if(remaining == 0UL)",
-            "            return 0;",
-            "        remaining -= 1UL;",
-            "    }",
-            "    return 1;",
+            "    return ops &&",
+            "        ops->stop_sound_cpu &&",
+            "        ops->install_program &&",
+            "        ops->publish_preload &&",
+            "        ops->verify_preload &&",
+            "        ops->start_sound_cpu &&",
+            "        ops->read_mailbox_word;",
             "}",
             "",
-            "static int srk_saturn_midi_runtime_smpc_command(unsigned char command)",
+            "unsigned int srk_saturn_midi_68k_protocol_begin(",
+            "    const SRK_SATURN_MIDI_68K_RUNTIME_OPS *ops",
+            ")",
             "{",
-            "    if(!srk_saturn_midi_runtime_wait_smpc_ready())",
-            "        return 0;",
-            "",
-            "    /* Match the already accepted Type-B SMPC command flow. */",
-            "    SRK_MIDI_RUNTIME_SMPC_SF = 0x01u;",
-            "    SRK_MIDI_RUNTIME_SMPC_COMREG = command;",
-            "    return srk_saturn_midi_runtime_wait_smpc_ready();",
-            "}",
-            "",
-            "static void srk_saturn_midi_runtime_wait_command_window(void)",
-            "{",
-            "    /* The accepted diagnostic waits for V-BLANK-OUT before sound commands. */",
-            "    while(SRK_MIDI_RUNTIME_TVSTAT & 0x0008u)",
-            "        ;",
-            "}",
-            "",
-            "static unsigned short srk_saturn_midi_runtime_read_word(unsigned long byte_address)",
-            "{",
-            "    return SRK_MIDI_RUNTIME_SOUND_RAM[byte_address >> 1];",
-            "}",
-            "",
-            "static int srk_saturn_midi_runtime_verify_preload(void)",
-            "{",
-            "    const SRK_SATURN_MIDI_EVENT *event;",
-            "    unsigned long index;",
-            "    unsigned long base;",
-            "",
-            "    if(!srk_saturn_midi_preload_is_ready())",
-            "        return 0;",
-            "    if(srk_saturn_midi_runtime_read_word(SRK_MIDI_MAILBOX_ADDRESS + (SRK_MIDI_MB_WRITE_SEQUENCE * 2UL)) != SRK_MIDI_PRELOAD_WRITE_SEQUENCE)",
-            "        return 0;",
-            "    if(srk_saturn_midi_runtime_read_word(SRK_MIDI_MAILBOX_ADDRESS + (SRK_MIDI_MB_READ_SEQUENCE * 2UL)) != 0u)",
-            "        return 0;",
-            "    if(srk_saturn_midi_runtime_read_word(SRK_MIDI_MAILBOX_ADDRESS + (SRK_MIDI_MB_WRITE_INDEX * 2UL)) != (unsigned short)SRK_MIDI_EVENT_COUNT)",
-            "        return 0;",
-            "    if(srk_saturn_midi_runtime_read_word(SRK_MIDI_MAILBOX_ADDRESS + (SRK_MIDI_MB_READ_INDEX * 2UL)) != 0u)",
-            "        return 0;",
-            "    if(srk_saturn_midi_runtime_read_word(SRK_MIDI_MAILBOX_ADDRESS + (SRK_MIDI_MB_LAST_ERROR * 2UL)) != 0u)",
-            "        return 0;",
-            "",
-            "    base = SRK_MIDI_TONE_BANK_ADDRESS;",
-            "    for(index=0UL; index<(unsigned long)(SRK_MIDI_TONE_COUNT * SRK_MIDI_TONE_SAMPLES); index++){",
-            "        if(srk_saturn_midi_runtime_read_word(base + (index * 2UL)) != srk_saturn_midi_tone_bank[index / SRK_MIDI_TONE_SAMPLES][index % SRK_MIDI_TONE_SAMPLES])",
-            "            return 0;",
-            "    }",
-            "",
-            "    base = SRK_MIDI_QUEUE_ADDRESS;",
-            "    for(index=0UL; index<SRK_MIDI_EVENT_COUNT; index++){",
-            "        event = &srk_saturn_midi_events[index];",
-            "        if(srk_saturn_midi_runtime_read_word(base + (index * 8UL) + 0UL) != (unsigned short)(event->time_us >> 16))",
-            "            return 0;",
-            "        if(srk_saturn_midi_runtime_read_word(base + (index * 8UL) + 2UL) != (unsigned short)(event->time_us & 0xFFFFUL))",
-            "            return 0;",
-            "        if(srk_saturn_midi_runtime_read_word(base + (index * 8UL) + 4UL) != (unsigned short)(((unsigned short)event->opcode << 8) | event->channel))",
-            "            return 0;",
-            "        if(srk_saturn_midi_runtime_read_word(base + (index * 8UL) + 6UL) != (unsigned short)(((unsigned short)event->data0 << 8) | event->data1))",
-            "            return 0;",
-            "    }",
-            "    return 1;",
-            "}",
-            "",
-            "unsigned int srk_saturn_midi_68k_protocol_begin(void)",
-            "{",
-            "    srk_saturn_midi_runtime_wait_command_window();",
-            "    if(!srk_saturn_midi_runtime_smpc_command(SRK_MIDI_RUNTIME_SMPC_SNDOFF))",
+            "    if(!srk_saturn_midi_68k_runtime_ops_valid(ops))",
+            "        return SRK_MIDI_68K_RUNTIME_NOT_STARTED;",
+            "    if(!ops->stop_sound_cpu())",
             "        return SRK_MIDI_68K_RUNTIME_SOUND_STOP_FAILED;",
-            "",
-            "    if(!srk_saturn_midi_68k_install_while_stopped())",
+            "    if(!ops->install_program())",
             "        return SRK_MIDI_68K_RUNTIME_INSTALL_FAILED;",
             "",
-            "    srk_saturn_midi_preload_publish();",
-            "    if(!srk_saturn_midi_runtime_verify_preload())",
+            "    ops->publish_preload();",
+            "    if(!ops->verify_preload())",
             "        return SRK_MIDI_68K_RUNTIME_PRELOAD_FAILED;",
-            "",
-            "    if(!srk_saturn_midi_runtime_smpc_command(SRK_MIDI_RUNTIME_SMPC_SNDON))",
+            "    if(!ops->start_sound_cpu())",
             "        return SRK_MIDI_68K_RUNTIME_SOUND_START_FAILED;",
-            "",
             "    return SRK_MIDI_68K_RUNTIME_RUNNING;",
             "}",
             "",
             "unsigned int srk_saturn_midi_68k_protocol_poll(",
+            "    const SRK_SATURN_MIDI_68K_RUNTIME_OPS *ops,",
             "    SRK_SATURN_MIDI_68K_TELEMETRY *telemetry",
             ")",
             "{",
@@ -224,10 +168,13 @@ def render_srk_saturn_midi_68k_runtime_source() -> str:
             "    unsigned short read_index;",
             "    unsigned short last_error;",
             "",
-            "    flags = srk_saturn_midi_runtime_read_word(SRK_MIDI_MAILBOX_ADDRESS + (SRK_MIDI_MB_FLAGS * 2UL));",
-            "    read_sequence = srk_saturn_midi_runtime_read_word(SRK_MIDI_MAILBOX_ADDRESS + (SRK_MIDI_MB_READ_SEQUENCE * 2UL));",
-            "    read_index = srk_saturn_midi_runtime_read_word(SRK_MIDI_MAILBOX_ADDRESS + (SRK_MIDI_MB_READ_INDEX * 2UL));",
-            "    last_error = srk_saturn_midi_runtime_read_word(SRK_MIDI_MAILBOX_ADDRESS + (SRK_MIDI_MB_LAST_ERROR * 2UL));",
+            "    if(!srk_saturn_midi_68k_runtime_ops_valid(ops))",
+            "        return SRK_MIDI_68K_RUNTIME_NOT_STARTED;",
+            "",
+            "    flags = ops->read_mailbox_word(SRK_MIDI_MB_FLAGS);",
+            "    read_sequence = ops->read_mailbox_word(SRK_MIDI_MB_READ_SEQUENCE);",
+            "    read_index = ops->read_mailbox_word(SRK_MIDI_MB_READ_INDEX);",
+            "    last_error = ops->read_mailbox_word(SRK_MIDI_MB_LAST_ERROR);",
             "",
             "    if(telemetry){",
             "        telemetry->flags = flags;",
