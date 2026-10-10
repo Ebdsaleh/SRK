@@ -1,105 +1,157 @@
-# Saturn SCSP Stage 6B — mixed ELF/COFF link finding
+# Saturn SCSP Stage 6B — mixed ELF/COFF and SBL dependency closure
 
 ## Status
 
 Stage 6B Gate 2 reached the final link after every SRK C source compiled and the
-startup source assembled successfully.  The link stopped on the installed
+startup source assembled successfully. The link stopped on the installed
 `SEGA_CDC.A` with:
 
 ```text
 could not read symbols: File format is ambiguous
 ```
 
-No ISO or SAROO/card write occurred.
+Gate 3 explicitly scoped CDC as `coff-sh`; that removed the format ambiguity
+and exposed the next layer of normal static-library dependencies. No ISO or
+SAROO/card write occurred in either failed gate.
 
-## Mjolnir evidence
+## Mjolnir format evidence
 
-The read-only Mjolnir archive inspector established that all three reviewed SBL
-libraries use a normal classic Unix `ar` container, but their member object
-formats differ.
+Mjolnir established that the reviewed SBL libraries use normal classic Unix
+`ar` containers, but their member object formats differ.
 
 ### `sega_gfs.a`
 
 - classic Unix `ar`;
 - 7 payload members;
-- every payload begins with ELF magic;
-- every payload decodes as ELF32, big-endian, relocatable, machine SH (42).
+- ELF32, big-endian, relocatable, machine SH (42).
 
 ### `SEGA_CDC.A`
 
 - classic Unix `ar`;
 - 17 payload members;
-- payload members do **not** begin with ELF magic;
-- every payload begins with `05 00` and has a structurally consistent 20-byte
-  Hitachi SH COFF file header.
+- Hitachi SH big-endian COFF (`0x0500`).
 
 ### `SEGADGFS.A`
 
 - classic Unix `ar`;
 - 12 payload members;
-- the same `05 00` member signature is present throughout;
-- this is therefore part of the COFF side of the historical SBL distribution,
-  not a replacement ELF CDC dependency.
+- Hitachi SH COFF as well;
+- useful format evidence, but not required by the selected dedicated GFS link
+  path.
 
-The important boundary is therefore:
+The archive wrapper itself is healthy. It does not need repacking.
+
+## Gate 3 dependency evidence
+
+With the CDC input format disambiguated, the real linker exposed GFS's missing
+support symbols in one batch:
 
 ```text
-sega_gfs.a  -> ELF32 SH objects
-SEGA_CDC.A  -> Hitachi SH big-endian COFF objects
+_memcmp
+_strncmp
+_memset
+_strncpy
+_DMA_ScuSetPrm
+_DMA_ScuStart
+_CSH_Purge
+_DMA_ScuGetStatus
+_DMA_CpuStop
+_DMA_CpuSetComPrm
+_DMA_CpuSetPrm
+_DMA_CpuStart
+_DMA_CpuGetStatus
 ```
 
-The archive wrapper itself is not malformed and does not need repacking.
+Rather than add libraries one failure at a time, Mjolnir was expanded into a
+Saturn-first object/archive workbench and run across the entire installed
+`LIB_ELF` tree.
 
-## Format identification
-
-SRK now has a minimal raw-byte COFF header decoder.  For Hitachi SuperH:
+The SDK-wide pass decoded 336 objects and built a cross-format symbol provider /
+consumer graph. For the selected GFS path it proved these direct edges:
 
 ```text
-0x0500 -> big-endian SH COFF
-0x0550 -> little-endian SH COFF
+sega_gfs.a -> SEGA_CDC.A   (35 CDC symbols)
+sega_gfs.a -> sega_dma.a   (8 DMA symbols)
+sega_gfs.a -> sega_csh.a   (_CSH_Purge)
 ```
 
-The observed CDC members use the big-endian `0x0500` form.
-
-This explains why merely passing `SEGA_CDC.A` to an SH-ELF linker can be
-ambiguous: the linker must be told which historical SH COFF BFD target is meant.
-Saturn GNU build practice uses the normal `coff-sh` target for Sega's COFF
-libraries.
-
-## Safe next gate
-
-Do **not** modify the normal standalone builder yet.
-
-A bounded off-card link probe now exists:
+It also proved the dedicated DMA transitive edges:
 
 ```text
-python -m rikai_kotoba.tools.saturn_stage6b_link_probe --project <fresh-project>
+sega_dma.a -> sega_csh.a   (_CSH_Purge)
+sega_dma.a -> sega_int.a   (_INT_GetScuFunc, _INT_SetScuFunc)
 ```
 
-It first proves:
+The broad `sega_sat.a` aggregate exports duplicate providers, but Stage 6B does
+not need that large umbrella library. `SEGADGFS.A` also contains duplicate GFS
+providers but is not part of the selected ELF GFS path.
 
-- GFS archive payloads are ELF32 big-endian SH relocatables;
-- CDC archive payloads are Hitachi SH big-endian COFF;
-- generated project inputs and private dependencies still match their pinned
-  provenance.
+## Freestanding C runtime surface
 
-Only then does it compile/assemble in a dedicated probe directory and link with
-this narrowly scoped input-format sequence:
+The SDK-wide index found no SBL `LIB_ELF` providers for these ordinary C ABI
+symbols consumed by `sega_gfs.a`:
 
 ```text
-... SRK ELF objects ...
+_memcmp
+_memset
+_strncmp
+_strncpy
+```
+
+The standalone image intentionally remains `-nostdlib`. SRK therefore provides
+a tiny deterministic freestanding implementation of those functions in
+`srk_saturn_runtime.c`. The already accepted startup assembly continues to
+provide `_memcpy` for compiler/SBL aggregate-copy calls.
+
+Compiler helper symbols used by GFS, such as division/shift helpers, remain the
+responsibility of the existing final `-lgcc` link.
+
+## Complete Stage 6B dedicated link contract
+
+The production Python-native builder and bounded probe now share one explicit
+link order:
+
+```text
+... SRK ELF objects, including srk_saturn_runtime.o ...
 sega_gfs.a
 --format=coff-sh
 SEGA_CDC.A
 --format=elf32-sh
+sega_dma.a
+sega_csh.a
+sega_int.a
 -lgcc
 ```
 
-The probe never invokes the ISO builder and has no SAROO/card path.
+Ordering matters:
 
-If this link succeeds with the real historical toolchain, the exact format
-handling can be promoted into the normal Python-native builder and then the
-complete Stage 6B off-card build gate can be rerun from another fresh project.
+1. GFS appears before the libraries that satisfy its unresolved symbols.
+2. Only `SEGA_CDC.A` is interpreted as `coff-sh`.
+3. The linker is reset to `elf32-sh` immediately after CDC.
+4. DMA precedes its cache/interrupt providers.
+5. `libgcc` remains last for compiler-emitted helpers.
 
-If it fails, preserve the probe project unchanged and use the exact linker
-output as the next piece of evidence.
+Every private SBL artifact is pinned by path, size, and SHA-256 in the generated
+project manifest and remains outside the generated project tree.
+
+## Mjolnir architectural rule
+
+Mjolnir is part of SRK's general Saturn reverse-engineering layer. New Saturn
+containers, object formats, symbol conventions, and dependency structures must
+be taught to Mjolnir generically rather than implemented as disposable
+single-file probes. Current binary mode supports Unix `ar`, ELF, Hitachi SH
+COFF, normalized object sections/symbols, recursive SDK scanning, symbol search,
+and cross-library dependency resolution without invoking `nm`, `objdump`, `ar`,
+or the linker.
+
+## Next gate
+
+After the source test gate passes, prepare a **fresh** Stage 6B project and run
+the normal Python-native builder. The next acceptance gate is a complete
+off-card build: compile, mixed-format link, ISO construction, packaged PCM
+verification, MODE1/2352 BIN/CUE generation, and post-build private dependency
+verification.
+
+No SAROO/card write is authorized by this gate. Physical R17 remains blocked
+until the full build succeeds and the remaining Sega GFS API return/size
+semantics are grounded from exact documentation/examples.
