@@ -52,12 +52,49 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
 
         self.assertIn("AUDIO / SCSP TEST", app_c)
         self.assertIn("A Play/Stop   C Mute/Unmute", app_c)
-        self.assertIn("LEFT/UP/RIGHT Pan L/C/R", app_c)
+        self.assertIn("LEFT/UP/RIGHT Select L/Both/R", app_c)
         self.assertIn("X/Y/Z Tone Low/Mid/High", app_c)
-        self.assertIn("L/R Volume Down/Up", app_c)
+        self.assertIn("L/R Volume   DOWN+A Stereo", app_c)
         self.assertIn("host->present_audio_tone", app_c)
         self.assertIn("host->stop_audio", app_c)
         self.assertIn("host->read_audio_status", app_c)
+
+    def test_audio_screen_exposes_modes_sources_and_both_slot_registers(self):
+        app_c = (DIAG / "srk_diag_app.c").read_text(encoding="utf-8")
+
+        self.assertIn("Stages 1-5: deterministic PCM proofs", app_c)
+        self.assertIn("srk_diag_audio_mode_label", app_c)
+        self.assertIn("srk_diag_audio_source_label(&app->audio)", app_c)
+        self.assertIn('return "SWEEP"', app_c)
+        self.assertIn('return "MIXED"', app_c)
+        self.assertIn('return "SHAPED"', app_c)
+        self.assertIn('return "STEREO"', app_c)
+        self.assertIn('return "SINGLE"', app_c)
+
+        for label in (
+            "S0 Src:",
+            "S1 Src:",
+            "S0 LEA:",
+            "S1 LEA:",
+            "S0 Pit:",
+            "S1 Pit:",
+            "S0 Mix:",
+            "S1 Mix:",
+            "S0 Ctl:",
+            "S1 Ctl:",
+        ):
+            self.assertIn(label, app_c)
+
+        self.assertIn("status.slot_source", app_c)
+        self.assertIn("status.slot_loop_end", app_c)
+        self.assertIn("status.slot1_source", app_c)
+        self.assertIn("status.slot1_loop_end", app_c)
+        self.assertIn("status.slot1_pitch", app_c)
+        self.assertIn("status.slot1_mixer", app_c)
+        self.assertIn("status.slot1_control", app_c)
+
+        self.assertIn("DOWN+B Sweep  DOWN+C Shaped", app_c)
+        self.assertIn("DOWN+Z Mixed pair", app_c)
 
     def test_stage2_stereo_pair_preserves_single_slot_mode_and_isolates_sources(self):
         audio_h = (DIAG / "srk_diag_audio.h").read_text(encoding="utf-8")
