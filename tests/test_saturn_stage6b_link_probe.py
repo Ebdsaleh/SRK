@@ -1,0 +1,109 @@
+"""Tests for the bounded Stage 6B mixed-object-format link probe."""
+
+from pathlib import Path
+import tempfile
+import unittest
+
+from rikai_kotoba.tools.saturn_stage6b_link_probe import (
+    SaturnStage6BLinkProbeError,
+    _mixed_link_tail,
+    _validate_cdc_coff_archive,
+    _validate_gfs_elf_archive,
+)
+
+
+def _ar_member(name: str, payload: bytes) -> bytes:
+    raw_name = (name + "/").encode("ascii").ljust(16, b" ")
+    header = b"".join(
+        (
+            raw_name,
+            b"0".ljust(12, b" "),
+            b"0".ljust(6, b" "),
+            b"0".ljust(6, b" "),
+            b"100644".ljust(8, b" "),
+            str(len(payload)).encode("ascii").ljust(10, b" "),
+            b"`\n",
+        )
+    )
+    assert len(header) == 60
+    return header + payload + (b"\n" if len(payload) & 1 else b"")
+
+
+def _archive(name: str, payload: bytes) -> bytes:
+    return b"!<arch>\n" + _ar_member(name, payload)
+
+
+def _elf32_sh_rel() -> bytes:
+    data = bytearray(64)
+    data[0:4] = b"\x7fELF"
+    data[4] = 1
+    data[5] = 2
+    data[6] = 1
+    data[16:18] = (1).to_bytes(2, "big")
+    data[18:20] = (42).to_bytes(2, "big")
+    return bytes(data)
+
+
+def _coff_sh_big() -> bytes:
+    data = bytearray(64)
+    data[0:2] = (0x0500).to_bytes(2, "big")
+    data[2:4] = (3).to_bytes(2, "big")
+    data[4:8] = (0x30E308FD).to_bytes(4, "big")
+    data[8:12] = (20).to_bytes(4, "big")
+    data[12:16] = (1).to_bytes(4, "big")
+    data[16:18] = (0).to_bytes(2, "big")
+    data[18:20] = (0).to_bytes(2, "big")
+    return bytes(data)
+
+
+class SaturnStage6BLinkProbeTests(unittest.TestCase):
+    def test_mixed_link_tail_scopes_coff_only_to_cdc_then_restores_elf(self):
+        gfs = Path("GFS/sega_gfs.a")
+        cdc = Path("GFS/SEGA_CDC.A")
+
+        tail = _mixed_link_tail(gfs, cdc)
+
+        self.assertEqual(
+            tail,
+            (
+                str(gfs),
+                "-Wl,--format=coff-sh",
+                str(cdc),
+                "-Wl,--format=elf32-sh",
+                "-lgcc",
+            ),
+        )
+
+    def test_gfs_validator_accepts_elf32_big_endian_sh_archive(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "sega_gfs.a"
+            path.write_bytes(_archive("gfs.o", _elf32_sh_rel()))
+
+            summary = _validate_gfs_elf_archive(path)
+
+            self.assertEqual(summary.object_format, "elf32-sh")
+            self.assertEqual(summary.payload_members, 1)
+            self.assertIn("ELF32 big-endian SH", summary.detail)
+
+    def test_cdc_validator_accepts_hitachi_sh_big_endian_coff_archive(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "SEGA_CDC.A"
+            path.write_bytes(_archive("cdc_cmn.o", _coff_sh_big()))
+
+            summary = _validate_cdc_coff_archive(path)
+
+            self.assertEqual(summary.object_format, "coff-sh")
+            self.assertEqual(summary.payload_members, 1)
+            self.assertIn("magic 0x0500", summary.detail)
+
+    def test_cdc_validator_rejects_elf_payload(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "SEGA_CDC.A"
+            path.write_bytes(_archive("cdc_cmn.o", _elf32_sh_rel()))
+
+            with self.assertRaises(SaturnStage6BLinkProbeError):
+                _validate_cdc_coff_archive(path)
+
+
+if __name__ == "__main__":
+    unittest.main()
