@@ -19,9 +19,31 @@ Therefore Stage 6B follows this hierarchy:
 
 No proprietary Sega source, header, static library, or documentation text is copied into public SRK.
 
+## First real evidence pass — accepted
+
+The first ERIDU read-only probe completed successfully at source HEAD
+`6612f631025a384fd9d9e2322cd59886a7ceeb90` after the complete 389-test Python gate passed.
+
+The local Saturn development tree supplied concrete evidence for the high-level GFS path:
+
+- 16 GFS/CDC-named library artifacts were found;
+- 31 likely CD/GFS/CDC headers were found;
+- the SBL 6.01 ELF library tree contains `sega_gfs.a`, `SEGA_CDC.A`, and `SEGADGFS.A`;
+- the SBL public include tree contains `SEGA_GFS.H` and `SEGA_CDC.H`;
+- the Sega file-system documentation identifies `GFS_Init` as library initialization plus CD mounting;
+- documented initialization uses a caller work area plus a directory-information table;
+- documented root-file lookup uses `GFS_NameToId`;
+- documented file operations include `GFS_Open`, `GFS_Close`, `GFS_GetFileSize`, `GFS_Fread`, and `GFS_Load`;
+- a documented simple load example uses `GFS_NameToId` followed by `GFS_Load` into caller RAM;
+- the documentation separately exposes non-wait/server-style functions (`GFS_Nw*`), so the first proof can deliberately avoid assuming that asynchronous path is required.
+
+This is enough to reject a guessed low-level CD-block implementation. The supported high-level direction is clearly Sega GFS.
+
+It is **not yet enough to write the public runtime adapter safely**, because the first broad probe did not prioritize the exact installed header declarations or the exact local build/link dependency lines. Those details remain the next research gate.
+
 ## Read-only evidence probe
 
-SRK now provides:
+SRK provides:
 
 ```text
 python -m rikai_kotoba.tools.saturn_cd_runtime_probe --saturn-root <Saturn-Dev>
@@ -32,9 +54,25 @@ The probe:
 - recursively inspects the supplied Saturn development root read-only;
 - reports GFS/CDC-named static libraries;
 - reports likely CD/GFS/CDC headers;
-- scans bounded text/source/example material for `GFS_*`, `sega_gfs`, and `libgfs` evidence;
+- scans bounded text/source/example material for GFS/CDC evidence;
 - prints file/line locations and short matching lines for review;
 - never copies, modifies, links, executes, or writes any local Saturn file.
+
+The refined probe also prioritizes the contract details needed before runtime code:
+
+- SHA-256 fingerprints of the preferred installed SBL GFS/CDC header/library artifacts;
+- exact installed-header lines containing the target GFS API and work/directory macros;
+- local makefile/config lines that name GFS/CDC link dependencies.
+
+Use:
+
+```text
+python -m rikai_kotoba.tools.saturn_cd_runtime_probe \
+  --saturn-root <Saturn-Dev> \
+  --contract-only
+```
+
+The `--contract-only` form omits the large general evidence listing so the exact private dependency contract can be reviewed without copying those private files into SRK.
 
 The output is evidence for design, not permission to reuse Sega implementation material.
 
