@@ -32,6 +32,7 @@ def _project(root: Path) -> SaturnStandaloneProjectResult:
         source_root=root / "PROJECT" / "src",
         build_script=root / "PROJECT" / "build.bat",
         ip_bin=root / "PROJECT" / "IP.BIN",
+        packaged_pcm=root / "PROJECT" / "cd" / "SRKPCM.BIN",
         manifest=root / "PROJECT" / "SRK_STANDALONE_PROJECT.json",
         gcc=root / "tools" / "sh-elf-gcc.exe",
         assembler=root / "tools" / "sh-elf-as.exe",
