@@ -55,7 +55,7 @@ def _parser() -> argparse.ArgumentParser:
 def _print_pre_media(result) -> None:
     print(f"Candidate manifest       : {result.manifest_sha256}")
     print(f"Candidate build report   : {result.report_sha256}")
-    print(f"Batch image SHA-256      : {result.batch_image_sha256}")
+    print(f"Batch image SHA-256      : {result.image_sha256}")
     print(f"Accepted BIN SHA-256     : {result.deployable_bin_sha256}")
     print(f"Accepted CUE SHA-256     : {result.deployable_cue_sha256}")
     print("Proof UI/call path       : VERIFIED")
