@@ -229,4 +229,63 @@ accepted.
 
 R17 remains the accepted known-good physical recovery baseline.
 
+## Physical acceptance — 2026-10-10
+
+R18 completed its real-Saturn physical acceptance gate.
+
+The supplied real-hardware recording of the silent MIDI/MC68EC000 proof visibly
+reached the required terminal state:
+
+```text
+STATUS        = ACKNOWLEDGED
+READ_SEQUENCE = 1
+READ_INDEX    = 1
+LAST_ERROR    = 0
+```
+
+The screen also reported the corresponding success summary:
+
+```text
+sequence=1 index=1 error=0
+```
+
+This accepts the intended physical round trip:
+
+```text
+SH-2
+  -> Saturn Sound RAM
+  -> installed resident MC68EC000 image
+  -> MC68EC000 execution
+  -> mailbox acknowledgement
+  -> SH-2 observation of acknowledgement state
+```
+
+The final AUDIO / SCSP diagnostic was also exercised on the same real Saturn.
+Audible success is accepted from the operator's direct observation; the video
+provides supporting visual evidence that the final audio diagnostic screen was
+running, but camera audio is not treated as a precision SCSP measurement.
+
+Accepted physical result:
+
+```text
+R18 PHYSICAL ACCEPTANCE : PASS
+REAL SATURN HARDWARE    : PASS
+SAROO EXECUTION         : PASS
+FINAL AUDIO / SCSP TEST : PASS (direct operator observation)
+MIDI / MC68EC000 PROOF  : PASS
+MAILBOX STATUS          : ACKNOWLEDGED
+READ_SEQUENCE           : 1
+READ_INDEX              : 1
+LAST_ERROR              : 0
+MIDI-DRIVEN SCSP NOTE   : NOT YET ENABLED
+```
+
+With this gate accepted, development may proceed from the silent protocol proof
+to the resident MC68EC000 MIDI-driver expansion. The next work must preserve the
+same staged safety policy: command/timing semantics are proven before broader
+SCSP voice control is enabled.
+
+R17 remains the known-good recovery baseline while R18 becomes the accepted
+silent MIDI/MC68EC000 physical proof baseline.
+
 > Safer is secure, secure is faster.
