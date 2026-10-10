@@ -14,6 +14,7 @@ from rikai_kotoba.hardware.saturn.midi_68k_silent_batch_physical_candidate_full_
 )
 
 
+_ROOT = Path(__file__).resolve().parents[1]
 _MANIFEST = "SRK_STANDALONE_PROJECT.json"
 _REPORT = "SRK_STANDALONE_BUILD.json"
 _IMAGE_SHA = "a" * 64
