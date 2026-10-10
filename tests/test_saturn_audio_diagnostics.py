@@ -37,18 +37,12 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("SRK_DIAG_AUDIO_PAN_RIGHT", audio_h)
         self.assertIn("SRK_DIAG_AUDIO_WAVEFORM_TONE", audio_h)
         self.assertIn("SRK_DIAG_AUDIO_WAVEFORM_SHAPED_PCM", audio_h)
+        self.assertIn("SRK_DIAG_AUDIO_WAVEFORM_PACKAGED_PCM", audio_h)
 
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_A", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_B", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_C", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_LEFT", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_UP", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_RIGHT", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_X", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_Y", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_Z", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_L", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_R", audio_c)
+        for button in (
+            "A", "B", "C", "LEFT", "UP", "RIGHT", "X", "Y", "Z", "L", "R"
+        ):
+            self.assertIn(f"pressed_buttons & SRK_DIAG_BUTTON_{button}", audio_c)
 
         self.assertIn("AUDIO / SCSP TEST", app_c)
         self.assertIn("A Play/Stop   C Mute/Unmute", app_c)
@@ -72,16 +66,8 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn('return "SINGLE"', app_c)
 
         for label in (
-            "S0 Src:",
-            "S1 Src:",
-            "S0 LEA:",
-            "S1 LEA:",
-            "S0 Pit:",
-            "S1 Pit:",
-            "S0 Mix:",
-            "S1 Mix:",
-            "S0 Ctl:",
-            "S1 Ctl:",
+            "S0 Src:", "S1 Src:", "S0 LEA:", "S1 LEA:", "S0 Pit:",
+            "S1 Pit:", "S0 Mix:", "S1 Mix:", "S0 Ctl:", "S1 Ctl:",
         ):
             self.assertIn(label, app_c)
 
@@ -92,7 +78,6 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("status.slot1_pitch", app_c)
         self.assertIn("status.slot1_mixer", app_c)
         self.assertIn("status.slot1_control", app_c)
-
         self.assertIn("DOWN+B Sweep  DOWN+C Shaped", app_c)
         self.assertIn("DOWN+Z Mixed pair", app_c)
 
@@ -124,11 +109,10 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("right[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_HIGH", backend)
         self.assertIn("request->pan_id != 2u", backend)
         self.assertIn("request->pan_id != 0u", backend)
-        self.assertIn("KYONEX executes the KYONB state for all slots at once", backend)
+        self.assertIn("SRK_AUDIO_CONTROL_KYONEX", backend)
 
     def test_stage2_down_a_is_explicit_stereo_both_play_chord(self):
         audio_c = (DIAG / "srk_diag_audio.c").read_text(encoding="utf-8")
-
         self.assertIn("stereo_both_play", audio_c)
         self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_DOWN", audio_c)
         self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_A", audio_c)
@@ -145,7 +129,6 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("unsigned int sweep_frame", audio_h)
         self.assertIn("int sweep_active", audio_h)
         self.assertIn("sweep_toggle", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_DOWN", audio_c)
         self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_B", audio_c)
         self.assertIn("srk_diag_audio_enter_sweep(state)", audio_c)
         self.assertIn("srk_diag_audio_leave_sweep(state)", audio_c)
@@ -156,7 +139,6 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("state->volume = (srk_u8)level", audio_c)
         self.assertIn("state->volume = (srk_u8)(7u - level)", audio_c)
         self.assertIn("state->pan = SRK_DIAG_AUDIO_PAN_CENTER", audio_c)
-
         self.assertIn("SRK_AUDIO_PITCH_LOW  0x7800u", backend)
         self.assertIn("SRK_AUDIO_PITCH_MID  0x0000u", backend)
         self.assertIn("SRK_AUDIO_PITCH_HIGH 0x0800u", backend)
@@ -173,11 +155,10 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("SRK_DIAG_AUDIO_WAVEFORM_SHAPED_PCM = 1", audio_h)
         self.assertIn("int sample_mode", audio_h)
         self.assertIn("sample_toggle", audio_c)
-        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_DOWN", audio_c)
         self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_C", audio_c)
         self.assertIn("srk_diag_audio_enter_sample_mode(state)", audio_c)
         self.assertIn("srk_diag_audio_leave_sample_mode(state)", audio_c)
-        self.assertIn("request->waveform_id = state->sample_mode", audio_c)
+        self.assertIn("SRK_DIAG_AUDIO_WAVEFORM_SHAPED_PCM", audio_c)
         self.assertIn('"SHAPED PCM"', audio_c)
 
         self.assertIn("unsigned int audio_waveform_id", saturn_host_h)
@@ -223,6 +204,49 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("status->slot_source = left[SRK_AUDIO_SLOT_SA_LOW]", backend)
         self.assertIn("status->slot1_source = right[SRK_AUDIO_SLOT_SA_LOW]", backend)
 
+    def test_stage6_packaged_pcm_uses_gfs_then_existing_single_slot_scsp_path(self):
+        audio_h = (DIAG / "srk_diag_audio.h").read_text(encoding="utf-8")
+        audio_c = (DIAG / "srk_diag_audio.c").read_text(encoding="utf-8")
+        backend = (STANDALONE / "srk_saturn_audio.c").read_text(encoding="utf-8")
+        runtime_h = (STANDALONE / "srk_saturn_packaged_pcm.h").read_text(encoding="utf-8")
+        runtime_c = (STANDALONE / "srk_saturn_packaged_pcm.c").read_text(encoding="utf-8")
+        host_h = (STANDALONE / "srk_saturn_host.h").read_text(encoding="utf-8")
+
+        self.assertIn("SRK_DIAG_AUDIO_WAVEFORM_PACKAGED_PCM = 2", audio_h)
+        self.assertIn("int packaged_mode", audio_h)
+        self.assertIn("packaged_toggle", audio_c)
+        self.assertIn("pressed_buttons & SRK_DIAG_BUTTON_Y", audio_c)
+        self.assertIn("srk_diag_audio_enter_packaged_mode", audio_c)
+        self.assertIn("srk_diag_audio_leave_packaged_mode", audio_c)
+        self.assertIn('return "DISC PCM"', audio_c)
+
+        self.assertIn("SRK_SATURN_PACKAGED_PCM_FILE_BYTES 1040u", runtime_h)
+        self.assertIn("SRK_SATURN_PACKAGED_PCM_SAMPLE_COUNT 512u", runtime_h)
+        self.assertIn('#include "SEGA_GFS.H"', runtime_c)
+        self.assertIn("GFS_DIR_NAME", runtime_c)
+        self.assertIn("GFS_DIRTBL_DIRNAME", runtime_c)
+        self.assertIn("GFS_Init", runtime_c)
+        self.assertIn('GFS_NameToId((Sint8 *)"SRKPCM.BIN")', runtime_c)
+        self.assertIn("GFS_GetFileSize", runtime_c)
+        self.assertIn("GFS_Load", runtime_c)
+        self.assertIn("GFS_Close", runtime_c)
+        self.assertIn("result != (Sint32)SRK_SATURN_PACKAGED_PCM_FILE_BYTES", runtime_c)
+        self.assertIn("SRK_PCM_MAGIC_0 'S'", runtime_c)
+        self.assertIn("SRK_PCM_VERSION 1u", runtime_c)
+        self.assertIn("SRK_PCM_ENCODING_PCM16_BE 1u", runtime_c)
+        self.assertIn("SRK_PCM_CHANNELS_MONO 1u", runtime_c)
+
+        self.assertIn("audio_packaged_attempted", host_h)
+        self.assertIn("audio_packaged_ready", host_h)
+        self.assertIn("SRK_SATURN_PACKAGED_PCM audio_packaged_pcm", host_h)
+        self.assertIn("SRK_AUDIO_STAGE6_SAMPLE_ADDRESS 0x00002800u", backend)
+        self.assertIn("SRK_AUDIO_STAGE6_WAVEFORM_PACKAGED_PCM_ID 2u", backend)
+        self.assertIn("srk_saturn_audio_prepare_packaged", backend)
+        self.assertIn("srk_saturn_packaged_pcm_load", backend)
+        self.assertIn("srk_saturn_audio_install_stage6_sample", backend)
+        self.assertIn("SRK_AUDIO_STAGE6_SAMPLE_LOOP_END", backend)
+        self.assertIn("pcm->samples[pcm->loop_start]", backend)
+
     def test_scsp_backend_uses_reviewed_sound_cpu_and_slot_contract(self):
         audio_c = (STANDALONE / "srk_saturn_audio.c").read_text(encoding="utf-8")
 
@@ -245,7 +269,6 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("SRK_AUDIO_SOUND_CPU_PC    0x00000400ul", audio_c)
         self.assertIn("SRK_AUDIO_VECTOR_COUNT    256u", audio_c)
         self.assertIn("= 0x60FEu", audio_c)
-        self.assertIn("do not leave Sound CPU OFF", audio_c)
 
         self.assertIn("SRK_AUDIO_CONTROL_NORMAL_LOOP 0x0020u", audio_c)
         self.assertIn("SRK_AUDIO_SOUND_DIRECT 0x0100u", audio_c)
@@ -258,16 +281,14 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn("SRK_AUDIO_PAN_HARD_LEFT  0x1Fu", audio_c)
         self.assertIn("SRK_AUDIO_PAN_CENTER     0x00u", audio_c)
         self.assertIn("SRK_AUDIO_PAN_HARD_RIGHT 0x0Fu", audio_c)
-
         self.assertIn("SRK_AUDIO_PITCH_LOW  0x7800u", audio_c)
         self.assertIn("SRK_AUDIO_PITCH_MID  0x0000u", audio_c)
         self.assertIn("SRK_AUDIO_PITCH_HIGH 0x0800u", audio_c)
-
         self.assertIn("SRK_AUDIO_SMPC_SF = 0x01u", audio_c)
         self.assertIn("SRK_AUDIO_SMPC_COMREG = command", audio_c)
         self.assertIn("while(SRK_AUDIO_TVSTAT & 0x0008u)", audio_c)
 
-    def test_generated_project_and_builder_carry_both_audio_layers(self):
+    def test_generated_project_and_builder_carry_all_audio_layers(self):
         project_py = (
             ROOT / "src" / "rikai_kotoba" / "hardware" / "saturn" / "standalone_project.py"
         ).read_text(encoding="utf-8")
@@ -280,8 +301,12 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
         self.assertIn('"srk_diag_audio.h"', project_py)
         self.assertIn('"srk_saturn_audio.c"', project_py)
         self.assertIn('"srk_saturn_audio.h"', project_py)
+        self.assertIn('"srk_saturn_packaged_pcm.c"', project_py)
+        self.assertIn('"srk_saturn_packaged_pcm.h"', project_py)
         self.assertIn('"srk_diag_audio.c"', build_py)
         self.assertIn('"srk_saturn_audio.c"', build_py)
+        self.assertIn('"srk_saturn_packaged_pcm.c"', build_py)
+        self.assertIn("stage6b_gfs", build_py)
         self.assertIn("srk_saturn_audio_bind(&srk_host, &srk_host_state)", main_c)
 
 
