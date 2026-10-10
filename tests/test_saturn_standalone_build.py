@@ -41,9 +41,9 @@ def _ip_bin() -> bytes:
     return bytes(data)
 
 
-def _touch(path: Path) -> Path:
+def _touch(path: Path, data: bytes = b"") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"")
+    path.write_bytes(data)
     return path
 
 
@@ -118,6 +118,11 @@ def _prepared_project(root: Path) -> Path:
         _touch(bin_dir / name)
     _touch(saturn / "TOOLS" / "mkisofs.exe")
 
+    segalib = saturn / "SaturnOrbit-Inspect" / "payload" / "app" / "SBL_601" / "SEGALIB"
+    _touch(segalib / "INCLUDE" / "SEGA_GFS.H", b"fixture-gfs-header\n")
+    _touch(segalib / "LIB_ELF" / "sega_gfs.a", b"fixture-gfs-library\n")
+    _touch(segalib / "LIB_ELF" / "SEGA_CDC.A", b"fixture-cdc-library\n")
+
     template = root / "vdp1ex"
     template.mkdir()
     (template / "vga_font.h").write_text(
@@ -190,6 +195,14 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
     def test_python_builder_invokes_tools_directly_and_publishes_hashes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _prepared_project(Path(temp_dir))
+            manifest = json.loads((project / "SRK_STANDALONE_PROJECT.json").read_text(encoding="utf-8"))
+            gfs = manifest["stage6b_gfs"]
+            private_paths = [
+                Path(gfs["gfs_header"]["path"]),
+                Path(gfs["gfs_library"]["path"]),
+                Path(gfs["cdc_library"]["path"]),
+            ]
+            private_before = {path: path.read_bytes() for path in private_paths}
             watched = {
                 path: path.read_bytes()
                 for path in (project / "src").iterdir()
@@ -201,24 +214,31 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             result = build_saturn_standalone_project(project, _runner=runner)
 
             self.assertTrue(result.successful)
-            self.assertEqual(len(runner.calls), 13)
-            self.assertTrue(
-                any("src/srk_diag_vdp1.c" in call[0] for call in runner.calls)
+            self.assertEqual(len(runner.calls), 14)
+            self.assertTrue(any("src/srk_diag_vdp1.c" in call[0] for call in runner.calls))
+            self.assertTrue(any("src/srk_diag_audio.c" in call[0] for call in runner.calls))
+            self.assertTrue(any("src/srk_saturn_audio.c" in call[0] for call in runner.calls))
+            self.assertTrue(any("src/srk_saturn_packaged_pcm.c" in call[0] for call in runner.calls))
+
+            include_flag = f'-I{Path(gfs["include_dir"])}'
+            compile_calls = [call[0] for call in runner.calls if "-c" in call[0]]
+            self.assertTrue(compile_calls)
+            self.assertTrue(all(include_flag in argv for argv in compile_calls))
+            link_call = next(call[0] for call in runner.calls if "-nostdlib" in call[0])
+            self.assertIn(str(Path(gfs["gfs_library"]["path"])), link_call)
+            self.assertIn(str(Path(gfs["cdc_library"]["path"])), link_call)
+            self.assertLess(
+                link_call.index(str(Path(gfs["gfs_library"]["path"]))),
+                link_call.index(str(Path(gfs["cdc_library"]["path"]))),
             )
-            self.assertTrue(
-                any("src/srk_diag_audio.c" in call[0] for call in runner.calls)
-            )
-            self.assertTrue(
-                any("src/srk_saturn_audio.c" in call[0] for call in runner.calls)
-            )
+
             self.assertTrue((project / "build" / "srk_diag.bin").is_file())
             iso = project / "build" / "srk_diag.iso"
             self.assertTrue(iso.is_file())
             self.assertTrue((project / "cd" / "0.bin").is_file())
-            self.assertEqual(
-                (project / "cd" / PACKAGED_PCM_FILENAME).read_bytes(),
-                payload_before,
-            )
+            self.assertEqual((project / "cd" / PACKAGED_PCM_FILENAME).read_bytes(), payload_before)
+            self.assertEqual({path: path.read_bytes() for path in private_paths}, private_before)
+
             deploy = project / "build" / "SRK-Diagnostics"
             raw = deploy / "SRK-Diagnostics.bin"
             cue = deploy / "SRK-Diagnostics.cue"
@@ -235,15 +255,15 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             )
             self.assertTrue(result.log_path.is_file())
             self.assertTrue(result.report_path.is_file())
-            self.assertEqual(
-                {path: path.read_bytes() for path in watched},
-                watched,
-            )
+            self.assertEqual({path: path.read_bytes() for path in watched}, watched)
             report = json.loads(result.report_path.read_text(encoding="utf-8"))
             self.assertEqual(report["orchestration"], "python-native")
             self.assertTrue(report["successful"])
             self.assertFalse(report["policy"]["shell_used"])
             self.assertFalse(report["policy"]["path_mutated"])
+            self.assertTrue(report["policy"]["private_sdk_dependencies_verified_before_build"])
+            self.assertTrue(report["policy"]["private_sdk_dependencies_verified_after_build"])
+            self.assertFalse(report["policy"]["private_sdk_dependencies_copied"])
             self.assertEqual(len(report["artifacts"]), 7)
             packaged = report["packaged_pcm"]
             self.assertEqual(packaged["project_path"], f"cd/{PACKAGED_PCM_FILENAME}")
@@ -252,14 +272,8 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             self.assertEqual(packaged["size"], len(payload_before))
             self.assertTrue(packaged["verified_against_project"])
             self.assertEqual(report["deployable"]["format"], "cue-bin-mode1-2352")
-            self.assertEqual(
-                report["deployable"]["cue"],
-                "build/SRK-Diagnostics/SRK-Diagnostics.cue",
-            )
-            self.assertEqual(
-                report["deployable"]["bin"],
-                "build/SRK-Diagnostics/SRK-Diagnostics.bin",
-            )
+            self.assertEqual(report["deployable"]["cue"], "build/SRK-Diagnostics/SRK-Diagnostics.cue")
+            self.assertEqual(report["deployable"]["bin"], "build/SRK-Diagnostics/SRK-Diagnostics.bin")
             self.assertTrue(report["deployable"]["verified_against_iso"])
             self.assertIn("verify packaged PCM in ISO", result.log_path.read_text(encoding="utf-8"))
 
@@ -274,10 +288,7 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             )
 
             self.assertFalse(result.successful)
-            self.assertEqual(
-                (project / "cd" / PACKAGED_PCM_FILENAME).read_bytes(),
-                payload_before,
-            )
+            self.assertEqual((project / "cd" / PACKAGED_PCM_FILENAME).read_bytes(), payload_before)
             self.assertFalse((project / "build" / "SRK-Diagnostics").exists())
             report = json.loads(result.report_path.read_text(encoding="utf-8"))
             self.assertFalse(report["successful"])
@@ -299,16 +310,26 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             self.assertTrue(result.report_path.is_file())
             report = json.loads(result.report_path.read_text(encoding="utf-8"))
             self.assertFalse(report["successful"])
-            self.assertIn(
-                "synthetic compiler failure",
-                result.log_path.read_text(encoding="utf-8"),
-            )
+            self.assertIn("synthetic compiler failure", result.log_path.read_text(encoding="utf-8"))
 
     def test_tampered_generated_input_is_rejected_before_execution(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _prepared_project(Path(temp_dir))
             target = project / "src" / "srk_diag_app.c"
             target.write_text(target.read_text(encoding="utf-8") + "\n/* tamper */\n", encoding="utf-8")
+            runner = _SuccessfulRunner()
+
+            with self.assertRaises(SaturnStandaloneBuildError):
+                build_saturn_standalone_project(project, _runner=runner)
+
+            self.assertEqual(runner.calls, [])
+
+    def test_tampered_private_gfs_dependency_is_rejected_before_execution(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _prepared_project(Path(temp_dir))
+            manifest = json.loads((project / "SRK_STANDALONE_PROJECT.json").read_text(encoding="utf-8"))
+            gfs_library = Path(manifest["stage6b_gfs"]["gfs_library"]["path"])
+            gfs_library.write_bytes(gfs_library.read_bytes() + b"tamper")
             runner = _SuccessfulRunner()
 
             with self.assertRaises(SaturnStandaloneBuildError):
