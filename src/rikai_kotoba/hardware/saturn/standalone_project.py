@@ -83,6 +83,7 @@ _STANDALONE_FILES = (
     "srk_saturn_main.c",
     "srk_saturn_packaged_pcm.c",
     "srk_saturn_packaged_pcm.h",
+    "srk_saturn_runtime.c",
     "srk_saturn_startup.S",
 )
 
@@ -130,12 +131,32 @@ def _stage6b_gfs_dependencies(saturn_root: Path) -> dict[str, object]:
     lib_dir = segalib / "LIB_ELF"
     gfs_header = _require_file(include_dir / "SEGA_GFS.H", "SBL 6.01 GFS header")
     gfs_library = _require_file(lib_dir / "sega_gfs.a", "SBL 6.01 ELF GFS library")
-    cdc_library = _require_file(lib_dir / "SEGA_CDC.A", "SBL 6.01 ELF CDC library")
+    cdc_library = _require_file(lib_dir / "SEGA_CDC.A", "SBL 6.01 COFF CDC library")
+    dma_library = _require_file(lib_dir / "sega_dma.a", "SBL 6.01 ELF DMA library")
+    csh_library = _require_file(lib_dir / "sega_csh.a", "SBL 6.01 ELF cache library")
+    int_library = _require_file(lib_dir / "sega_int.a", "SBL 6.01 ELF interrupt library")
     return {
         "include_dir": str(include_dir.resolve()),
+        "library_dir": str(lib_dir.resolve()),
         "gfs_header": _private_dependency(gfs_header.resolve()),
         "gfs_library": _private_dependency(gfs_library.resolve()),
         "cdc_library": _private_dependency(cdc_library.resolve()),
+        "dma_library": _private_dependency(dma_library.resolve()),
+        "csh_library": _private_dependency(csh_library.resolve()),
+        "int_library": _private_dependency(int_library.resolve()),
+        "link_contract": {
+            "gfs_format": "elf32-sh",
+            "cdc_format": "coff-sh",
+            "post_cdc_format": "elf32-sh",
+            "dedicated_library_order": [
+                "sega_gfs.a",
+                "SEGA_CDC.A",
+                "sega_dma.a",
+                "sega_csh.a",
+                "sega_int.a",
+                "-lgcc",
+            ],
+        },
         "copied_into_project": False,
     }
 
@@ -287,9 +308,14 @@ def prepare_saturn_standalone_project(
             "The source template, IP.BIN, and private SBL dependencies were read only.\n\n"
             "cd\\SRKPCM.BIN is an SRK-owned deterministic packaged PCM payload.\n"
             "Its exact bytes are pinned in the project manifest and verified again inside the ISO.\n\n"
-            "Stage 6B compiles against the installed SBL 6.01 SEGA_GFS.H and links the\n"
-            "installed ELF sega_gfs.a + SEGA_CDC.A by absolute path. Their exact hashes\n"
-            "are pinned in the manifest; they are never copied into this generated tree.\n\n"
+            "Stage 6B compiles against installed SBL 6.01 SEGA_GFS.H and links the\n"
+            "Mjolnir-proven dedicated dependency closure by absolute path:\n"
+            "  sega_gfs.a (ELF) -> SEGA_CDC.A (COFF) -> sega_dma.a -> sega_csh.a -> sega_int.a\n"
+            "The linker format is scoped to coff-sh only for SEGA_CDC.A and reset to\n"
+            "elf32-sh before the remaining libraries and libgcc. Exact hashes are pinned\n"
+            "in the manifest; private SDK artifacts are never copied into this tree.\n\n"
+            "The standalone image remains -nostdlib. SRK supplies only the small C ABI\n"
+            "runtime surface required by the selected SBL path.\n\n"
             "Preferred build (from the SRK virtual environment):\n"
             "  python -m rikai_kotoba.tools.saturn_standalone_build --project <this-directory>\n\n"
             "build.bat is only a thin wrapper around the same Python-native command.\n"
