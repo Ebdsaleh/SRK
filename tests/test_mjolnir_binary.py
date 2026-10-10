@@ -126,6 +126,26 @@ class MjolnirBinaryTests(unittest.TestCase):
             self.assertIn("DMA_ScuStart: providers=1", text)
             self.assertIn("coff-sh", text)
 
+    def test_index_only_skips_member_dump_for_large_tree(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive = root / "support.a"
+            archive.write_bytes(
+                b"!<arch>\n"
+                + _ar_member("support.o/", coff_sh_fixture(defined_name="DMA_ScuStart"))
+            )
+            output = StringIO()
+
+            with redirect_stdout(output):
+                result = main(
+                    [str(root), "--recursive", "--dependencies", "--index-only"]
+                )
+
+            text = output.getvalue()
+            self.assertEqual(result, 0)
+            self.assertNotIn("SRK MJOLNIR BINARY / ARCHIVE INSPECTOR", text)
+            self.assertIn("MJOLNIR SYMBOL DEPENDENCY ANALYSIS", text)
+
 
 if __name__ == "__main__":
     unittest.main()
