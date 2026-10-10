@@ -1,15 +1,10 @@
-"""Off-card Stage 6B mixed ELF/COFF linker research probe.
+"""Off-card Stage 6B mixed-format linker research probe.
 
-This is deliberately narrower than the normal standalone builder.  It creates
-only compiler/assembler/linker outputs in a fresh probe directory and never
-runs the ISO builder or any SAROO deployment path.  Its purpose is to validate
-one evidence-driven linker change before that change is promoted into the
-normal Python-native builder.
-
-The installed SBL 6.01 GFS archive is expected to contain ELF32 big-endian SH
-relocatable objects.  The installed CDC archive is expected to contain Hitachi
-SH big-endian COFF objects.  GNU ld's input-format override is therefore scoped
-only to the CDC archive and reset to ELF before libgcc is searched.
+The probe is narrower than the normal standalone builder: it creates only
+compiler/assembler/linker outputs and never invokes ISO/SAROO paths.  Mjolnir's
+SDK-wide symbol analysis established the complete dedicated SBL closure, so the
+probe now consumes the same pinned link contract as the production builder
+rather than carrying a second partial dependency recipe.
 """
 
 from __future__ import annotations
@@ -53,41 +48,32 @@ class ArchiveFormatSummary:
     detail: str
 
 
-def _mixed_link_tail(gfs_library: Path, cdc_library: Path) -> tuple[str, ...]:
-    """Return the evidence-driven mixed-format library tail for GNU ld."""
+def _mixed_link_tail(deps: standalone.SaturnStage6BDependencies) -> tuple[str, ...]:
+    """Expose the production Stage 6B link tail for probe/tests."""
 
-    return (
-        str(gfs_library),
-        "-Wl,--format=coff-sh",
-        str(cdc_library),
-        "-Wl,--format=elf32-sh",
-        "-lgcc",
-    )
+    return standalone._stage6b_link_tail(deps)
 
 
-def _validate_gfs_elf_archive(path: Path) -> ArchiveFormatSummary:
+def _validate_elf_archive(path: Path, label: str) -> ArchiveFormatSummary:
     try:
         report = inspect_binary(path)
     except (BinaryArchiveError, OSError) as exc:
-        raise SaturnStage6BLinkProbeError(f"cannot inspect GFS archive: {exc}") from exc
-
+        raise SaturnStage6BLinkProbeError(f"cannot inspect {label} archive: {exc}") from exc
     if report.container_kind != "unix-ar":
-        raise SaturnStage6BLinkProbeError("GFS dependency is not a classic Unix ar archive")
-
+        raise SaturnStage6BLinkProbeError(f"{label} dependency is not a classic Unix ar archive")
     payloads = [member for member in report.members if not member.metadata]
     if not payloads:
-        raise SaturnStage6BLinkProbeError("GFS archive has no payload members")
+        raise SaturnStage6BLinkProbeError(f"{label} archive has no payload members")
     for member in payloads:
         if member.signature.kind != "elf":
             raise SaturnStage6BLinkProbeError(
-                f"GFS member {member.name} is not ELF: {member.signature.detail}"
+                f"{label} member {member.name} is not ELF: {member.signature.detail}"
             )
         if "ELF32 big-endian REL machine=SH(42)" not in member.signature.detail:
             raise SaturnStage6BLinkProbeError(
-                f"GFS member {member.name} has unexpected ELF contract: "
+                f"{label} member {member.name} has unexpected ELF contract: "
                 f"{member.signature.detail}"
             )
-
     return ArchiveFormatSummary(
         path=str(path),
         sha256=report.sha256,
@@ -97,32 +83,32 @@ def _validate_gfs_elf_archive(path: Path) -> ArchiveFormatSummary:
     )
 
 
+def _validate_gfs_elf_archive(path: Path) -> ArchiveFormatSummary:
+    return _validate_elf_archive(path, "GFS")
+
+
 def _validate_cdc_coff_archive(path: Path) -> ArchiveFormatSummary:
     try:
         report = inspect_binary(path)
     except (BinaryArchiveError, OSError) as exc:
         raise SaturnStage6BLinkProbeError(f"cannot inspect CDC archive: {exc}") from exc
-
     if report.container_kind != "unix-ar":
         raise SaturnStage6BLinkProbeError("CDC dependency is not a classic Unix ar archive")
-
     payloads = [member for member in report.members if not member.metadata]
     if not payloads:
         raise SaturnStage6BLinkProbeError("CDC archive has no payload members")
-
     try:
         with path.open("rb") as handle:
             for member in payloads:
                 handle.seek(member.data_offset)
-                header_bytes = handle.read(20)
-                header = parse_coff_file_header(header_bytes, total_size=member.size)
+                member_bytes = handle.read(member.size)
+                header = parse_coff_file_header(member_bytes, total_size=member.size)
                 if header.byte_order != "big" or header.magic != 0x0500:
                     raise SaturnStage6BLinkProbeError(
                         f"CDC member {member.name} is not Hitachi SH big-endian COFF"
                     )
     except (OSError, CoffFormatError) as exc:
         raise SaturnStage6BLinkProbeError(f"CDC COFF validation failed: {exc}") from exc
-
     return ArchiveFormatSummary(
         path=str(path),
         sha256=report.sha256,
@@ -171,17 +157,19 @@ def run_stage6b_link_probe(
     manifest = standalone._load_manifest(root)
     standalone._verify_generated_inputs(root, manifest)
     standalone._packaged_pcm_manifest(root, manifest)
-    include_dir, _header, gfs_library, cdc_library = standalone._stage6b_gfs_dependencies(
-        manifest
-    )
+    deps = standalone._stage6b_gfs_dependencies(manifest)
 
-    gfs_summary = _validate_gfs_elf_archive(gfs_library)
-    cdc_summary = _validate_cdc_coff_archive(cdc_library)
+    formats = {
+        "gfs": _validate_gfs_elf_archive(deps.gfs_library),
+        "cdc": _validate_cdc_coff_archive(deps.cdc_library),
+        "dma": _validate_elf_archive(deps.dma_library, "DMA"),
+        "csh": _validate_elf_archive(deps.csh_library, "cache"),
+        "int": _validate_elf_archive(deps.int_library, "interrupt"),
+    }
 
     gcc = standalone._tool(manifest, "sh-elf-gcc")
     assembler = standalone._tool(manifest, "sh-elf-as")
     probe_dir.mkdir()
-
     runner = _runner or subprocess.run
     commands: list[ProbeCommand] = []
 
@@ -211,7 +199,7 @@ def run_stage6b_link_probe(
         "-ffreestanding",
         "-fno-builtin",
         "-Isrc",
-        f"-I{include_dir}",
+        f"-I{deps.include_dir}",
     )
 
     objects: list[str] = []
@@ -244,9 +232,9 @@ def run_stage6b_link_probe(
             f"{_PROBE_DIR}/srk_diag.bin",
             startup_object,
             *objects,
-            *_mixed_link_tail(gfs_library, cdc_library),
+            *_mixed_link_tail(deps),
         )
-        successful = invoke("link mixed ELF/COFF binary", link_argv)
+        successful = invoke("link complete Stage 6B dependency closure", link_argv)
 
     inputs_verified_after = False
     private_dependencies_verified_after = False
@@ -281,15 +269,26 @@ def run_stage6b_link_probe(
 
     _write_log(log_path, commands)
     report = {
-        "schema": "srk.saturn.stage6b-link-probe.v1",
+        "schema": "srk.saturn.stage6b-link-probe.v2",
         "project_root": str(root),
         "successful": successful,
-        "purpose": "prove mixed ELF GFS plus Hitachi SH COFF CDC link contract",
+        "purpose": "prove complete dedicated mixed-format Stage 6B SBL dependency closure",
         "formats": {
-            "gfs": asdict(gfs_summary),
-            "cdc": asdict(cdc_summary),
+            name: asdict(summary) for name, summary in formats.items()
+        },
+        "link_contract": {
             "cdc_linker_override": "coff-sh",
             "post_cdc_linker_format": "elf32-sh",
+            "library_order": [
+                "sega_gfs.a",
+                "SEGA_CDC.A",
+                "sega_dma.a",
+                "sega_csh.a",
+                "sega_int.a",
+                "-lgcc",
+            ],
+            "sega_sat_used": False,
+            "segadgfs_used": False,
         },
         "policy": {
             "shell_used": False,
@@ -297,9 +296,7 @@ def run_stage6b_link_probe(
             "sd_writes": False,
             "private_sdk_dependencies_copied": False,
             "source_inputs_verified_after_probe": inputs_verified_after,
-            "private_sdk_dependencies_verified_after_probe": (
-                private_dependencies_verified_after
-            ),
+            "private_sdk_dependencies_verified_after_probe": private_dependencies_verified_after,
         },
         "commands": [asdict(command) for command in commands],
         "binary": (
@@ -320,8 +317,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="srk-saturn-stage6b-link-probe",
         description=(
-            "Compile and link one fresh Stage 6B project off-card while explicitly "
-            "disambiguating the installed Hitachi SH COFF CDC archive."
+            "Compile and link one fresh Stage 6B project off-card using the "
+            "Mjolnir-proven dedicated mixed ELF/COFF SBL dependency closure."
         ),
     )
     parser.add_argument("--project", required=True, help="Fresh prepared Stage 6B project tree")
@@ -338,14 +335,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     root = Path(args.project).expanduser().resolve(strict=False)
     report = json.loads((root / _PROBE_REPORT).read_text(encoding="utf-8"))
-    print("SRK Stage 6B mixed ELF/COFF link probe")
-    print("--------------------------------------")
+    print("SRK Stage 6B complete mixed-format link probe")
+    print("---------------------------------------------")
     print(f"Project : {root}")
-    print(f"GFS     : {report['formats']['gfs']['object_format']} "
-          f"({report['formats']['gfs']['payload_members']} payload members)")
-    print(f"CDC     : {report['formats']['cdc']['object_format']} "
-          f"({report['formats']['cdc']['payload_members']} payload members)")
-    print("Override: --format=coff-sh for CDC; reset elf32-sh before libgcc")
+    for name in ("gfs", "cdc", "dma", "csh", "int"):
+        info = report["formats"][name]
+        print(f"{name.upper():<7} : {info['object_format']} ({info['payload_members']} payload members)")
+    print("Link    : GFS -> CDC[coff-sh] -> ELF DMA -> CSH -> INT -> libgcc")
     for command in report["commands"]:
         print(f"  [{command['returncode']}] {command['label']}")
         if command["returncode"] and command["output"]:
