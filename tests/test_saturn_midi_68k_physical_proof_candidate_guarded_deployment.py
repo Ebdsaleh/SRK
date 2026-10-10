@@ -12,6 +12,7 @@ from unittest.mock import patch
 from rikai_kotoba.hardware.saturn.midi_68k_physical_proof_candidate_guarded_deployment import (
     CONFIRMATION_TOKEN,
     SaturnMidi68KPhysicalProofCandidateGuardedDeploymentError,
+    _allowed_paths,
     apply_midi_68k_physical_proof_candidate_guarded_deployment,
     prepare_midi_68k_physical_proof_candidate_guarded_deployment,
 )
@@ -79,6 +80,27 @@ def _deployment(card: Path, *, add_unrelated_change: bool = False, add_extra: bo
 
 
 class SaturnMidi68KPhysicalProofCandidateGuardedDeploymentTests(unittest.TestCase):
+    def test_allowed_paths_ignore_windows_long_vs_83_root_aliases(self):
+        card_root = Path("C:/Users/Developer.ERIDU/AppData/Local/Temp/example/CARD")
+        destination = Path(
+            "C:/Users/DEVELO~1.ERI/AppData/Local/Temp/example/CARD/"
+            "SAROO/ISO/TEST/SRK-Diagnostics-R18"
+        )
+        deployment = SimpleNamespace(
+            plan=SimpleNamespace(destination_directory=destination),
+            destination_bin=destination / "SRK-Diagnostics.bin",
+            destination_cue=destination / "SRK-Diagnostics.cue",
+        )
+
+        self.assertEqual(
+            set(_allowed_paths(card_root, deployment)),
+            {
+                "SAROO/ISO/TEST/SRK-Diagnostics-R18",
+                "SAROO/ISO/TEST/SRK-Diagnostics-R18/SRK-Diagnostics.bin",
+                "SAROO/ISO/TEST/SRK-Diagnostics-R18/SRK-Diagnostics.cue",
+            },
+        )
+
     def test_prepare_revalidates_candidate_and_creates_off_card_exact_inventory_without_card_write(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
