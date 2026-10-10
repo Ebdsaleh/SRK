@@ -155,6 +155,15 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
+def _copy_text_with_final_newline(source: Path, destination: Path) -> None:
+    """Copy one compiler/linker text input with a legacy-GCC-safe final LF."""
+
+    data = source.read_bytes()
+    if not data.endswith(b"\n"):
+        data += b"\n"
+    destination.write_bytes(data)
+
+
 def prepare_saturn_standalone_project(
     saturn_root: os.PathLike[str] | str,
     template_directory: os.PathLike[str] | str,
@@ -254,11 +263,17 @@ def prepare_saturn_standalone_project(
         cd_root.mkdir()
 
         for filename in _DIAGNOSTIC_FILES:
-            shutil.copy2(diagnostics_source / filename, source_root / filename)
+            _copy_text_with_final_newline(
+                diagnostics_source / filename,
+                source_root / filename,
+            )
         for filename in _STANDALONE_FILES:
-            shutil.copy2(standalone_source / filename, source_root / filename)
-        shutil.copy2(font_source, source_root / "vga_font.h")
-        shutil.copy2(linker_source, temp_root / "srk_saturn.ld")
+            _copy_text_with_final_newline(
+                standalone_source / filename,
+                source_root / filename,
+            )
+        _copy_text_with_final_newline(font_source, source_root / "vga_font.h")
+        _copy_text_with_final_newline(linker_source, temp_root / "srk_saturn.ld")
 
         (temp_root / "IP.BIN").write_bytes(patched_ip)
         packaged_pcm_path = cd_root / PACKAGED_PCM_FILENAME
