@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from rikai_kotoba.formats.saturn.mode1_image import verify_mode1_bin_against_iso
+from rikai_kotoba.formats.saturn.packaged_pcm import PACKAGED_PCM_FILENAME
 from rikai_kotoba.hardware.saturn.standalone_build import (
     SaturnStandaloneBuildError,
     build_saturn_standalone_project,
@@ -14,6 +15,9 @@ from rikai_kotoba.hardware.saturn.standalone_build import (
 from rikai_kotoba.hardware.saturn.standalone_project import (
     prepare_saturn_standalone_project,
 )
+
+
+ISO_SECTOR = 2048
 
 
 def _field(text: str, size: int) -> bytes:
@@ -41,6 +45,65 @@ def _touch(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"")
     return path
+
+
+def _iso_record(name: str, lba: int, size: int, *, is_dir: bool = False) -> bytes:
+    if name == ".":
+        identifier = b"\x00"
+    elif name == "..":
+        identifier = b"\x01"
+    else:
+        identifier = name.encode("ascii")
+
+    length = 33 + len(identifier)
+    if length % 2:
+        length += 1
+    record = bytearray(length)
+    record[0] = length
+    record[2:6] = lba.to_bytes(4, "little")
+    record[6:10] = lba.to_bytes(4, "big")
+    record[10:14] = size.to_bytes(4, "little")
+    record[14:18] = size.to_bytes(4, "big")
+    record[25] = 0x02 if is_dir else 0x00
+    record[28:30] = (1).to_bytes(2, "little")
+    record[30:32] = (1).to_bytes(2, "big")
+    record[32] = len(identifier)
+    record[33 : 33 + len(identifier)] = identifier
+    return bytes(record)
+
+
+def _write_test_iso(path: Path, payload: bytes, *, corrupt_payload: bool = False) -> None:
+    root_lba = 20
+    payload_lba = 21
+    total_sectors = 22
+    image = bytearray(total_sectors * ISO_SECTOR)
+
+    root_record = _iso_record(".", root_lba, ISO_SECTOR, is_dir=True)
+    pvd = bytearray(ISO_SECTOR)
+    pvd[0] = 0x01
+    pvd[1:6] = b"CD001"
+    pvd[6] = 0x01
+    pvd[156 : 156 + len(root_record)] = root_record
+    image[16 * ISO_SECTOR : 17 * ISO_SECTOR] = pvd
+
+    root = bytearray(ISO_SECTOR)
+    records = (
+        root_record,
+        _iso_record("..", root_lba, ISO_SECTOR, is_dir=True),
+        _iso_record(f"{PACKAGED_PCM_FILENAME};1", payload_lba, len(payload)),
+    )
+    offset = 0
+    for record in records:
+        root[offset : offset + len(record)] = record
+        offset += len(record)
+    image[root_lba * ISO_SECTOR : (root_lba + 1) * ISO_SECTOR] = root
+
+    packaged = bytearray(payload)
+    if corrupt_payload:
+        packaged[-1] ^= 0x01
+    start = payload_lba * ISO_SECTOR
+    image[start : start + len(packaged)] = packaged
+    path.write_bytes(image)
 
 
 def _prepared_project(root: Path) -> Path:
@@ -76,8 +139,9 @@ def _prepared_project(root: Path) -> Path:
 
 
 class _SuccessfulRunner:
-    def __init__(self):
+    def __init__(self, *, corrupt_iso_payload: bool = False):
         self.calls = []
+        self.corrupt_iso_payload = corrupt_iso_payload
 
     def __call__(self, argv, **kwargs):
         self.calls.append((tuple(argv), dict(kwargs)))
@@ -88,7 +152,12 @@ class _SuccessfulRunner:
             output = root / argv[argv.index("-o") + 1]
             output.parent.mkdir(parents=True, exist_ok=True)
             if output.suffix.casefold() == ".iso":
-                output.write_bytes(bytes((index * 13) & 0xFF for index in range(4096)))
+                payload = (root / "cd" / PACKAGED_PCM_FILENAME).read_bytes()
+                _write_test_iso(
+                    output,
+                    payload,
+                    corrupt_payload=self.corrupt_iso_payload,
+                )
             else:
                 output.write_bytes(("artifact:" + output.name).encode("ascii"))
 
@@ -126,6 +195,7 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
                 for path in (project / "src").iterdir()
                 if path.is_file()
             }
+            payload_before = (project / "cd" / PACKAGED_PCM_FILENAME).read_bytes()
             runner = _SuccessfulRunner()
 
             result = build_saturn_standalone_project(project, _runner=runner)
@@ -145,13 +215,18 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             iso = project / "build" / "srk_diag.iso"
             self.assertTrue(iso.is_file())
             self.assertTrue((project / "cd" / "0.bin").is_file())
+            self.assertEqual(
+                (project / "cd" / PACKAGED_PCM_FILENAME).read_bytes(),
+                payload_before,
+            )
             deploy = project / "build" / "SRK-Diagnostics"
             raw = deploy / "SRK-Diagnostics.bin"
             cue = deploy / "SRK-Diagnostics.cue"
             self.assertTrue(raw.is_file())
             self.assertTrue(cue.is_file())
-            self.assertEqual(verify_mode1_bin_against_iso(iso, raw), 2)
-            self.assertEqual(raw.stat().st_size, 2 * 2352)
+            sector_count = iso.stat().st_size // ISO_SECTOR
+            self.assertEqual(verify_mode1_bin_against_iso(iso, raw), sector_count)
+            self.assertEqual(raw.stat().st_size, sector_count * 2352)
             self.assertEqual(
                 cue.read_bytes(),
                 b'FILE "SRK-Diagnostics.bin" BINARY\r\n'
@@ -169,7 +244,13 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             self.assertTrue(report["successful"])
             self.assertFalse(report["policy"]["shell_used"])
             self.assertFalse(report["policy"]["path_mutated"])
-            self.assertEqual(len(report["artifacts"]), 6)
+            self.assertEqual(len(report["artifacts"]), 7)
+            packaged = report["packaged_pcm"]
+            self.assertEqual(packaged["project_path"], f"cd/{PACKAGED_PCM_FILENAME}")
+            self.assertEqual(packaged["iso_path"], f"/{PACKAGED_PCM_FILENAME};1")
+            self.assertEqual(packaged["iso_extent_lba"], 21)
+            self.assertEqual(packaged["size"], len(payload_before))
+            self.assertTrue(packaged["verified_against_project"])
             self.assertEqual(report["deployable"]["format"], "cue-bin-mode1-2352")
             self.assertEqual(
                 report["deployable"]["cue"],
@@ -180,6 +261,30 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
                 "build/SRK-Diagnostics/SRK-Diagnostics.bin",
             )
             self.assertTrue(report["deployable"]["verified_against_iso"])
+            self.assertIn("verify packaged PCM in ISO", result.log_path.read_text(encoding="utf-8"))
+
+    def test_iso_payload_mismatch_fails_before_mode1_publication(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _prepared_project(Path(temp_dir))
+            payload_before = (project / "cd" / PACKAGED_PCM_FILENAME).read_bytes()
+
+            result = build_saturn_standalone_project(
+                project,
+                _runner=_SuccessfulRunner(corrupt_iso_payload=True),
+            )
+
+            self.assertFalse(result.successful)
+            self.assertEqual(
+                (project / "cd" / PACKAGED_PCM_FILENAME).read_bytes(),
+                payload_before,
+            )
+            self.assertFalse((project / "build" / "SRK-Diagnostics").exists())
+            report = json.loads(result.report_path.read_text(encoding="utf-8"))
+            self.assertFalse(report["successful"])
+            self.assertNotIn("packaged_pcm", report)
+            log = result.log_path.read_text(encoding="utf-8")
+            self.assertIn("verify packaged PCM in ISO", log)
+            self.assertIn("do not match the generated project payload", log)
 
     def test_failure_stops_at_first_command_and_preserves_report(self):
         with tempfile.TemporaryDirectory() as temp_dir:
