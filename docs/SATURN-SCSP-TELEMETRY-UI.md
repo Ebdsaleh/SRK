@@ -112,4 +112,20 @@ Physical acceptance should confirm:
 
 Only presentation/observability is under test in R16. A failure here must not be interpreted as a reason to alter physically accepted SCSP constants unless separate hardware evidence supports that conclusion.
 
-After this closure is physically accepted, the next major audio milestone can move beyond synthetic/in-memory generation toward a guarded packaged/file-backed PCM payload path.
+## R16 physical acceptance
+
+R16 was validated on real Sega Saturn hardware and the telemetry/presentation closure is **physically accepted**.
+
+The on-hardware screen remained stable and the Stage 1-5 mode/source/dual-slot telemetry behaved as intended without changing the previously accepted SCSP audio path. Input, Video, and VDP1 regressions remained intact and START teardown remained clean.
+
+R16 deployment provenance:
+
+```text
+BIN SHA-256  6c97c59652cf9a252ca12d0167f86af407331cc3673e1652f225a60fd292bdec
+CUE SHA-256  5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950
+MODE1        64 sectors
+card guard   MATCH
+result       VERIFIED AND SAFE TO EJECT
+```
+
+The next major audio milestone can therefore move beyond synthetic/in-memory generation toward a guarded packaged/file-backed PCM payload path.
