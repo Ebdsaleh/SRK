@@ -56,7 +56,7 @@ class SaturnAudioDiagnosticsTests(unittest.TestCase):
     def test_audio_screen_exposes_modes_sources_and_both_slot_registers(self):
         app_c = (DIAG / "srk_diag_app.c").read_text(encoding="utf-8")
 
-        self.assertIn("Stages 1-5: deterministic PCM proofs", app_c)
+        self.assertIn("Stages 1-6: deterministic PCM proofs", app_c)
         self.assertIn("srk_diag_audio_mode_label", app_c)
         self.assertIn("srk_diag_audio_source_label(&app->audio)", app_c)
         self.assertIn('return "SWEEP"', app_c)
