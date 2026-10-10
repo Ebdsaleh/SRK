@@ -2,6 +2,7 @@
 #define SRK_SATURN_HOST_H
 
 #include "srk_diag_host.h"
+#include "srk_saturn_packaged_pcm.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,6 +17,9 @@ typedef struct SRK_SATURN_HOST_STATE {
     unsigned int audio_playing_mask;
     unsigned int audio_waveform_id;
     unsigned int audio_right_waveform_id;
+    int audio_packaged_attempted;
+    int audio_packaged_ready;
+    SRK_SATURN_PACKAGED_PCM audio_packaged_pcm;
 } SRK_SATURN_HOST_STATE;
 
 
