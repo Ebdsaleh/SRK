@@ -2,8 +2,9 @@
 
 The generated tree is deliberately separate from the user's installed Saturn
 SDK/examples. It combines SRK-owned standalone host/startup/linker sources, the
-reusable diagnostics core, one reviewed local bitmap-font asset, and a patched
-copy of a caller-supplied Saturn IP.BIN. Source SDK/example trees are read only.
+reusable diagnostics core, one reviewed local bitmap-font asset, a deterministic
+SRK-owned PCM payload, and a patched copy of a caller-supplied Saturn IP.BIN.
+Source SDK/example trees are read only.
 
 Generation does not compile, link, package, execute, or modify PATH. The
 preferred build path is SRK's Python-native standalone builder. ``build.bat`` is
@@ -26,6 +27,16 @@ from rikai_kotoba.formats.saturn.ip_bin import (
     parse_saturn_system_id,
     patch_saturn_system_id,
 )
+from rikai_kotoba.formats.saturn.packaged_pcm import (
+    PACKAGED_PCM_CHANNELS_MONO,
+    PACKAGED_PCM_ENCODING_PCM16_BE,
+    PACKAGED_PCM_FILENAME,
+    PACKAGED_PCM_LOOP_END,
+    PACKAGED_PCM_LOOP_START,
+    PACKAGED_PCM_SAMPLE_COUNT,
+    PACKAGED_PCM_VERSION,
+    build_deterministic_packaged_pcm,
+)
 from .standalone_environment import inspect_saturn_standalone_environment
 
 
@@ -39,6 +50,7 @@ class SaturnStandaloneProjectResult:
     source_root: Path
     build_script: Path
     ip_bin: Path
+    packaged_pcm: Path
     manifest: Path
     gcc: Path
     assembler: Path
@@ -198,6 +210,7 @@ def prepare_saturn_standalone_project(
         first_read_address=0x06004000,
         first_read_size=0,
     )
+    packaged_pcm = build_deterministic_packaged_pcm()
 
     output_root.parent.mkdir(parents=True, exist_ok=True)
     temp_root = Path(
@@ -207,7 +220,8 @@ def prepare_saturn_standalone_project(
         source_root = temp_root / "src"
         source_root.mkdir()
         (temp_root / "build").mkdir()
-        (temp_root / "cd").mkdir()
+        cd_root = temp_root / "cd"
+        cd_root.mkdir()
 
         for filename in _DIAGNOSTIC_FILES:
             shutil.copy2(diagnostics_source / filename, source_root / filename)
@@ -217,6 +231,8 @@ def prepare_saturn_standalone_project(
         shutil.copy2(linker_source, temp_root / "srk_saturn.ld")
 
         (temp_root / "IP.BIN").write_bytes(patched_ip)
+        packaged_pcm_path = cd_root / PACKAGED_PCM_FILENAME
+        packaged_pcm_path.write_bytes(packaged_pcm)
         _write_text(temp_root / "build.bat", _build_script())
         _write_text(
             temp_root / "README_BUILD.txt",
@@ -224,6 +240,8 @@ def prepare_saturn_standalone_project(
             "========================================\n\n"
             "This tree was generated separately from the installed Saturn SDK/example tree.\n"
             "The source template and IP.BIN were read only.\n\n"
+            "cd\\SRKPCM.BIN is an SRK-owned deterministic packaged PCM payload.\n"
+            "Its exact bytes are pinned in the project manifest and verified again inside the ISO.\n\n"
             "Preferred build (from the SRK virtual environment):\n"
             "  python -m rikai_kotoba.tools.saturn_standalone_build --project <this-directory>\n\n"
             "build.bat is only a thin wrapper around the same Python-native command.\n"
@@ -265,6 +283,18 @@ def prepare_saturn_standalone_project(
             "ip_bin_source_sha256": _sha256_file(ip_bin_source),
             "generated_ip_bin_sha256": _sha256_file(temp_root / "IP.BIN"),
             "generated_ip_metadata": parse_saturn_system_id(patched_ip),
+            "packaged_pcm": {
+                "path": f"cd/{PACKAGED_PCM_FILENAME}",
+                "version": PACKAGED_PCM_VERSION,
+                "encoding": "pcm16-be-signed",
+                "encoding_id": PACKAGED_PCM_ENCODING_PCM16_BE,
+                "channels": PACKAGED_PCM_CHANNELS_MONO,
+                "sample_count": PACKAGED_PCM_SAMPLE_COUNT,
+                "loop_start": PACKAGED_PCM_LOOP_START,
+                "loop_end": PACKAGED_PCM_LOOP_END,
+                "size": packaged_pcm_path.stat().st_size,
+                "sha256": _sha256_file(packaged_pcm_path),
+            },
             "tools": {
                 "sh-elf-gcc": str(gcc),
                 "sh-elf-as": str(assembler),
@@ -288,6 +318,7 @@ def prepare_saturn_standalone_project(
         source_root=output_root / "src",
         build_script=output_root / "build.bat",
         ip_bin=output_root / "IP.BIN",
+        packaged_pcm=output_root / "cd" / PACKAGED_PCM_FILENAME,
         manifest=output_root / "SRK_STANDALONE_PROJECT.json",
         gcc=gcc,
         assembler=assembler,
