@@ -10,6 +10,7 @@ from rikai_kotoba.tools.saturn_stage6b_link_probe import (
     _validate_cdc_coff_archive,
     _validate_gfs_elf_archive,
 )
+from tests.binary_fixtures import coff_sh_fixture
 
 
 def _ar_member(name: str, payload: bytes) -> bytes:
@@ -41,18 +42,6 @@ def _elf32_sh_rel() -> bytes:
     data[6] = 1
     data[16:18] = (1).to_bytes(2, "big")
     data[18:20] = (42).to_bytes(2, "big")
-    return bytes(data)
-
-
-def _coff_sh_big() -> bytes:
-    data = bytearray(64)
-    data[0:2] = (0x0500).to_bytes(2, "big")
-    data[2:4] = (3).to_bytes(2, "big")
-    data[4:8] = (0x30E308FD).to_bytes(4, "big")
-    data[8:12] = (20).to_bytes(4, "big")
-    data[12:16] = (1).to_bytes(4, "big")
-    data[16:18] = (0).to_bytes(2, "big")
-    data[18:20] = (0).to_bytes(2, "big")
     return bytes(data)
 
 
@@ -88,7 +77,7 @@ class SaturnStage6BLinkProbeTests(unittest.TestCase):
     def test_cdc_validator_accepts_hitachi_sh_big_endian_coff_archive(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "SEGA_CDC.A"
-            path.write_bytes(_archive("cdc_cmn.o", _coff_sh_big()))
+            path.write_bytes(_archive("cdc_cmn.o", coff_sh_fixture()))
 
             summary = _validate_cdc_coff_archive(path)
 
