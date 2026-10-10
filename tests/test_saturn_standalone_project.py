@@ -43,9 +43,9 @@ def _ip_bin() -> bytes:
     return bytes(data)
 
 
-def _touch(path: Path) -> Path:
+def _touch(path: Path, data: bytes = b"") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"")
+    path.write_bytes(data)
     return path
 
 
@@ -60,6 +60,11 @@ def _fixture(root: Path):
     ):
         _touch(bin_dir / name)
     _touch(saturn / "TOOLS" / "mkisofs.exe")
+
+    segalib = saturn / "SaturnOrbit-Inspect" / "payload" / "app" / "SBL_601" / "SEGALIB"
+    _touch(segalib / "INCLUDE" / "SEGA_GFS.H", b"fixture-gfs-header\n")
+    _touch(segalib / "LIB_ELF" / "sega_gfs.a", b"fixture-gfs-library\n")
+    _touch(segalib / "LIB_ELF" / "SEGA_CDC.A", b"fixture-cdc-library\n")
 
     template = root / "vdp1ex"
     template.mkdir()
@@ -83,7 +88,13 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             root = Path(temp_dir)
             saturn, template, ip_bin = _fixture(root)
             output = root / "SRK-Diagnostics-R1"
-            watched = [template / "vga_font.h", ip_bin]
+            segalib = saturn / "SaturnOrbit-Inspect" / "payload" / "app" / "SBL_601" / "SEGALIB"
+            private_inputs = [
+                segalib / "INCLUDE" / "SEGA_GFS.H",
+                segalib / "LIB_ELF" / "sega_gfs.a",
+                segalib / "LIB_ELF" / "SEGA_CDC.A",
+            ]
+            watched = [template / "vga_font.h", ip_bin, *private_inputs]
             before = _snapshot(watched)
 
             result = prepare_saturn_standalone_project(
@@ -99,6 +110,8 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertTrue((output / "src" / "srk_saturn_host.c").is_file())
             self.assertTrue((output / "src" / "srk_saturn_audio.c").is_file())
             self.assertTrue((output / "src" / "srk_saturn_audio.h").is_file())
+            self.assertTrue((output / "src" / "srk_saturn_packaged_pcm.c").is_file())
+            self.assertTrue((output / "src" / "srk_saturn_packaged_pcm.h").is_file())
             self.assertTrue((output / "src" / "srk_diag_app.c").is_file())
             self.assertTrue((output / "src" / "srk_diag_audio.c").is_file())
             self.assertTrue((output / "src" / "srk_diag_audio.h").is_file())
@@ -131,6 +144,19 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
                 inventory[f"cd/{PACKAGED_PCM_FILENAME}"]["sha256"],
                 sha256(payload).hexdigest(),
             )
+
+            gfs = manifest["stage6b_gfs"]
+            self.assertFalse(gfs["copied_into_project"])
+            self.assertEqual(Path(gfs["include_dir"]), (segalib / "INCLUDE").resolve())
+            for key, source in (
+                ("gfs_header", private_inputs[0]),
+                ("gfs_library", private_inputs[1]),
+                ("cdc_library", private_inputs[2]),
+            ):
+                self.assertEqual(Path(gfs[key]["path"]), source.resolve())
+                self.assertEqual(gfs[key]["size"], source.stat().st_size)
+                self.assertEqual(gfs[key]["sha256"], sha256(source.read_bytes()).hexdigest())
+                self.assertNotIn(source.name, inventory)
 
     def test_generated_ip_bin_is_title_neutral_and_preserves_boot_payload(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -175,6 +201,7 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             readme = (output / "README_BUILD.txt").read_text(encoding="utf-8")
             host = (output / "src" / "srk_saturn_host.c").read_text(encoding="utf-8")
             audio = (output / "src" / "srk_saturn_audio.c").read_text(encoding="utf-8")
+            packaged_runtime = (output / "src" / "srk_saturn_packaged_pcm.c").read_text(encoding="utf-8")
             manifest = json.loads(
                 (output / "SRK_STANDALONE_PROJECT.json").read_text(encoding="utf-8")
             )
@@ -187,7 +214,9 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertNotIn("sat -x", script)
             self.assertEqual(manifest["build_orchestration"], "python-native")
             self.assertEqual(manifest["deployable_format"], "cue-bin-mode1-2352")
+            self.assertFalse(manifest["policy"]["private_sdk_dependencies_copied"])
             self.assertIn("SRKPCM.BIN", readme)
+            self.assertIn("sega_gfs.a + SEGA_CDC.A", readme)
             self.assertIn("SRK-Diagnostics.cue + .bin", readme)
             self.assertIn("Deployment remains a separate guarded operation", readme)
             self.assertIn("0x20100075", host)
@@ -201,6 +230,9 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertIn("0x25B00000", audio)
             self.assertIn("SRK_AUDIO_SMPC_SNDON", audio)
             self.assertIn("SRK_AUDIO_SMPC_SNDOFF", audio)
+            self.assertIn('#include "SEGA_GFS.H"', packaged_runtime)
+            self.assertIn("GFS_NameToId", packaged_runtime)
+            self.assertIn("GFS_Load", packaged_runtime)
 
     def test_refuses_to_merge_into_existing_output(self):
         with tempfile.TemporaryDirectory() as temp_dir:
