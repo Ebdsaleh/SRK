@@ -32,7 +32,8 @@ typedef enum SRK_DIAG_AUDIO_PAN {
 
 typedef enum SRK_DIAG_AUDIO_WAVEFORM {
     SRK_DIAG_AUDIO_WAVEFORM_TONE = 0,
-    SRK_DIAG_AUDIO_WAVEFORM_SHAPED_PCM = 1
+    SRK_DIAG_AUDIO_WAVEFORM_SHAPED_PCM = 1,
+    SRK_DIAG_AUDIO_WAVEFORM_PACKAGED_PCM = 2
 } SRK_DIAG_AUDIO_WAVEFORM;
 
 
@@ -47,6 +48,7 @@ typedef struct SRK_DIAG_AUDIO_STATE {
     int stereo_pair;
     int sweep_active;
     int sample_mode;
+    int packaged_mode;
     int submitted;
 } SRK_DIAG_AUDIO_STATE;
 
