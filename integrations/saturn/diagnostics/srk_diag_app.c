@@ -372,7 +372,7 @@ static void srk_diag_render_audio(
 
     if(full_render){
         srk_diag_draw(host, 2, 1, "AUDIO / SCSP TEST");
-        srk_diag_draw(host, 2, 2, "Stages 1-5: deterministic PCM proofs");
+        srk_diag_draw(host, 2, 2, "Stages 1-6: deterministic PCM proofs");
         srk_diag_draw(host, 2, 4, "Host submit:");
         srk_diag_draw(host, 2, 5, "State:");
         srk_diag_draw(host, 2, 6, "Output:");
@@ -400,7 +400,7 @@ static void srk_diag_render_audio(
         srk_diag_draw(host, 2, 22, "X/Y/Z Tone Low/Mid/High");
         srk_diag_draw(host, 2, 23, "L/R Volume   DOWN+A Stereo");
         srk_diag_draw(host, 2, 24, "DOWN+B Sweep  DOWN+C Shaped");
-        srk_diag_draw(host, 2, 25, "DOWN+Z Mixed pair");
+        srk_diag_draw(host, 2, 25, "DOWN+Z Mixed pair  DOWN+Y Disc PCM");
         srk_diag_draw(host, 2, 26, "START Stop + return to diagnostics menu");
     }
 
