@@ -304,12 +304,13 @@ def prepare_midi_68k_physical_proof_candidate_full_build_gate(
     reviewed_menu = reviewed_menu_path.read_text(encoding="utf-8")
 
     required_main_markers = (
-        "#ifdef SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE",
+        "SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE",
         '#include "srk_saturn_midi_68k_physical_proof.h"',
         "SRK_DIAG_SCREEN_TIMING_INTERRUPT_TEST",
-        "srk_saturn_midi_68k_physical_proof_reset(&srk_midi_68k_proof);",
-        "srk_saturn_midi_68k_physical_proof_begin(&srk_midi_68k_proof)",
-        "srk_saturn_midi_68k_physical_proof_poll(&srk_midi_68k_proof)",
+        "SRK_MIDI_68K_PROOF_EXPECTED_INDEX 1u",
+        "SRK_MIDI_68K_PROOF_RESET srk_saturn_midi_68k_physical_proof_reset",
+        "SRK_MIDI_68K_PROOF_BEGIN srk_saturn_midi_68k_physical_proof_begin",
+        "SRK_MIDI_68K_PROOF_POLL srk_saturn_midi_68k_physical_proof_poll",
         "Success: sequence=1 index=1 error=0",
     )
     for marker in required_main_markers:
@@ -435,7 +436,7 @@ def run_midi_68k_physical_proof_candidate_full_build_gate(
     baseline_project: os.PathLike[str] | str,
     output_directory: os.PathLike[str] | str,
 ) -> SaturnMidi68KPhysicalProofCandidateResult:
-    """Build one fresh off-card candidate with the explicit proof path compiled."""
+    """Build the explicit callable silent proof in a fresh off-card tree."""
 
     prepared = prepare_midi_68k_physical_proof_candidate_full_build_gate(
         baseline_project,
