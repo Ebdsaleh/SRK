@@ -1,12 +1,9 @@
-"""Bounded one-shot controller for SRK's first physical Saturn MIDI 68K proof.
+"""Bounded one-shot controller for SRK's physical Saturn MIDI 68K proofs.
 
-This tranche deliberately separates *proof control* from controller/menu binding.
-The committed C controller can call the already-reviewed adapter-neutral runtime
-with the already-reviewed Saturn hardware adapter, but no production path calls
-this controller yet.
-
-The first physical proof remains silent: it proves SH-2 -> Sound RAM ->
-MC68EC000 acknowledgement only.  It does not drive SCSP voices.
+R18 physically accepted the original one-record silent round trip.  The R19
+tranche keeps that controller intact and adds a second silent full-batch proof
+beside it.  The Python renderer remains the canonical source for the committed
+C controller/header, so both paths stay byte-for-byte regression locked.
 """
 
 from __future__ import annotations
@@ -22,7 +19,7 @@ from .midi_68k_runtime import (
 
 @dataclass
 class SaturnMidi68KPhysicalProofState:
-    """Host-side model of the bounded one-shot C proof controller."""
+    """Host-side model of the bounded one-shot R18 C proof controller."""
 
     attempted: bool = False
     runtime_status: SaturnMidi68KRuntimeStatus = SaturnMidi68KRuntimeStatus.NOT_STARTED
@@ -64,7 +61,7 @@ def poll_srk_saturn_midi_68k_physical_proof(
 
 
 def render_srk_saturn_midi_68k_physical_proof_header() -> str:
-    """Render the C89 header for the still-unbound physical-proof controller."""
+    """Render the C89 header for the R18 and R19 proof controllers."""
 
     return "\n".join(
         (
@@ -72,6 +69,7 @@ def render_srk_saturn_midi_68k_physical_proof_header() -> str:
             "#define SRK_SATURN_MIDI_68K_PHYSICAL_PROOF_H",
             "",
             '#include "srk_saturn_midi_68k_runtime.h"',
+            '#include "srk_saturn_midi_68k_silent_batch_runtime.h"',
             "",
             "typedef struct SRK_SATURN_MIDI_68K_PHYSICAL_PROOF_STATE {",
             "    unsigned int attempted;",
@@ -79,6 +77,13 @@ def render_srk_saturn_midi_68k_physical_proof_header() -> str:
             "    unsigned int poll_count;",
             "    SRK_SATURN_MIDI_68K_TELEMETRY telemetry;",
             "} SRK_SATURN_MIDI_68K_PHYSICAL_PROOF_STATE;",
+            "",
+            "typedef struct SRK_SATURN_MIDI_68K_SILENT_BATCH_PHYSICAL_PROOF_STATE {",
+            "    unsigned int attempted;",
+            "    unsigned int runtime_status;",
+            "    unsigned int poll_count;",
+            "    SRK_SATURN_MIDI_68K_SILENT_BATCH_TELEMETRY telemetry;",
+            "} SRK_SATURN_MIDI_68K_SILENT_BATCH_PHYSICAL_PROOF_STATE;",
             "",
             "void srk_saturn_midi_68k_physical_proof_reset(",
             "    SRK_SATURN_MIDI_68K_PHYSICAL_PROOF_STATE *state",
@@ -90,6 +95,16 @@ def render_srk_saturn_midi_68k_physical_proof_header() -> str:
             "    SRK_SATURN_MIDI_68K_PHYSICAL_PROOF_STATE *state",
             ");",
             "",
+            "void srk_saturn_midi_68k_silent_batch_physical_proof_reset(",
+            "    SRK_SATURN_MIDI_68K_SILENT_BATCH_PHYSICAL_PROOF_STATE *state",
+            ");",
+            "unsigned int srk_saturn_midi_68k_silent_batch_physical_proof_begin(",
+            "    SRK_SATURN_MIDI_68K_SILENT_BATCH_PHYSICAL_PROOF_STATE *state",
+            ");",
+            "unsigned int srk_saturn_midi_68k_silent_batch_physical_proof_poll(",
+            "    SRK_SATURN_MIDI_68K_SILENT_BATCH_PHYSICAL_PROOF_STATE *state",
+            ");",
+            "",
             "#endif",
             "",
         )
@@ -97,7 +112,7 @@ def render_srk_saturn_midi_68k_physical_proof_header() -> str:
 
 
 def render_srk_saturn_midi_68k_physical_proof_source() -> str:
-    """Render the bounded C89 controller with no controller/menu binding."""
+    """Render both bounded C89 controllers with no controller/menu binding."""
 
     return "\n".join(
         (
@@ -146,6 +161,55 @@ def render_srk_saturn_midi_68k_physical_proof_source() -> str:
             "        return state->runtime_status;",
             "",
             "    state->runtime_status = srk_saturn_midi_68k_protocol_poll(",
+            "        srk_saturn_midi_68k_hardware_adapter_ops(),",
+            "        &state->telemetry",
+            "    );",
+            "    state->poll_count += 1u;",
+            "    return state->runtime_status;",
+            "}",
+            "",
+            "void srk_saturn_midi_68k_silent_batch_physical_proof_reset(",
+            "    SRK_SATURN_MIDI_68K_SILENT_BATCH_PHYSICAL_PROOF_STATE *state",
+            ")",
+            "{",
+            "    if(!state)",
+            "        return;",
+            "",
+            "    state->attempted = 0u;",
+            "    state->runtime_status = SRK_MIDI_68K_RUNTIME_NOT_STARTED;",
+            "    state->poll_count = 0u;",
+            "    state->telemetry.flags = 0u;",
+            "    state->telemetry.read_sequence = 0u;",
+            "    state->telemetry.read_index = 0u;",
+            "    state->telemetry.last_error = 0u;",
+            "}",
+            "",
+            "unsigned int srk_saturn_midi_68k_silent_batch_physical_proof_begin(",
+            "    SRK_SATURN_MIDI_68K_SILENT_BATCH_PHYSICAL_PROOF_STATE *state",
+            ")",
+            "{",
+            "    if(!state)",
+            "        return SRK_MIDI_68K_RUNTIME_NOT_STARTED;",
+            "    if(state->attempted)",
+            "        return state->runtime_status;",
+            "",
+            "    state->attempted = 1u;",
+            "    state->runtime_status = srk_saturn_midi_68k_silent_batch_protocol_begin(",
+            "        srk_saturn_midi_68k_hardware_adapter_ops()",
+            "    );",
+            "    return state->runtime_status;",
+            "}",
+            "",
+            "unsigned int srk_saturn_midi_68k_silent_batch_physical_proof_poll(",
+            "    SRK_SATURN_MIDI_68K_SILENT_BATCH_PHYSICAL_PROOF_STATE *state",
+            ")",
+            "{",
+            "    if(!state || !state->attempted)",
+            "        return SRK_MIDI_68K_RUNTIME_NOT_STARTED;",
+            "    if(state->runtime_status != SRK_MIDI_68K_RUNTIME_RUNNING)",
+            "        return state->runtime_status;",
+            "",
+            "    state->runtime_status = srk_saturn_midi_68k_silent_batch_protocol_poll(",
             "        srk_saturn_midi_68k_hardware_adapter_ops(),",
             "        &state->telemetry",
             "    );",
