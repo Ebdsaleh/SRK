@@ -18,6 +18,7 @@ import shutil
 import tempfile
 
 from .midi_68k_silent_batch_consumer import (
+    SATURN_MIDI_68K_SILENT_BATCH_PROGRAM_ADDRESS,
     build_srk_saturn_midi_68k_silent_batch_consumer_image,
     render_srk_saturn_midi_68k_silent_batch_header,
     render_srk_saturn_midi_68k_silent_batch_source,
@@ -367,7 +368,7 @@ def prepare_midi_68k_silent_batch_full_build_gate(
             "image_sha256": image.sha256,
             "image_word_count": len(image.words),
             "image_byte_size": image.byte_size,
-            "program_address": image.program_address,
+            "program_address": SATURN_MIDI_68K_SILENT_BATCH_PROGRAM_ADDRESS,
             "program_end_address": image.end_address,
             "expected_records": image.expected_records,
             "queue_word_count": image.queue_word_count,
@@ -408,7 +409,7 @@ def prepare_midi_68k_silent_batch_full_build_gate(
         image_sha256=image.sha256,
         image_word_count=len(image.words),
         image_byte_size=image.byte_size,
-        program_address=image.program_address,
+        program_address=SATURN_MIDI_68K_SILENT_BATCH_PROGRAM_ADDRESS,
         program_end_address=image.end_address,
         expected_records=image.expected_records,
         source_sha256=_sha256_bytes(source_bytes),
