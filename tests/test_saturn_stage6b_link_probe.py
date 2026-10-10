@@ -63,13 +63,13 @@ class SaturnStage6BLinkProbeTests(unittest.TestCase):
         self.assertEqual(
             tail,
             (
-                "LIB_ELF/sega_gfs.a",
+                str(Path("LIB_ELF") / "sega_gfs.a"),
                 "-Wl,--format=coff-sh",
-                "LIB_ELF/SEGA_CDC.A",
+                str(Path("LIB_ELF") / "SEGA_CDC.A"),
                 "-Wl,--format=elf32-sh",
-                "LIB_ELF/sega_dma.a",
-                "LIB_ELF/sega_csh.a",
-                "LIB_ELF/sega_int.a",
+                str(Path("LIB_ELF") / "sega_dma.a"),
+                str(Path("LIB_ELF") / "sega_csh.a"),
+                str(Path("LIB_ELF") / "sega_int.a"),
                 "-lgcc",
             ),
         )
