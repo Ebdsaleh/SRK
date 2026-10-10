@@ -17,9 +17,21 @@ typedef struct SRK_SATURN_MIDI_68K_TELEMETRY {
     unsigned short last_error;
 } SRK_SATURN_MIDI_68K_TELEMETRY;
 
-/* This source tranche defines the path but production does not call it yet. */
-unsigned int srk_saturn_midi_68k_protocol_begin(void);
+typedef struct SRK_SATURN_MIDI_68K_RUNTIME_OPS {
+    int (*stop_sound_cpu)(void);
+    int (*install_program)(void);
+    void (*publish_preload)(void);
+    int (*verify_preload)(void);
+    int (*start_sound_cpu)(void);
+    unsigned short (*read_mailbox_word)(unsigned int word_index);
+} SRK_SATURN_MIDI_68K_RUNTIME_OPS;
+
+/* Production does not provide or call a hardware adapter in this tranche. */
+unsigned int srk_saturn_midi_68k_protocol_begin(
+    const SRK_SATURN_MIDI_68K_RUNTIME_OPS *ops
+);
 unsigned int srk_saturn_midi_68k_protocol_poll(
+    const SRK_SATURN_MIDI_68K_RUNTIME_OPS *ops,
     SRK_SATURN_MIDI_68K_TELEMETRY *telemetry
 );
 
