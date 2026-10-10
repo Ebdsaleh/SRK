@@ -143,16 +143,41 @@ def _require_guard_valid(
     )
 
 
+def _saroo_guard_key(path: Path) -> str:
+    """Return a card-inventory key without depending on Windows path aliases.
+
+    Windows may present the same mounted path once with a long component such as
+    ``Developer.ERIDU`` and once with its 8.3 alias ``DEVELO~1.ERI``.  Absolute
+    ``Path.relative_to`` arithmetic therefore cannot safely establish identity.
+    The standalone deployer has already validated the SAROO layout and final
+    destination before this helper runs, so the whole-card guard only needs the
+    stable path suffix beginning at ``SAROO/ISO``.
+    """
+
+    parts = path.parts
+    matches = [
+        index
+        for index in range(len(parts) - 1)
+        if parts[index].casefold() == "saroo" and parts[index + 1].casefold() == "iso"
+    ]
+    if len(matches) != 1:
+        raise SaturnMidi68KPhysicalProofCandidateGuardedDeploymentError(
+            f"deployed path does not contain one unambiguous SAROO/ISO suffix: {path}"
+        )
+    return Path(*parts[matches[0] :]).as_posix()
+
+
 def _allowed_paths(
     card_root: Path,
     deployment: SarooStandaloneImageDeploymentResult,
 ) -> tuple[str, ...]:
+    del card_root  # Absolute root spelling may differ on Windows because of 8.3 aliases.
     paths = (
         deployment.plan.destination_directory,
         deployment.destination_bin,
         deployment.destination_cue,
     )
-    return tuple(path.relative_to(card_root).as_posix() for path in paths)
+    return tuple(_saroo_guard_key(path) for path in paths)
 
 
 def _safe_rollback_new_directory(
