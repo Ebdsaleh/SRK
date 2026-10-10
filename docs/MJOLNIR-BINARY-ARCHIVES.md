@@ -35,7 +35,9 @@ Mjolnir currently understands, without external binutils:
 - cross-object and cross-library symbol provider/consumer indexes;
 - resolved source-library dependency edges;
 - unresolved external-symbol reports;
-- exact or substring symbol searches across mixed ELF/COFF inputs.
+- exact or substring symbol searches across mixed ELF/COFF inputs;
+- index-only scans for large SDK/library trees where per-member output would be
+  unnecessarily noisy.
 
 This means Mjolnir can inspect a Saturn SDK library directory as a coherent
 binary ecosystem rather than examining one archive at a time.
@@ -91,9 +93,13 @@ python -m rikai_kotoba.tools.mjolnir_binary "C:\path\to\LIB_ELF" --recursive --s
 rem Resolve cross-library dependencies and unresolved externals.
 python -m rikai_kotoba.tools.mjolnir_binary "C:\path\to\LIB_ELF" --recursive --dependencies
 
+rem Same dependency pass without dumping every archive/member first.
+python -m rikai_kotoba.tools.mjolnir_binary "C:\path\to\LIB_ELF" --recursive ^
+  --dependencies --index-only
+
 rem Find exact providers and consumers for one symbol.
 python -m rikai_kotoba.tools.mjolnir_binary "C:\path\to\LIB_ELF" --recursive ^
-  --search-symbol DMA_ScuStart --exact-symbol
+  --search-symbol DMA_ScuStart --exact-symbol --index-only
 ```
 
 `--member-limit` and `--symbol-limit` bound console output without changing the
