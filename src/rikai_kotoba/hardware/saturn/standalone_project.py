@@ -81,8 +81,12 @@ _STANDALONE_FILES = (
     "srk_saturn_host.c",
     "srk_saturn_host.h",
     "srk_saturn_main.c",
+    "srk_saturn_packaged_pcm.c",
+    "srk_saturn_packaged_pcm.h",
     "srk_saturn_startup.S",
 )
+
+_STAGE6B_SBL_ROOT = Path("SaturnOrbit-Inspect/payload/app/SBL_601/SEGALIB")
 
 
 def _canonical(path: os.PathLike[str] | str) -> Path:
@@ -110,6 +114,30 @@ def _require_file(path: Path, description: str) -> Path:
     if not path.is_file():
         raise SaturnStandaloneProjectError(f"{description} is not a file: {path}")
     return path
+
+
+def _private_dependency(path: Path) -> dict[str, object]:
+    return {
+        "path": str(path),
+        "size": path.stat().st_size,
+        "sha256": _sha256_file(path),
+    }
+
+
+def _stage6b_gfs_dependencies(saturn_root: Path) -> dict[str, object]:
+    segalib = saturn_root / _STAGE6B_SBL_ROOT
+    include_dir = segalib / "INCLUDE"
+    lib_dir = segalib / "LIB_ELF"
+    gfs_header = _require_file(include_dir / "SEGA_GFS.H", "SBL 6.01 GFS header")
+    gfs_library = _require_file(lib_dir / "sega_gfs.a", "SBL 6.01 ELF GFS library")
+    cdc_library = _require_file(lib_dir / "SEGA_CDC.A", "SBL 6.01 ELF CDC library")
+    return {
+        "include_dir": str(include_dir.resolve()),
+        "gfs_header": _private_dependency(gfs_header.resolve()),
+        "gfs_library": _private_dependency(gfs_library.resolve()),
+        "cdc_library": _private_dependency(cdc_library.resolve()),
+        "copied_into_project": False,
+    }
 
 
 def _build_script() -> str:
@@ -172,6 +200,8 @@ def prepare_saturn_standalone_project(
         raise SaturnStandaloneProjectError("SH-ELF gcc/as paths were not resolved")
     if iso_builder is None:
         raise SaturnStandaloneProjectError("mkisofs/genisoimage/xorriso was not resolved")
+
+    stage6b_gfs = _stage6b_gfs_dependencies(saturn_root)
 
     repo_root = _repo_root()
     diagnostics_source = repo_root / "integrations" / "saturn" / "diagnostics"
@@ -239,9 +269,12 @@ def prepare_saturn_standalone_project(
             "SRK Saturn Diagnostics Generated Project\n"
             "========================================\n\n"
             "This tree was generated separately from the installed Saturn SDK/example tree.\n"
-            "The source template and IP.BIN were read only.\n\n"
+            "The source template, IP.BIN, and private SBL dependencies were read only.\n\n"
             "cd\\SRKPCM.BIN is an SRK-owned deterministic packaged PCM payload.\n"
             "Its exact bytes are pinned in the project manifest and verified again inside the ISO.\n\n"
+            "Stage 6B compiles against the installed SBL 6.01 SEGA_GFS.H and links the\n"
+            "installed ELF sega_gfs.a + SEGA_CDC.A by absolute path. Their exact hashes\n"
+            "are pinned in the manifest; they are never copied into this generated tree.\n\n"
             "Preferred build (from the SRK virtual environment):\n"
             "  python -m rikai_kotoba.tools.saturn_standalone_build --project <this-directory>\n\n"
             "build.bat is only a thin wrapper around the same Python-native command.\n"
@@ -274,6 +307,7 @@ def prepare_saturn_standalone_project(
                 "build_executed": False,
                 "sd_writes": False,
                 "commercial_image_changes": False,
+                "private_sdk_dependencies_copied": False,
             },
             "load_address": "0x06004000",
             "template_directory": str(template_directory),
@@ -295,6 +329,7 @@ def prepare_saturn_standalone_project(
                 "size": packaged_pcm_path.stat().st_size,
                 "sha256": _sha256_file(packaged_pcm_path),
             },
+            "stage6b_gfs": stage6b_gfs,
             "tools": {
                 "sh-elf-gcc": str(gcc),
                 "sh-elf-as": str(assembler),
