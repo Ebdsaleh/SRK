@@ -2,7 +2,8 @@
 #include "srk_saturn_audio.h"
 #include "srk_saturn_host.h"
 
-#ifdef SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE
+#if defined(SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE) || \
+    defined(SRK_MIDI_68K_SILENT_BATCH_PHYSICAL_CANDIDATE)
 #include "srk_saturn_midi_68k_physical_proof.h"
 #endif
 
@@ -11,8 +12,31 @@ static SRK_DIAG_APP srk_app;
 static SRK_DIAG_HOST srk_host;
 static SRK_SATURN_HOST_STATE srk_host_state;
 
-#ifdef SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE
-static SRK_SATURN_MIDI_68K_PHYSICAL_PROOF_STATE srk_midi_68k_proof;
+#if defined(SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE) || \
+    defined(SRK_MIDI_68K_SILENT_BATCH_PHYSICAL_CANDIDATE)
+
+#ifdef SRK_MIDI_68K_SILENT_BATCH_PHYSICAL_CANDIDATE
+typedef SRK_SATURN_MIDI_68K_SILENT_BATCH_PHYSICAL_PROOF_STATE
+    SRK_MIDI_68K_ACTIVE_PROOF_STATE;
+#define SRK_MIDI_68K_PROOF_EXPECTED_INDEX 27u
+#define SRK_MIDI_68K_PROOF_TITLE "MIDI / 68K BATCH PROOF"
+#define SRK_MIDI_68K_PROOF_SUBTITLE "27 records - no MIDI SCSP note"
+#define SRK_MIDI_68K_PROOF_SUCCESS "Success: sequence=1 index=27 error=0"
+#define SRK_MIDI_68K_PROOF_RESET srk_saturn_midi_68k_silent_batch_physical_proof_reset
+#define SRK_MIDI_68K_PROOF_BEGIN srk_saturn_midi_68k_silent_batch_physical_proof_begin
+#define SRK_MIDI_68K_PROOF_POLL srk_saturn_midi_68k_silent_batch_physical_proof_poll
+#else
+typedef SRK_SATURN_MIDI_68K_PHYSICAL_PROOF_STATE SRK_MIDI_68K_ACTIVE_PROOF_STATE;
+#define SRK_MIDI_68K_PROOF_EXPECTED_INDEX 1u
+#define SRK_MIDI_68K_PROOF_TITLE "MIDI / 68K SILENT PROOF"
+#define SRK_MIDI_68K_PROOF_SUBTITLE "Protocol only - no MIDI SCSP note"
+#define SRK_MIDI_68K_PROOF_SUCCESS "Success: sequence=1 index=1 error=0"
+#define SRK_MIDI_68K_PROOF_RESET srk_saturn_midi_68k_physical_proof_reset
+#define SRK_MIDI_68K_PROOF_BEGIN srk_saturn_midi_68k_physical_proof_begin
+#define SRK_MIDI_68K_PROOF_POLL srk_saturn_midi_68k_physical_proof_poll
+#endif
+
+static SRK_MIDI_68K_ACTIVE_PROOF_STATE srk_midi_68k_proof;
 static int srk_midi_68k_proof_screen_armed;
 
 
@@ -114,7 +138,7 @@ static const char *srk_midi_68k_boundary_label(void)
 
     if(srk_midi_68k_proof.runtime_status == SRK_MIDI_68K_RUNTIME_ACKNOWLEDGED &&
        srk_midi_68k_proof.telemetry.read_sequence == 1u &&
-       srk_midi_68k_proof.telemetry.read_index == 1u &&
+       srk_midi_68k_proof.telemetry.read_index == SRK_MIDI_68K_PROOF_EXPECTED_INDEX &&
        srk_midi_68k_proof.telemetry.last_error == 0u){
         return "PASS";
     }
@@ -136,8 +160,8 @@ static void srk_midi_68k_render_proof(void)
     char number[11];
     char flags[7];
 
-    srk_midi_68k_draw_field(2, 1, 36, "MIDI / 68K SILENT PROOF");
-    srk_midi_68k_draw_field(2, 2, 36, "Protocol only - no MIDI SCSP note");
+    srk_midi_68k_draw_field(2, 1, 36, SRK_MIDI_68K_PROOF_TITLE);
+    srk_midi_68k_draw_field(2, 2, 36, SRK_MIDI_68K_PROOF_SUBTITLE);
 
     srk_midi_68k_draw_field(2, 4, 14, "Status:");
     srk_midi_68k_draw_field(
@@ -170,7 +194,7 @@ static void srk_midi_68k_render_proof(void)
     srk_midi_68k_draw_field(2, 11, 14, "Last error:");
     srk_midi_68k_draw_field(16, 11, 10, number);
 
-    srk_midi_68k_draw_field(2, 14, 36, "Success: sequence=1 index=1 error=0");
+    srk_midi_68k_draw_field(2, 14, 36, SRK_MIDI_68K_PROOF_SUCCESS);
     if(srk_midi_68k_proof_screen_armed){
         if(srk_midi_68k_proof.runtime_status == SRK_MIDI_68K_RUNTIME_RUNNING)
             srk_midi_68k_draw_field(2, 17, 36, "A ignored while proof is RUNNING");
@@ -200,7 +224,7 @@ static void srk_midi_68k_candidate_frame(void)
 
     if(srk_midi_68k_proof.attempted &&
        srk_midi_68k_proof.runtime_status == SRK_MIDI_68K_RUNTIME_RUNNING){
-        (void)srk_saturn_midi_68k_physical_proof_poll(&srk_midi_68k_proof);
+        (void)SRK_MIDI_68K_PROOF_POLL(&srk_midi_68k_proof);
     }
 
     if(!srk_midi_68k_proof_screen_armed){
@@ -208,8 +232,8 @@ static void srk_midi_68k_candidate_frame(void)
             srk_midi_68k_proof_screen_armed = 1;
     }else if((srk_app.input.pressed & SRK_DIAG_BUTTON_A) != 0u &&
              srk_midi_68k_proof.runtime_status != SRK_MIDI_68K_RUNTIME_RUNNING){
-        srk_saturn_midi_68k_physical_proof_reset(&srk_midi_68k_proof);
-        (void)srk_saturn_midi_68k_physical_proof_begin(&srk_midi_68k_proof);
+        SRK_MIDI_68K_PROOF_RESET(&srk_midi_68k_proof);
+        (void)SRK_MIDI_68K_PROOF_BEGIN(&srk_midi_68k_proof);
     }
 
     srk_midi_68k_render_proof();
@@ -227,14 +251,16 @@ void _main(void)
     srk_saturn_audio_bind(&srk_host, &srk_host_state);
     srk_diag_app_reset(&srk_app);
 
-#ifdef SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE
-    srk_saturn_midi_68k_physical_proof_reset(&srk_midi_68k_proof);
+#if defined(SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE) || \
+    defined(SRK_MIDI_68K_SILENT_BATCH_PHYSICAL_CANDIDATE)
+    SRK_MIDI_68K_PROOF_RESET(&srk_midi_68k_proof);
     srk_midi_68k_proof_screen_armed = 0;
 #endif
 
     for(;;){
         srk_diag_app_frame(&srk_app, &srk_host);
-#ifdef SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE
+#if defined(SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE) || \
+    defined(SRK_MIDI_68K_SILENT_BATCH_PHYSICAL_CANDIDATE)
         srk_midi_68k_candidate_frame();
 #endif
     }
