@@ -335,6 +335,22 @@ static void srk_diag_render_vdp1(
 }
 
 
+static const char *srk_diag_audio_mode_label(const SRK_DIAG_AUDIO_STATE *state)
+{
+    if(!state)
+        return "UNKNOWN";
+    if(state->sweep_active)
+        return "SWEEP";
+    if(state->tone == SRK_DIAG_AUDIO_TONE_MIXED_PAIR)
+        return "MIXED";
+    if(state->sample_mode)
+        return "SHAPED";
+    if(state->stereo_pair)
+        return "STEREO";
+    return "SINGLE";
+}
+
+
 static void srk_diag_render_audio(
     SRK_DIAG_APP *app,
     SRK_DIAG_HOST *host,
@@ -356,60 +372,106 @@ static void srk_diag_render_audio(
 
     if(full_render){
         srk_diag_draw(host, 2, 1, "AUDIO / SCSP TEST");
-        srk_diag_draw(host, 2, 2, "Stage 1: deterministic PCM tone slot");
+        srk_diag_draw(host, 2, 2, "Stages 1-5: deterministic PCM proofs");
         srk_diag_draw(host, 2, 4, "Host submit:");
         srk_diag_draw(host, 2, 5, "State:");
         srk_diag_draw(host, 2, 6, "Output:");
-        srk_diag_draw(host, 2, 7, "Tone:");
-        srk_diag_draw(host, 2, 8, "Pan:");
-        srk_diag_draw(host, 2, 9, "Volume:");
+        srk_diag_draw(host, 2, 7, "Mode:");
+        srk_diag_draw(host, 2, 8, "Source:");
+        srk_diag_draw(host, 2, 9, "Tone:");
+        srk_diag_draw(host, 2, 10, "Pan:");
+        srk_diag_draw(host, 2, 11, "Volume:");
 
-        srk_diag_draw(host, 2, 12, "SCSP init:");
         srk_diag_draw(host, 2, 13, "Common:");
-        srk_diag_draw(host, 2, 14, "Slot 0:");
-        srk_diag_draw(host, 2, 15, "Pitch:");
-        srk_diag_draw(host, 2, 16, "Mixer:");
+        srk_diag_draw(host, 21, 13, "SCSP:");
+        srk_diag_draw(host, 2, 14, "S0 Src:");
+        srk_diag_draw(host, 21, 14, "S1 Src:");
+        srk_diag_draw(host, 2, 15, "S0 LEA:");
+        srk_diag_draw(host, 21, 15, "S1 LEA:");
+        srk_diag_draw(host, 2, 16, "S0 Pit:");
+        srk_diag_draw(host, 21, 16, "S1 Pit:");
+        srk_diag_draw(host, 2, 17, "S0 Mix:");
+        srk_diag_draw(host, 21, 17, "S1 Mix:");
+        srk_diag_draw(host, 2, 18, "S0 Ctl:");
+        srk_diag_draw(host, 21, 18, "S1 Ctl:");
 
         srk_diag_draw(host, 2, 20, "A Play/Stop   C Mute/Unmute");
-        srk_diag_draw(host, 2, 21, "LEFT/UP/RIGHT Pan L/C/R");
+        srk_diag_draw(host, 2, 21, "LEFT/UP/RIGHT Select L/Both/R");
         srk_diag_draw(host, 2, 22, "X/Y/Z Tone Low/Mid/High");
-        srk_diag_draw(host, 2, 23, "L/R Volume Down/Up");
+        srk_diag_draw(host, 2, 23, "L/R Volume   DOWN+A Stereo");
+        srk_diag_draw(host, 2, 24, "DOWN+B Sweep  DOWN+C Shaped");
+        srk_diag_draw(host, 2, 25, "DOWN+Z Mixed pair");
         srk_diag_draw(host, 2, 26, "START Stop + return to diagnostics menu");
     }
 
     srk_diag_draw_field(host, 16, 4, 4, app->audio.submitted ? "OK" : "NO");
     srk_diag_draw_field(host, 12, 5, 10, app->audio.playing ? "PLAYING" : "STOPPED");
     srk_diag_draw_field(host, 12, 6, 10, app->audio.muted ? "MUTED" : "AUDIBLE");
-    srk_diag_draw_field(host, 12, 7, 10, srk_diag_audio_tone_label(app->audio.tone));
-    srk_diag_draw_field(host, 12, 8, 10, srk_diag_audio_pan_label(app->audio.pan));
+    srk_diag_draw_field(host, 12, 7, 10, srk_diag_audio_mode_label(&app->audio));
+    srk_diag_draw_field(host, 12, 8, 12, srk_diag_audio_source_label(&app->audio));
+    srk_diag_draw_field(host, 12, 9, 10, srk_diag_audio_tone_label(app->audio.tone));
+    srk_diag_draw_field(host, 12, 10, 10, srk_diag_audio_pan_label(app->audio.pan));
     srk_diag_u32(number, app->audio.volume);
-    srk_diag_draw_field(host, 12, 9, 10, number);
+    srk_diag_draw_field(host, 12, 11, 10, number);
 
     status.initialized = 0;
     status.common_control = 0;
     status.slot_control = 0;
     status.pitch = 0;
     status.mixer = 0;
+    status.slot_source = 0;
+    status.slot_loop_end = 0;
+    status.slot1_control = 0;
+    status.slot1_source = 0;
+    status.slot1_loop_end = 0;
+    status.slot1_pitch = 0;
+    status.slot1_mixer = 0;
     status_ok = 0;
     if(host->read_audio_status)
         status_ok = host->read_audio_status(host->context, &status);
 
     if(status_ok){
-        srk_diag_draw_field(host, 16, 12, 5, status.initialized ? "READY" : "NO");
         srk_diag_hex16(value, status.common_control);
-        srk_diag_draw_field(host, 12, 13, 6, value);
-        srk_diag_hex16(value, status.slot_control);
-        srk_diag_draw_field(host, 12, 14, 6, value);
+        srk_diag_draw_field(host, 10, 13, 6, value);
+        srk_diag_draw_field(host, 27, 13, 5, status.initialized ? "READY" : "NO");
+
+        srk_diag_hex16(value, status.slot_source);
+        srk_diag_draw_field(host, 10, 14, 6, value);
+        srk_diag_hex16(value, status.slot1_source);
+        srk_diag_draw_field(host, 29, 14, 6, value);
+
+        srk_diag_hex16(value, status.slot_loop_end);
+        srk_diag_draw_field(host, 10, 15, 6, value);
+        srk_diag_hex16(value, status.slot1_loop_end);
+        srk_diag_draw_field(host, 29, 15, 6, value);
+
         srk_diag_hex16(value, status.pitch);
-        srk_diag_draw_field(host, 12, 15, 6, value);
+        srk_diag_draw_field(host, 10, 16, 6, value);
+        srk_diag_hex16(value, status.slot1_pitch);
+        srk_diag_draw_field(host, 29, 16, 6, value);
+
         srk_diag_hex16(value, status.mixer);
-        srk_diag_draw_field(host, 12, 16, 6, value);
+        srk_diag_draw_field(host, 10, 17, 6, value);
+        srk_diag_hex16(value, status.slot1_mixer);
+        srk_diag_draw_field(host, 29, 17, 6, value);
+
+        srk_diag_hex16(value, status.slot_control);
+        srk_diag_draw_field(host, 10, 18, 6, value);
+        srk_diag_hex16(value, status.slot1_control);
+        srk_diag_draw_field(host, 29, 18, 6, value);
     }else{
-        srk_diag_draw_field(host, 16, 12, 10, "UNAVAIL");
-        srk_diag_draw_field(host, 12, 13, 10, "UNAVAIL");
-        srk_diag_draw_field(host, 12, 14, 10, "UNAVAIL");
-        srk_diag_draw_field(host, 12, 15, 10, "UNAVAIL");
-        srk_diag_draw_field(host, 12, 16, 10, "UNAVAIL");
+        srk_diag_draw_field(host, 10, 13, 8, "UNAVAIL");
+        srk_diag_draw_field(host, 27, 13, 8, "UNAVAIL");
+        srk_diag_draw_field(host, 10, 14, 8, "UNAVAIL");
+        srk_diag_draw_field(host, 29, 14, 8, "UNAVAIL");
+        srk_diag_draw_field(host, 10, 15, 8, "UNAVAIL");
+        srk_diag_draw_field(host, 29, 15, 8, "UNAVAIL");
+        srk_diag_draw_field(host, 10, 16, 8, "UNAVAIL");
+        srk_diag_draw_field(host, 29, 16, 8, "UNAVAIL");
+        srk_diag_draw_field(host, 10, 17, 8, "UNAVAIL");
+        srk_diag_draw_field(host, 29, 17, 8, "UNAVAIL");
+        srk_diag_draw_field(host, 10, 18, 8, "UNAVAIL");
+        srk_diag_draw_field(host, 29, 18, 8, "UNAVAIL");
     }
 }
 
