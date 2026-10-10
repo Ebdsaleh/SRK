@@ -128,4 +128,32 @@ A fresh R15 candidate should prove:
 12. `START` produces immediate silence and no leakage on menu return/re-entry.
 13. Stage 2 stereo, Stage 3 sweep, Stage 4 shaped single-slot, Input, Video, and VDP1 remain stable.
 
-Only after those observations should Stage 5 be physically accepted.
+## R15 physical acceptance
+
+R15 was physically validated on real Sega Saturn hardware and **Stage 5 is accepted**.
+
+Observed behavior matched the contract:
+
+- `DOWN+Z` entered the mixed pair;
+- the familiar square source was listener-left;
+- the shaped PCM source was listener-right;
+- both were simultaneously audible with `UP`/both selected;
+- `LEFT` and `RIGHT` isolated the expected source/channel independently;
+- `UP` restored both sources without swapping their identities;
+- mute/unmute, shared volume, and stop/resume worked correctly;
+- repeated mixed-pair entry/exit did not leave a stale source, stuck note, hang, or channel swap;
+- exiting returned to the stopped single-slot tone path and `A` restored the original square source;
+- `START` produced immediate silence with no leakage or silent resume;
+- Stage 2, Stage 3, Stage 4, Input, Video, and VDP1 regressions remained intact.
+
+R15 deployment provenance:
+
+```text
+BIN SHA-256  ac4635dede3c19fb9bfe8d8071f17fe446690ec2a403763df94806788925d983
+CUE SHA-256  5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950
+MODE1        64 sectors
+card guard   MATCH
+result       VERIFIED AND SAFE TO EJECT
+```
+
+Stage 5 therefore closes the deterministic two-slot / two-source SCSP ownership proof.
