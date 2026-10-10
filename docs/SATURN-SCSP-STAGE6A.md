@@ -143,3 +143,62 @@ Before Stage 6B starts:
 6. no SD-card write occurs.
 
 Only then should Stage 6B implement Saturn-side loading/playback, using supplied Sega documentation and known-good local examples as authority for the CD/filesystem path rather than guessing hardware commands.
+
+## Stage 6A accepted artifact proof
+
+Stage 6A passed its real-toolchain artifact gate on ERIDU and is **ACCEPTED**.
+
+The fresh project was created at:
+
+```text
+C:\Users\Developer.ERIDU\SRK-Workspace\Stage6A-Artifact-20261010-01
+```
+
+Project preparation resolved the expected local `sh-elf-gcc`, `sh-elf-as`, and `mkisofs` tools while leaving the installed Saturn development trees and source `IP.BIN` read-only.
+
+The real build completed every compile, assemble, link, ISO-package, packaged-PCM verification, and MODE1/2352 publication step with return code `0`.
+
+The packaged file was observed inside the real ISO as:
+
+```text
+/SRKPCM.BIN;1
+extent LBA 39
+size       1040 bytes
+SHA-256    d4b9e26d0e3b0e54085b6169c5c0fc784ec9c3f005bcbbda96529db443c07b39
+```
+
+The generated project manifest independently records the same payload as:
+
+```text
+path         cd/SRKPCM.BIN
+version      1
+encoding     pcm16-be-signed
+channels     1
+sample_count 512
+loop_start   0
+loop_end     511
+size         1040
+SHA-256      d4b9e26d0e3b0e54085b6169c5c0fc784ec9c3f005bcbbda96529db443c07b39
+```
+
+The build report records:
+
+```text
+iso_path                  /SRKPCM.BIN;1
+iso_extent_lba            39
+verified_against_project  true
+```
+
+An external Windows `certutil -hashfile ... SHA256` over the project payload produced the same SHA-256 value.
+
+The successful deployable artifact remained off-card:
+
+```text
+BIN SHA-256  6f3614c4a298fc5001758a56862741ce65ad55416406c08e7e7cfa248fdf8f1b
+CUE SHA-256  5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950
+MODE1        64 sectors / 150528 raw bytes
+```
+
+No BIN/CUE was copied to SAROO and no physical Saturn media was written during this gate.
+
+Stage 6A therefore closes the host-side provenance chain from deterministic SRK-owned PCM bytes through real ISO packaging and read-back verification. Stage 6B may now begin, but its Saturn-side CD/filesystem implementation must first be grounded in the supplied Sega/SBL material and known-good local examples rather than guessed register-level CD commands.
