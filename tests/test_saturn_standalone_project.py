@@ -1,6 +1,7 @@
 """Tests for isolated standalone Saturn diagnostics project generation."""
 
 from contextlib import redirect_stdout
+from hashlib import sha256
 from io import StringIO
 from pathlib import Path
 import json
@@ -8,6 +9,12 @@ import tempfile
 import unittest
 
 from rikai_kotoba.formats.saturn.ip_bin import parse_saturn_system_id
+from rikai_kotoba.formats.saturn.packaged_pcm import (
+    PACKAGED_PCM_FILENAME,
+    PACKAGED_PCM_SAMPLE_COUNT,
+    build_deterministic_packaged_pcm,
+    parse_packaged_pcm,
+)
 from rikai_kotoba.hardware.saturn.standalone_project import (
     SaturnStandaloneProjectError,
     prepare_saturn_standalone_project,
@@ -104,6 +111,27 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertTrue((output / "build.bat").is_file())
             self.assertTrue((output / "SRK_STANDALONE_PROJECT.json").is_file())
 
+            payload_path = output / "cd" / PACKAGED_PCM_FILENAME
+            payload = payload_path.read_bytes()
+            expected_payload = build_deterministic_packaged_pcm()
+            self.assertEqual(result.packaged_pcm, payload_path.resolve())
+            self.assertEqual(payload, expected_payload)
+            self.assertEqual(parse_packaged_pcm(payload).sample_count, PACKAGED_PCM_SAMPLE_COUNT)
+
+            manifest = json.loads(
+                (output / "SRK_STANDALONE_PROJECT.json").read_text(encoding="utf-8")
+            )
+            pcm = manifest["packaged_pcm"]
+            self.assertEqual(pcm["path"], f"cd/{PACKAGED_PCM_FILENAME}")
+            self.assertEqual(pcm["size"], len(payload))
+            self.assertEqual(pcm["sha256"], sha256(payload).hexdigest())
+            inventory = {entry["path"]: entry for entry in manifest["generated_files"]}
+            self.assertIn(f"cd/{PACKAGED_PCM_FILENAME}", inventory)
+            self.assertEqual(
+                inventory[f"cd/{PACKAGED_PCM_FILENAME}"]["sha256"],
+                sha256(payload).hexdigest(),
+            )
+
     def test_generated_ip_bin_is_title_neutral_and_preserves_boot_payload(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -159,6 +187,7 @@ class SaturnStandaloneProjectTests(unittest.TestCase):
             self.assertNotIn("sat -x", script)
             self.assertEqual(manifest["build_orchestration"], "python-native")
             self.assertEqual(manifest["deployable_format"], "cue-bin-mode1-2352")
+            self.assertIn("SRKPCM.BIN", readme)
             self.assertIn("SRK-Diagnostics.cue + .bin", readme)
             self.assertIn("Deployment remains a separate guarded operation", readme)
             self.assertIn("0x20100075", host)
