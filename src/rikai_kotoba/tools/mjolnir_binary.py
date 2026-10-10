@@ -88,6 +88,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable symbol tables and dependency resolution in one pass.",
     )
+    parser.add_argument(
+        "--index-only",
+        action="store_true",
+        help=(
+            "Skip per-file/member dumps and print only requested symbol/dependency indexes; "
+            "useful for large SDK trees."
+        ),
+    )
     return parser
 
 
@@ -271,24 +279,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
 
     failed = False
-    for index, path in enumerate(candidates):
-        if index:
-            print("")
-        try:
-            report = inspect_binary(os.path.abspath(os.fspath(path)))
-        except (BinaryArchiveError, OSError) as exc:
-            print("=" * 78)
-            print("SRK MJOLNIR BINARY / ARCHIVE INSPECTOR")
-            print("=" * 78)
-            print(f"Source       : {path}")
-            print("Read-only    : yes")
-            print(f"Result       : ERROR: {type(exc).__name__}: {exc}")
-            failed = True
-            continue
-        _print_report(report, args.member_limit)
-        _print_object_summary(path)
+    if not args.index_only:
+        for index, path in enumerate(candidates):
+            if index:
+                print("")
+            try:
+                report = inspect_binary(os.path.abspath(os.fspath(path)))
+            except (BinaryArchiveError, OSError) as exc:
+                print("=" * 78)
+                print("SRK MJOLNIR BINARY / ARCHIVE INSPECTOR")
+                print("=" * 78)
+                print(f"Source       : {path}")
+                print("Read-only    : yes")
+                print(f"Result       : ERROR: {type(exc).__name__}: {exc}")
+                failed = True
+                continue
+            _print_report(report, args.member_limit)
+            _print_object_summary(path)
 
     need_index = args.symbols or args.dependencies or args.search_symbol or args.all
+    if args.index_only and not need_index:
+        print("[-] --index-only requires --symbols, --dependencies, --search-symbol, or --all")
+        return 2
     if need_index:
         index = build_symbol_index(explicit, recursive=args.recursive)
         if args.symbols or args.all:
