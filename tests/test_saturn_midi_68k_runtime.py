@@ -26,6 +26,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _STANDALONE = _ROOT / "integrations" / "saturn" / "standalone"
 _RUNTIME_H = _STANDALONE / "srk_saturn_midi_68k_runtime.h"
 _RUNTIME_C = _STANDALONE / "srk_saturn_midi_68k_runtime.c"
+_PHYSICAL_PROOF_C = _STANDALONE / "srk_saturn_midi_68k_physical_proof.c"
 
 
 class SaturnMidi68KRuntimeTests(unittest.TestCase):
@@ -94,17 +95,17 @@ class SaturnMidi68KRuntimeTests(unittest.TestCase):
         self.assertNotIn("0x25A00000", source)
         self.assertNotIn("0x25B00000", source)
 
-    def test_runtime_layer_is_not_called_by_existing_standalone_sources(self):
+    def test_runtime_layer_is_called_only_by_bounded_physical_proof_controller(self):
         needle = "srk_saturn_midi_68k_protocol_begin"
-        offenders = []
+        callers = []
         for path in _STANDALONE.iterdir():
             if not path.is_file() or path.suffix.lower() not in {".c", ".h"}:
                 continue
             if path in {_RUNTIME_C, _RUNTIME_H}:
                 continue
             if needle in path.read_text(encoding="utf-8", errors="replace"):
-                offenders.append(path.name)
-        self.assertEqual(offenders, [])
+                callers.append(path.name)
+        self.assertEqual(callers, [_PHYSICAL_PROOF_C.name])
 
 
 if __name__ == "__main__":
