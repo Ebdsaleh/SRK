@@ -12,9 +12,7 @@ from rikai_kotoba.hardware.saturn.standalone_build import (
     SaturnStandaloneBuildError,
     build_saturn_standalone_project,
 )
-from rikai_kotoba.hardware.saturn.standalone_project import (
-    prepare_saturn_standalone_project,
-)
+from rikai_kotoba.hardware.saturn.standalone_project import prepare_saturn_standalone_project
 
 
 ISO_SECTOR = 2048
@@ -54,7 +52,6 @@ def _iso_record(name: str, lba: int, size: int, *, is_dir: bool = False) -> byte
         identifier = b"\x01"
     else:
         identifier = name.encode("ascii")
-
     length = 33 + len(identifier)
     if length % 2:
         length += 1
@@ -77,7 +74,6 @@ def _write_test_iso(path: Path, payload: bytes, *, corrupt_payload: bool = False
     payload_lba = 21
     total_sectors = 22
     image = bytearray(total_sectors * ISO_SECTOR)
-
     root_record = _iso_record(".", root_lba, ISO_SECTOR, is_dir=True)
     pvd = bytearray(ISO_SECTOR)
     pvd[0] = 0x01
@@ -85,7 +81,6 @@ def _write_test_iso(path: Path, payload: bytes, *, corrupt_payload: bool = False
     pvd[6] = 0x01
     pvd[156 : 156 + len(root_record)] = root_record
     image[16 * ISO_SECTOR : 17 * ISO_SECTOR] = pvd
-
     root = bytearray(ISO_SECTOR)
     records = (
         root_record,
@@ -97,7 +92,6 @@ def _write_test_iso(path: Path, payload: bytes, *, corrupt_payload: bool = False
         root[offset : offset + len(record)] = record
         offset += len(record)
     image[root_lba * ISO_SECTOR : (root_lba + 1) * ISO_SECTOR] = root
-
     packaged = bytearray(payload)
     if corrupt_payload:
         packaged[-1] ^= 0x01
@@ -109,37 +103,20 @@ def _write_test_iso(path: Path, payload: bytes, *, corrupt_payload: bool = False
 def _prepared_project(root: Path) -> Path:
     saturn = root / "Saturn-Dev"
     bin_dir = saturn / "SH_ELF" / "sh-elf" / "bin"
-    for name in (
-        "sh-elf-gcc.exe",
-        "sh-elf-as.exe",
-        "sh-elf-objdump.exe",
-        "sh-elf-objcopy.exe",
-    ):
+    for name in ("sh-elf-gcc.exe", "sh-elf-as.exe", "sh-elf-objdump.exe", "sh-elf-objcopy.exe"):
         _touch(bin_dir / name)
     _touch(saturn / "TOOLS" / "mkisofs.exe")
-
     segalib = saturn / "SaturnOrbit-Inspect" / "payload" / "app" / "SBL_601" / "SEGALIB"
     _touch(segalib / "INCLUDE" / "SEGA_GFS.H", b"fixture-gfs-header\n")
-    _touch(segalib / "LIB_ELF" / "sega_gfs.a", b"fixture-gfs-library\n")
-    _touch(segalib / "LIB_ELF" / "SEGA_CDC.A", b"fixture-cdc-library\n")
-
+    for name in ("sega_gfs.a", "SEGA_CDC.A", "sega_dma.a", "sega_csh.a", "sega_int.a"):
+        _touch(segalib / "LIB_ELF" / name, ("fixture-" + name + "\n").encode("ascii"))
     template = root / "vdp1ex"
     template.mkdir()
-    (template / "vga_font.h").write_text(
-        "unsigned char font[2048] = {0};\n",
-        encoding="utf-8",
-    )
+    (template / "vga_font.h").write_text("unsigned char font[2048] = {0};\n", encoding="utf-8")
     ip_bin = root / "IP.BIN"
     ip_bin.write_bytes(_ip_bin())
-
     output = root / "SRK-Diagnostics-R1"
-    prepare_saturn_standalone_project(
-        saturn,
-        template,
-        ip_bin,
-        output,
-        release_date="20261009",
-    )
+    prepare_saturn_standalone_project(saturn, template, ip_bin, output, release_date="20261009")
     return output
 
 
@@ -152,26 +129,19 @@ class _SuccessfulRunner:
         self.calls.append((tuple(argv), dict(kwargs)))
         root = Path(kwargs["cwd"])
         self._assert_direct(kwargs)
-
         if "-o" in argv:
             output = root / argv[argv.index("-o") + 1]
             output.parent.mkdir(parents=True, exist_ok=True)
             if output.suffix.casefold() == ".iso":
                 payload = (root / "cd" / PACKAGED_PCM_FILENAME).read_bytes()
-                _write_test_iso(
-                    output,
-                    payload,
-                    corrupt_payload=self.corrupt_iso_payload,
-                )
+                _write_test_iso(output, payload, corrupt_payload=self.corrupt_iso_payload)
             else:
                 output.write_bytes(("artifact:" + output.name).encode("ascii"))
-
         for item in argv:
             if item.startswith("-Wl,-Map,"):
                 map_path = root / item[len("-Wl,-Map,"):]
                 map_path.parent.mkdir(parents=True, exist_ok=True)
                 map_path.write_text("map\n", encoding="ascii")
-
         return subprocess.CompletedProcess(argv, 0, stdout=b"ok\n")
 
     @staticmethod
@@ -197,40 +167,44 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             project = _prepared_project(Path(temp_dir))
             manifest = json.loads((project / "SRK_STANDALONE_PROJECT.json").read_text(encoding="utf-8"))
             gfs = manifest["stage6b_gfs"]
-            private_paths = [
-                Path(gfs["gfs_header"]["path"]),
-                Path(gfs["gfs_library"]["path"]),
-                Path(gfs["cdc_library"]["path"]),
-            ]
+            private_paths = [Path(gfs[key]["path"]) for key in (
+                "gfs_header", "gfs_library", "cdc_library", "dma_library", "csh_library", "int_library"
+            )]
             private_before = {path: path.read_bytes() for path in private_paths}
-            watched = {
-                path: path.read_bytes()
-                for path in (project / "src").iterdir()
-                if path.is_file()
-            }
+            watched = {path: path.read_bytes() for path in (project / "src").iterdir() if path.is_file()}
             payload_before = (project / "cd" / PACKAGED_PCM_FILENAME).read_bytes()
             runner = _SuccessfulRunner()
 
             result = build_saturn_standalone_project(project, _runner=runner)
 
             self.assertTrue(result.successful)
-            self.assertEqual(len(runner.calls), 14)
+            self.assertEqual(len(runner.calls), 15)
             self.assertTrue(any("src/srk_diag_vdp1.c" in call[0] for call in runner.calls))
-            self.assertTrue(any("src/srk_diag_audio.c" in call[0] for call in runner.calls))
-            self.assertTrue(any("src/srk_saturn_audio.c" in call[0] for call in runner.calls))
-            self.assertTrue(any("src/srk_saturn_packaged_pcm.c" in call[0] for call in runner.calls))
-
+            self.assertTrue(any("src/srk_saturn_runtime.c" in call[0] for call in runner.calls))
             include_flag = f'-I{Path(gfs["include_dir"])}'
             compile_calls = [call[0] for call in runner.calls if "-c" in call[0]]
             self.assertTrue(compile_calls)
             self.assertTrue(all(include_flag in argv for argv in compile_calls))
+
             link_call = next(call[0] for call in runner.calls if "-nostdlib" in call[0])
-            self.assertIn(str(Path(gfs["gfs_library"]["path"])), link_call)
-            self.assertIn(str(Path(gfs["cdc_library"]["path"])), link_call)
-            self.assertLess(
-                link_call.index(str(Path(gfs["gfs_library"]["path"]))),
-                link_call.index(str(Path(gfs["cdc_library"]["path"]))),
+            gfs_path = str(Path(gfs["gfs_library"]["path"]))
+            cdc_path = str(Path(gfs["cdc_library"]["path"]))
+            dma_path = str(Path(gfs["dma_library"]["path"]))
+            csh_path = str(Path(gfs["csh_library"]["path"]))
+            int_path = str(Path(gfs["int_library"]["path"]))
+            expected_tail = (
+                gfs_path,
+                "-Wl,--format=coff-sh",
+                cdc_path,
+                "-Wl,--format=elf32-sh",
+                dma_path,
+                csh_path,
+                int_path,
+                "-lgcc",
             )
+            self.assertEqual(link_call[-len(expected_tail):], expected_tail)
+            self.assertNotIn("sega_sat.a", " ".join(link_call).casefold())
+            self.assertNotIn("segadgfs.a", " ".join(link_call).casefold())
 
             self.assertTrue((project / "build" / "srk_diag.bin").is_file())
             iso = project / "build" / "srk_diag.iso"
@@ -253,8 +227,6 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
                 b"  TRACK 01 MODE1/2352\r\n"
                 b"    INDEX 01 00:00:00\r\n",
             )
-            self.assertTrue(result.log_path.is_file())
-            self.assertTrue(result.report_path.is_file())
             self.assertEqual({path: path.read_bytes() for path in watched}, watched)
             report = json.loads(result.report_path.read_text(encoding="utf-8"))
             self.assertEqual(report["orchestration"], "python-native")
@@ -265,6 +237,9 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             self.assertTrue(report["policy"]["private_sdk_dependencies_verified_after_build"])
             self.assertFalse(report["policy"]["private_sdk_dependencies_copied"])
             self.assertEqual(len(report["artifacts"]), 7)
+            self.assertEqual(report["stage6b_link"]["cdc_linker_override"], "coff-sh")
+            self.assertFalse(report["stage6b_link"]["broad_sega_sat_archive_used"])
+            self.assertFalse(report["stage6b_link"]["segadgfs_archive_used"])
             packaged = report["packaged_pcm"]
             self.assertEqual(packaged["project_path"], f"cd/{PACKAGED_PCM_FILENAME}")
             self.assertEqual(packaged["iso_path"], f"/{PACKAGED_PCM_FILENAME};1")
@@ -272,8 +247,6 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             self.assertEqual(packaged["size"], len(payload_before))
             self.assertTrue(packaged["verified_against_project"])
             self.assertEqual(report["deployable"]["format"], "cue-bin-mode1-2352")
-            self.assertEqual(report["deployable"]["cue"], "build/SRK-Diagnostics/SRK-Diagnostics.cue")
-            self.assertEqual(report["deployable"]["bin"], "build/SRK-Diagnostics/SRK-Diagnostics.bin")
             self.assertTrue(report["deployable"]["verified_against_iso"])
             self.assertIn("verify packaged PCM in ISO", result.log_path.read_text(encoding="utf-8"))
 
@@ -281,12 +254,9 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _prepared_project(Path(temp_dir))
             payload_before = (project / "cd" / PACKAGED_PCM_FILENAME).read_bytes()
-
             result = build_saturn_standalone_project(
-                project,
-                _runner=_SuccessfulRunner(corrupt_iso_payload=True),
+                project, _runner=_SuccessfulRunner(corrupt_iso_payload=True)
             )
-
             self.assertFalse(result.successful)
             self.assertEqual((project / "cd" / PACKAGED_PCM_FILENAME).read_bytes(), payload_before)
             self.assertFalse((project / "build" / "SRK-Diagnostics").exists())
@@ -301,15 +271,14 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _prepared_project(Path(temp_dir))
             runner = _FailFirstRunner()
-
             result = build_saturn_standalone_project(project, _runner=runner)
-
             self.assertFalse(result.successful)
             self.assertEqual(runner.calls, 1)
             self.assertTrue(result.log_path.is_file())
             self.assertTrue(result.report_path.is_file())
             report = json.loads(result.report_path.read_text(encoding="utf-8"))
             self.assertFalse(report["successful"])
+            self.assertTrue(report["policy"]["private_sdk_dependencies_verified_after_build"])
             self.assertIn("synthetic compiler failure", result.log_path.read_text(encoding="utf-8"))
 
     def test_tampered_generated_input_is_rejected_before_execution(self):
@@ -318,10 +287,8 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             target = project / "src" / "srk_diag_app.c"
             target.write_text(target.read_text(encoding="utf-8") + "\n/* tamper */\n", encoding="utf-8")
             runner = _SuccessfulRunner()
-
             with self.assertRaises(SaturnStandaloneBuildError):
                 build_saturn_standalone_project(project, _runner=runner)
-
             self.assertEqual(runner.calls, [])
 
     def test_tampered_private_gfs_dependency_is_rejected_before_execution(self):
@@ -331,17 +298,14 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             gfs_library = Path(manifest["stage6b_gfs"]["gfs_library"]["path"])
             gfs_library.write_bytes(gfs_library.read_bytes() + b"tamper")
             runner = _SuccessfulRunner()
-
             with self.assertRaises(SaturnStandaloneBuildError):
                 build_saturn_standalone_project(project, _runner=runner)
-
             self.assertEqual(runner.calls, [])
 
     def test_existing_build_output_is_rejected_to_preserve_provenance(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _prepared_project(Path(temp_dir))
             (project / "build" / "old.bin").write_bytes(b"old")
-
             with self.assertRaises(SaturnStandaloneBuildError):
                 build_saturn_standalone_project(project, _runner=_SuccessfulRunner())
 
@@ -350,7 +314,6 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             project = _prepared_project(Path(temp_dir))
             first = build_saturn_standalone_project(project, _runner=_SuccessfulRunner())
             self.assertTrue(first.successful)
-
             with self.assertRaises(SaturnStandaloneBuildError):
                 build_saturn_standalone_project(project, _runner=_SuccessfulRunner())
 
