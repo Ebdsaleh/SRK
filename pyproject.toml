@@ -37,6 +37,7 @@ dev = ["pytest>=8.0"]
 srk = "rikai_kotoba.cli:main"
 srk-gui = "rikai_kotoba.desktop:main"
 srk-mjolnir = "rikai_kotoba.tools.mjolnir:main"
+srk-mjolnir-binary = "rikai_kotoba.tools.mjolnir_binary:main"
 srk-saroo-toolchain = "rikai_kotoba.tools.saroo_toolchain:main"
 srk-saroo-build = "rikai_kotoba.tools.saroo_build:main"
 srk-saroo-deployment = "rikai_kotoba.tools.saroo_deployment:main"
