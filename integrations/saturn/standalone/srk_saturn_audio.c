@@ -1,4 +1,5 @@
 #include "srk_saturn_audio.h"
+#include "srk_saturn_packaged_pcm.h"
 
 
 #define SRK_AUDIO_SMPC_COMREG (*(volatile srk_u8 *)0x2010001F)
@@ -45,8 +46,12 @@
 #define SRK_AUDIO_STAGE4_SAMPLE_LOOP_END 256u
 #define SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID 0u
 #define SRK_AUDIO_STAGE4_WAVEFORM_SHAPED_PCM_ID 1u
+#define SRK_AUDIO_STAGE6_WAVEFORM_PACKAGED_PCM_ID 2u
 #define SRK_AUDIO_STAGE4_SHAPE_LEVEL_COUNT 16u
 #define SRK_AUDIO_STAGE4_SAMPLES_PER_LEVEL 16u
+
+#define SRK_AUDIO_STAGE6_SAMPLE_ADDRESS 0x00002800u
+#define SRK_AUDIO_STAGE6_SAMPLE_LOOP_END SRK_SATURN_PACKAGED_PCM_SAMPLE_COUNT
 
 #define SRK_AUDIO_PAN_HARD_RIGHT 0x0Fu
 #define SRK_AUDIO_PAN_CENTER     0x00u
@@ -170,12 +175,6 @@ static void srk_saturn_audio_install_stage4_sample(void)
     unsigned int sample;
     unsigned int base;
 
-    /*
-     * Stage 4 deliberately uses a second, longer deterministic PCM contour
-     * rather than importing a file format or introducing DSP/envelope state.
-     * Sixteen signed 16-bit levels are each held for sixteen samples, producing
-     * one 256-sample harmonic-rich loop whose endpoint is explicitly zero.
-     */
     base = SRK_AUDIO_STAGE4_SAMPLE_ADDRESS >> 1;
     sample = 0u;
     for(level=0u; level<SRK_AUDIO_STAGE4_SHAPE_LEVEL_COUNT; level++){
@@ -186,6 +185,26 @@ static void srk_saturn_audio_install_stage4_sample(void)
     }
     SRK_AUDIO_SOUND_RAM[base + SRK_AUDIO_STAGE4_SAMPLE_LOOP_END] =
         srk_audio_stage4_shape[0];
+}
+
+
+static void srk_saturn_audio_install_stage6_sample(
+    const SRK_SATURN_PACKAGED_PCM *pcm
+)
+{
+    unsigned int sample;
+    unsigned int base;
+
+    if(!pcm || pcm->sample_count != SRK_SATURN_PACKAGED_PCM_SAMPLE_COUNT)
+        return;
+
+    base = SRK_AUDIO_STAGE6_SAMPLE_ADDRESS >> 1;
+    for(sample=0u; sample<pcm->sample_count; sample++)
+        SRK_AUDIO_SOUND_RAM[base + sample] = pcm->samples[sample];
+
+    /* Match the already accepted exclusive loop-end Sound-RAM convention. */
+    SRK_AUDIO_SOUND_RAM[base + SRK_AUDIO_STAGE6_SAMPLE_LOOP_END] =
+        pcm->samples[pcm->loop_start];
 }
 
 
@@ -216,6 +235,10 @@ static void srk_saturn_audio_set_slot_source(
         registers[SRK_AUDIO_SLOT_SA_LOW] = SRK_AUDIO_STAGE4_SAMPLE_ADDRESS;
         registers[SRK_AUDIO_SLOT_LSA] = 0x0000u;
         registers[SRK_AUDIO_SLOT_LEA] = SRK_AUDIO_STAGE4_SAMPLE_LOOP_END;
+    }else if(waveform_id == SRK_AUDIO_STAGE6_WAVEFORM_PACKAGED_PCM_ID){
+        registers[SRK_AUDIO_SLOT_SA_LOW] = SRK_AUDIO_STAGE6_SAMPLE_ADDRESS;
+        registers[SRK_AUDIO_SLOT_LSA] = 0x0000u;
+        registers[SRK_AUDIO_SLOT_LEA] = SRK_AUDIO_STAGE6_SAMPLE_LOOP_END;
     }else{
         registers[SRK_AUDIO_SLOT_SA_LOW] = SRK_AUDIO_WAVE_ADDRESS;
         registers[SRK_AUDIO_SLOT_LSA] = 0x0000u;
@@ -254,10 +277,6 @@ static int srk_saturn_audio_initialize(SRK_SATURN_HOST_STATE *state)
     if(!srk_saturn_audio_smpc_command(SRK_AUDIO_SMPC_SNDOFF))
         return 0;
 
-    /*
-     * Main-side byte access to the sound block is prohibited. One word write
-     * therefore sets MEM4MB=1, DAC18B=0, reserved/VER bits to zero, MVOL=0xF.
-     */
     SRK_AUDIO_SCSP_COMMON[0] = 0x020Fu;
 
     srk_saturn_audio_install_dummy_cpu();
@@ -275,6 +294,9 @@ static int srk_saturn_audio_initialize(SRK_SATURN_HOST_STATE *state)
     state->audio_playing_mask = 0u;
     state->audio_waveform_id = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
     state->audio_right_waveform_id = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
+    state->audio_packaged_attempted = 0;
+    state->audio_packaged_ready = 0;
+    state->audio_packaged_pcm.status = SRK_SATURN_PACKAGED_PCM_NOT_ATTEMPTED;
     return 1;
 }
 
@@ -336,9 +358,41 @@ static void srk_saturn_audio_apply_key_mask(unsigned int mask)
 
     left[SRK_AUDIO_SLOT_CONTROL] = left_control;
     right[SRK_AUDIO_SLOT_CONTROL] = right_control;
-
-    /* KYONEX executes the KYONB state for all slots at once. */
     left[SRK_AUDIO_SLOT_CONTROL] = (srk_u16)(left_control | SRK_AUDIO_CONTROL_KYONEX);
+}
+
+
+static int srk_saturn_audio_prepare_packaged(SRK_SATURN_HOST_STATE *state)
+{
+    volatile srk_u16 *left;
+    volatile srk_u16 *right;
+
+    if(!state)
+        return 0;
+    if(state->audio_packaged_ready)
+        return 1;
+    if(state->audio_packaged_attempted)
+        return 0;
+
+    state->audio_packaged_attempted = 1;
+
+    /* Silence owned voices before the synchronous CD read begins. */
+    left = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_LEFT_SLOT);
+    right = srk_saturn_audio_slot(SRK_AUDIO_STAGE2_RIGHT_SLOT);
+    left[SRK_AUDIO_SLOT_MIXER] = 0x0000u;
+    right[SRK_AUDIO_SLOT_MIXER] = 0x0000u;
+    if(state->audio_playing_mask != 0u){
+        srk_saturn_audio_apply_key_mask(0u);
+        state->audio_playing_mask = 0u;
+        state->audio_playing = 0;
+    }
+
+    if(!srk_saturn_packaged_pcm_load(&state->audio_packaged_pcm))
+        return 0;
+
+    srk_saturn_audio_install_stage6_sample(&state->audio_packaged_pcm);
+    state->audio_packaged_ready = 1;
+    return 1;
 }
 
 
@@ -355,11 +409,6 @@ static void srk_saturn_audio_retarget_sources(
        right_waveform == state->audio_right_waveform_id)
         return;
 
-    /*
-     * Do not retarget SA/LEA beneath any keyed owned voice. Stage 5 needs both
-     * slot sources to change independently, so clear the pair once, retarget
-     * whichever slot changed, then let normal desired-mask logic re-key below.
-     */
     if(state->audio_playing_mask != 0u){
         srk_saturn_audio_apply_key_mask(0u);
         state->audio_playing_mask = 0u;
@@ -401,7 +450,8 @@ static int srk_saturn_audio_present(
     audible = request->playing && !request->muted;
 
     desired_left_waveform = request->waveform_id;
-    if(desired_left_waveform != SRK_AUDIO_STAGE4_WAVEFORM_SHAPED_PCM_ID)
+    if(desired_left_waveform != SRK_AUDIO_STAGE4_WAVEFORM_SHAPED_PCM_ID &&
+       desired_left_waveform != SRK_AUDIO_STAGE6_WAVEFORM_PACKAGED_PCM_ID)
         desired_left_waveform = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
     desired_right_waveform = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
 
@@ -413,6 +463,16 @@ static int srk_saturn_audio_present(
         desired_right_waveform = SRK_AUDIO_STAGE4_WAVEFORM_SHAPED_PCM_ID;
     }
 
+    if(desired_left_waveform == SRK_AUDIO_STAGE6_WAVEFORM_PACKAGED_PCM_ID ||
+       desired_right_waveform == SRK_AUDIO_STAGE6_WAVEFORM_PACKAGED_PCM_ID){
+        if(!srk_saturn_audio_prepare_packaged(state))
+            return 0;
+    }else if(!state->audio_packaged_ready){
+        /* Leaving a failed attempt permits one fresh retry on the next entry. */
+        state->audio_packaged_attempted = 0;
+        state->audio_packaged_pcm.status = SRK_SATURN_PACKAGED_PCM_NOT_ATTEMPTED;
+    }
+
     srk_saturn_audio_retarget_sources(
         state,
         desired_left_waveform,
@@ -422,15 +482,9 @@ static int srk_saturn_audio_present(
     if(request->tone_id == SRK_AUDIO_STAGE2_STEREO_TONE_ID ||
        request->tone_id == SRK_AUDIO_STAGE5_MIXED_TONE_ID){
         if(request->tone_id == SRK_AUDIO_STAGE2_STEREO_TONE_ID){
-            /* Accepted Stage 2: same source, distinguishable LOW/HIGH pitches. */
             left[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_LOW;
             right[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_HIGH;
         }else{
-            /*
-             * Stage 5: both slots use MID pitch so physical isolation compares
-             * the square source on listener-left directly against the shaped
-             * PCM source on listener-right without pitch as a confounder.
-             */
             left[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_MID;
             right[SRK_AUDIO_SLOT_PITCH] = SRK_AUDIO_PITCH_MID;
         }
@@ -489,8 +543,6 @@ static void srk_saturn_audio_stop(void *context)
     srk_saturn_audio_apply_key_mask(0u);
     state->audio_playing_mask = 0u;
     state->audio_playing = 0;
-
-    /* Leave the bounded dummy 68000 loop running; do not leave Sound CPU OFF. */
 }
 
 
@@ -540,6 +592,9 @@ void srk_saturn_audio_bind(
     state->audio_playing_mask = 0u;
     state->audio_waveform_id = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
     state->audio_right_waveform_id = SRK_AUDIO_STAGE4_WAVEFORM_TONE_ID;
+    state->audio_packaged_attempted = 0;
+    state->audio_packaged_ready = 0;
+    state->audio_packaged_pcm.status = SRK_SATURN_PACKAGED_PCM_NOT_ATTEMPTED;
     host->present_audio_tone = srk_saturn_audio_present;
     host->stop_audio = srk_saturn_audio_stop;
     host->read_audio_status = srk_saturn_audio_read_status;
