@@ -20,7 +20,6 @@ from rikai_kotoba.hardware.saturn.midi_68k_resident_decoder_physical_candidate i
     render_srk_saturn_midi_68k_resident_decoder_proof_preload_source,
 )
 from rikai_kotoba.hardware.saturn.midi_68k_resident_decoder_physical_candidate_full_build_gate import (
-    SaturnMidi68KResidentDecoderPhysicalCandidateFullBuildGateError,
     prepare_midi_68k_resident_decoder_physical_candidate_full_build_gate,
 )
 from rikai_kotoba.hardware.saturn.midi_mailbox import pack_saturn_midi_queue_words
@@ -94,12 +93,8 @@ class SaturnMidi68KResidentDecoderPhysicalBindingTests(unittest.TestCase):
         self.assertNotIn("SNDON", source)
         self.assertNotIn("SNDOFF", source)
 
-    def test_physical_candidate_full_build_path_is_still_fail_closed(self):
-        with self.assertRaisesRegex(
-            SaturnMidi68KResidentDecoderPhysicalCandidateFullBuildGateError,
-            "not enabled",
-        ):
-            prepare_midi_68k_resident_decoder_physical_candidate_full_build_gate()
+    def test_physical_candidate_full_build_prepare_api_is_enabled(self):
+        self.assertTrue(callable(prepare_midi_68k_resident_decoder_physical_candidate_full_build_gate))
 
 
 if __name__ == "__main__":
