@@ -1,6 +1,6 @@
 """Strict text derivation for the fresh resident-decoder physical candidate UI.
 
-This module never edits repository integration sources.  It transforms copies
+This module never edits repository integration sources. It transforms copies
 inside a fresh off-card candidate tree and refuses any unexpected R19 source
 shape.
 """
@@ -17,14 +17,17 @@ _CANDIDATE_DEFINE = "#define SRK_MIDI_68K_RESIDENT_DECODER_PHYSICAL_CANDIDATE 1"
 _R19_MENU_LABEL = '"MIDI 68K Batch Proof"'
 _CANDIDATE_MENU_LABEL = '"MIDI 68K Decoder Proof"'
 
+_C_BACKSLASH = chr(92)
 _OLD_GUARD = (
-    "#if defined(SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE) || \\\n"
-    "    defined(SRK_MIDI_68K_SILENT_BATCH_PHYSICAL_CANDIDATE)"
+    "#if defined(SRK_MIDI_68K_PHYSICAL_PROOF_CANDIDATE) || "
+    + _C_BACKSLASH
+    + "\n    defined(SRK_MIDI_68K_SILENT_BATCH_PHYSICAL_CANDIDATE)"
 )
 _NEW_GUARD = (
     _OLD_GUARD
-    + " || \\\n"
-    + "    defined(SRK_MIDI_68K_RESIDENT_DECODER_PHYSICAL_CANDIDATE)"
+    + " || "
+    + _C_BACKSLASH
+    + "\n    defined(SRK_MIDI_68K_RESIDENT_DECODER_PHYSICAL_CANDIDATE)"
 )
 
 
@@ -91,19 +94,24 @@ def derive_resident_decoder_candidate_main(r19_main: str) -> str:
         raise SaturnMidi68KResidentDecoderCandidateUIError(
             "R19 telemetry rendering shape changed"
         )
-    resident_progress = last_error_block + "\n\n#ifdef SRK_MIDI_68K_RESIDENT_DECODER_PHYSICAL_CANDIDATE\n" + "\n".join(
-        (
-            "    srk_midi_68k_u32(number, (srk_u32)srk_midi_68k_proof.telemetry.processed);",
-            '    srk_midi_68k_draw_field(2, 12, 14, "Processed:");',
-            "    srk_midi_68k_draw_field(16, 12, 10, number);",
-            "    srk_midi_68k_u32(number, (srk_u32)srk_midi_68k_proof.telemetry.current_record);",
-            '    srk_midi_68k_draw_field(2, 13, 14, "Current:");',
-            "    srk_midi_68k_draw_field(16, 13, 10, number);",
-            "    srk_midi_68k_u32(number, (srk_u32)srk_midi_68k_proof.telemetry.decoder_ready);",
-            '    srk_midi_68k_draw_field(2, 14, 14, "Decoder ready:");',
-            "    srk_midi_68k_draw_field(16, 14, 10, number);",
+    resident_progress = (
+        last_error_block
+        + "\n\n#ifdef SRK_MIDI_68K_RESIDENT_DECODER_PHYSICAL_CANDIDATE\n"
+        + "\n".join(
+            (
+                "    srk_midi_68k_u32(number, (srk_u32)srk_midi_68k_proof.telemetry.processed);",
+                '    srk_midi_68k_draw_field(2, 12, 14, "Processed:");',
+                "    srk_midi_68k_draw_field(16, 12, 10, number);",
+                "    srk_midi_68k_u32(number, (srk_u32)srk_midi_68k_proof.telemetry.current_record);",
+                '    srk_midi_68k_draw_field(2, 13, 14, "Current:");',
+                "    srk_midi_68k_draw_field(16, 13, 10, number);",
+                "    srk_midi_68k_u32(number, (srk_u32)srk_midi_68k_proof.telemetry.decoder_ready);",
+                '    srk_midi_68k_draw_field(2, 14, 14, "Decoder ready:");',
+                "    srk_midi_68k_draw_field(16, 14, 10, number);",
+            )
         )
-    ) + "\n#endif"
+        + "\n#endif"
+    )
     main = main.replace(last_error_block, resident_progress, 1)
 
     success_line = "    srk_midi_68k_draw_field(2, 14, 36, SRK_MIDI_68K_PROOF_SUCCESS);"
