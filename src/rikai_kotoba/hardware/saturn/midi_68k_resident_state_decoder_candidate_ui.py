@@ -191,12 +191,21 @@ def derive_resident_state_candidate_main(r20_main: str) -> str:
             'srk_midi_68k_draw_field(2, 27, 36, "START Return to diagnostics menu");',
         ),
     )
+    release_relocated = False
     for old, new in prompt_rows:
-        if main.count(old) != 1:
+        count = main.count(old)
+        if count > 1:
             raise SaturnMidi68KResidentStateCandidateUIError(
-                f"R20 prompt rendering shape changed: {old}"
+                f"R20 prompt rendering is duplicated: {old}"
             )
-        main = main.replace(old, new, 1)
+        if count == 1:
+            main = main.replace(old, new, 1)
+            if "Release A to arm proof action" in old:
+                release_relocated = True
+    if not release_relocated:
+        raise SaturnMidi68KResidentStateCandidateUIError(
+            "R20 release-to-arm interlock prompt is missing"
+        )
 
     required = (
         _STATE_DEFINE,
@@ -209,7 +218,6 @@ def derive_resident_state_candidate_main(r20_main: str) -> str:
         "state_verify.ch3_cc74",
         "state_verify.ch9_program",
         'srk_midi_68k_draw_field(2, 26, 36, "Release A to arm proof action");',
-        'srk_midi_68k_draw_field(2, 27, 36, "START Return to diagnostics menu");',
     )
     for marker in required:
         if marker not in main:
