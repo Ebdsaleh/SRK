@@ -354,18 +354,19 @@ def _emit_audio_note_on(asm: _AudioAssembler68K) -> None:
     asm.label("audio_note_on_done")
 
 
-def _emit_audio_note_off(asm: _AudioAssembler68K) -> None:
+def _emit_audio_note_off(asm: _AudioAssembler68K, prefix: str) -> None:
     """Release slot 0 only when D1/D5 match its owner."""
 
+    done = f"{prefix}_done"
     asm.move_absw_to_dn(_voice(SATURN_MIDI_68K_VOICE_ACTIVE_WORD), 0)
     asm.cmpi_w(0, 0)
-    asm.branch_word(0x6700, "audio_note_off_done")
+    asm.branch_word(0x6700, done)
     asm.move_absw_to_dn(_voice(SATURN_MIDI_68K_VOICE_CHANNEL_WORD), 0)
     asm.cmp_dn_w(1, 0)
-    asm.branch_word(0x6600, "audio_note_off_done")
+    asm.branch_word(0x6600, done)
     asm.move_absw_to_dn(_voice(SATURN_MIDI_68K_VOICE_NOTE_WORD), 0)
     asm.cmp_dn_w(5, 0)
-    asm.branch_word(0x6600, "audio_note_off_done")
+    asm.branch_word(0x6600, done)
 
     asm.move_imm_to_dn(SATURN_MIDI_68K_SCSP_CONTROL_NORMAL_LOOP, 0)
     asm.move_dn_d16_an(0, _slot_byte_offset(SATURN_MIDI_68K_SCSP_SLOT_CONTROL), 4)
@@ -384,7 +385,7 @@ def _emit_audio_note_off(asm: _AudioAssembler68K) -> None:
     asm.move_absw_to_dn(_voice(SATURN_MIDI_68K_VOICE_KEY_OFF_COUNT_WORD), 0)
     asm.addq_w(1, 0)
     asm.move_dn_absw(0, _voice(SATURN_MIDI_68K_VOICE_KEY_OFF_COUNT_WORD))
-    asm.label("audio_note_off_done")
+    asm.label(done)
 
 
 def _emit_audio_state_mutation_dispatch(asm: _AudioAssembler68K) -> None:
@@ -416,7 +417,7 @@ def _emit_audio_state_mutation_dispatch(asm: _AudioAssembler68K) -> None:
     asm.label("stream_op_note_off")
     asm.move_dn_d16_an(5, _state_displacement(SATURN_MIDI_68K_CH_LAST_NOTE), 1)
     asm.move_dn_d16_an(7, _state_displacement(SATURN_MIDI_68K_CH_LAST_VELOCITY), 1)
-    _emit_audio_note_off(asm)
+    _emit_audio_note_off(asm, "audio_note_off")
     _emit_note_byte_address(asm, "stream_note_off")
     asm.bclr_dn_an_indirect(5, 3)
     _emit_active_count_decrement(asm, "stream_note_off_count_done")
@@ -434,7 +435,7 @@ def _emit_audio_state_mutation_dispatch(asm: _AudioAssembler68K) -> None:
     asm.branch_word(0x6000, "stream_record_done")
 
     asm.label("stream_note_on_zero_velocity")
-    _emit_audio_note_off(asm)
+    _emit_audio_note_off(asm, "audio_note_on_zero_off")
     _emit_note_byte_address(asm, "stream_note_on_zero")
     asm.bclr_dn_an_indirect(5, 3)
     _emit_active_count_decrement(asm, "stream_note_on_zero_count_done")
