@@ -169,6 +169,35 @@ def derive_resident_state_candidate_main(r20_main: str) -> str:
     )
     main = main.replace(old_success, new_success, 1)
 
+    prompt_rows = (
+        (
+            'srk_midi_68k_draw_field(2, 17, 36, "A ignored while proof is RUNNING");',
+            'srk_midi_68k_draw_field(2, 26, 36, "A ignored while proof is RUNNING");',
+        ),
+        (
+            'srk_midi_68k_draw_field(2, 17, 36, "A Run again (explicit reset + begin)");',
+            'srk_midi_68k_draw_field(2, 26, 36, "A Run again (explicit reset + begin)");',
+        ),
+        (
+            'srk_midi_68k_draw_field(2, 17, 36, "A Run explicit silent proof");',
+            'srk_midi_68k_draw_field(2, 26, 36, "A Run explicit silent proof");',
+        ),
+        (
+            'srk_midi_68k_draw_field(2, 17, 36, "Release A to arm proof action");',
+            'srk_midi_68k_draw_field(2, 26, 36, "Release A to arm proof action");',
+        ),
+        (
+            'srk_midi_68k_draw_field(2, 19, 36, "START Return to diagnostics menu");',
+            'srk_midi_68k_draw_field(2, 27, 36, "START Return to diagnostics menu");',
+        ),
+    )
+    for old, new in prompt_rows:
+        if main.count(old) != 1:
+            raise SaturnMidi68KResidentStateCandidateUIError(
+                f"R20 prompt rendering shape changed: {old}"
+            )
+        main = main.replace(old, new, 1)
+
     required = (
         _STATE_DEFINE,
         "SRK_MIDI_68K_PROOF_EXPECTED_INDEX 20u",
@@ -179,7 +208,8 @@ def derive_resident_state_candidate_main(r20_main: str) -> str:
         "state_verify.ch3_program",
         "state_verify.ch3_cc74",
         "state_verify.ch9_program",
-        "Release A to arm proof action",
+        'srk_midi_68k_draw_field(2, 26, 36, "Release A to arm proof action");',
+        'srk_midi_68k_draw_field(2, 27, 36, "START Return to diagnostics menu");',
     )
     for marker in required:
         if marker not in main:
