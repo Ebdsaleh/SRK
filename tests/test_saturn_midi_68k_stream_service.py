@@ -14,7 +14,7 @@ from rikai_kotoba.hardware.saturn.midi_68k_stream_service import (
     render_srk_saturn_midi_68k_stream_service_header,
     render_srk_saturn_midi_68k_stream_service_source,
     simulate_srk_saturn_midi_stream_timeline,
-    validate_srk_saturn_midi_68k_stream_batches,
+    validate_srk_saturn_midi_stream_batches,
     validate_srk_saturn_midi_68k_stream_layout,
 )
 from rikai_kotoba.hardware.saturn.midi_program import (
@@ -58,7 +58,7 @@ class SaturnMidi68KStreamServiceTests(unittest.TestCase):
         batches = build_srk_saturn_midi_stream_batches(_program(70))
         self.assertEqual(tuple(len(batch.records) for batch in batches), (32, 32, 6))
         self.assertEqual(tuple(batch.sequence for batch in batches), (1, 2, 3))
-        validate_srk_saturn_midi_68k_stream_batches(batches)
+        validate_srk_saturn_midi_stream_batches(batches)
 
     def test_sequence_wrap_skips_zero(self):
         self.assertEqual(next_saturn_midi_stream_sequence(0), 1)
