@@ -1,20 +1,34 @@
 """Integrity gates for the third-party CC0 MIDI source corpus.
 
-These tests deliberately prove source provenance only.  They do not imply that
+These tests deliberately prove source provenance only. They do not imply that
 SRK's current parser/driver already supports every event found in the corpus.
 Compatibility is a separate engineering gate.
+
+The Double Impact ZIP is stored as a lossless text-safe base64 transport because
+binary upload tooling mutated the direct ZIP upload. The decoded byte stream is
+the source artifact and is hash-locked before its MIDI members are inspected.
 """
 
 from __future__ import annotations
 
+import base64
 from hashlib import sha256
+import io
 from pathlib import Path
 import unittest
 import zipfile
 
 
 _ROOT = Path(__file__).resolve().parents[1]
-_DOUBLE_IMPACT = _ROOT / "assets/midi/cc0/double-impact/dbimmidi-oga-mid.zip"
+_DOUBLE_IMPACT_DIRECTORY = _ROOT / "assets/midi/cc0/double-impact"
+_DOUBLE_IMPACT_PART_NAMES = (
+    "dbimmidi-oga-mid.zip.b64.000",
+    "dbimmidi-oga-mid.zip.b64.001",
+    "dbimmidi-oga-mid.zip.b64.002",
+    "dbimmidi-oga-mid.zip.b64.003",
+    "dbimmidi-oga-mid.zip.b64.004",
+)
+_DOUBLE_IMPACT_PART_SIZES = (15113, 15113, 15113, 7556, 7557)
 _TOWN_THEME = _ROOT / "assets/midi/cc0/melody-town-theme/Melody Town Theme.mid"
 
 _DOUBLE_IMPACT_SHA256 = "c665dd930726d25305f8c8e104a235399a04a04cf50d2f3eda251dd7be8d658c"
@@ -72,9 +86,28 @@ def _sha(data: bytes) -> str:
     return sha256(data).hexdigest()
 
 
+def _double_impact_bytes() -> bytes:
+    encoded = "".join(
+        (_DOUBLE_IMPACT_DIRECTORY / name).read_text(encoding="ascii")
+        for name in _DOUBLE_IMPACT_PART_NAMES
+    )
+    return base64.b64decode(encoded, validate=True)
+
+
 class MidiCc0AssetIntegrityTests(unittest.TestCase):
     def test_supplied_source_files_are_byte_exact(self):
-        double_impact = _DOUBLE_IMPACT.read_bytes()
+        part_paths = tuple(
+            _DOUBLE_IMPACT_DIRECTORY / name
+            for name in _DOUBLE_IMPACT_PART_NAMES
+        )
+        discovered = tuple(
+            path.name
+            for path in sorted(_DOUBLE_IMPACT_DIRECTORY.glob("dbimmidi-oga-mid.zip.b64.*"))
+        )
+        self.assertEqual(discovered, _DOUBLE_IMPACT_PART_NAMES)
+        self.assertEqual(tuple(path.stat().st_size for path in part_paths), _DOUBLE_IMPACT_PART_SIZES)
+
+        double_impact = _double_impact_bytes()
         town_theme = _TOWN_THEME.read_bytes()
 
         self.assertEqual(len(double_impact), 45337)
@@ -84,7 +117,7 @@ class MidiCc0AssetIntegrityTests(unittest.TestCase):
         self.assertEqual(town_theme[:4], b"MThd")
 
     def test_double_impact_archive_has_only_the_expected_hash_locked_midis(self):
-        with zipfile.ZipFile(_DOUBLE_IMPACT) as archive:
+        with zipfile.ZipFile(io.BytesIO(_double_impact_bytes())) as archive:
             files = {
                 info.filename
                 for info in archive.infolist()
