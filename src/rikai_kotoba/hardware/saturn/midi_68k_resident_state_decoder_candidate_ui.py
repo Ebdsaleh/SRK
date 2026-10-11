@@ -44,19 +44,26 @@ def derive_resident_state_candidate_main(r20_main: str) -> str:
         )
     main = main.replace(_R20_GUARD, _STATE_GUARD)
 
-    include = '#include "srk_saturn_midi_68k_resident_decoder_physical_proof.h"'
-    if main.count(include) != 1:
-        raise SaturnMidi68KResidentStateCandidateUIError(
-            "R20 resident proof include shape changed"
+    include_block = "\n".join(
+        (
+            "#ifdef SRK_MIDI_68K_RESIDENT_DECODER_PHYSICAL_CANDIDATE",
+            '#include "srk_saturn_midi_68k_resident_decoder_physical_proof.h"',
+            "#endif",
         )
-    main = main.replace(
-        include,
-        include
-        + "\n#ifdef SRK_MIDI_68K_RESIDENT_STATE_DECODER_PHYSICAL_CANDIDATE"
-        + '\n#include "srk_saturn_midi_68k_resident_state_physical_proof.h"'
-        + "\n#endif",
-        1,
     )
+    if main.count(include_block) != 1:
+        raise SaturnMidi68KResidentStateCandidateUIError(
+            "R20 resident proof include block shape changed"
+        )
+    state_include_block = "\n".join(
+        (
+            include_block,
+            "#ifdef SRK_MIDI_68K_RESIDENT_STATE_DECODER_PHYSICAL_CANDIDATE",
+            '#include "srk_saturn_midi_68k_resident_state_physical_proof.h"',
+            "#endif",
+        )
+    )
+    main = main.replace(include_block, state_include_block, 1)
 
     alias_marker = (
         "#ifdef SRK_MIDI_68K_RESIDENT_DECODER_PHYSICAL_CANDIDATE\n"
