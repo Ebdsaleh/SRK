@@ -164,11 +164,13 @@ def _state_telemetry(offset: int) -> int:
 
 def _emit_service_error(asm: _Assembler68K, label: str, error_code: int) -> None:
     asm.label(label)
-    asm.move_imm_absw(SATURN_MIDI_68K_STREAM_FLAG_ERROR, _svc(SATURN_MIDI_68K_STREAM_FLAGS_OFFSET))
     asm.move_imm_absw(error_code, _svc(SATURN_MIDI_68K_STREAM_LAST_ERROR_OFFSET))
     asm.move_imm_absw(error_code, _MB_LAST_ERROR)
     asm.move_imm_absw(0, _MB_READ_INDEX)
     asm.move_imm_absw(0, _state_telemetry(SATURN_MIDI_68K_RESIDENT_STATE_DECODER_TELEMETRY_READY_OFFSET))
+    # ERROR is the public commit marker: publish it only after the code and
+    # associated failure state are complete.
+    asm.move_imm_absw(SATURN_MIDI_68K_STREAM_FLAG_ERROR, _svc(SATURN_MIDI_68K_STREAM_FLAGS_OFFSET))
     asm.branch_short_self()
 
 
@@ -208,10 +210,10 @@ def _emit_wait_until_due(asm: _Assembler68K) -> None:
 
     # Compare unsigned 32-bit clock D0:D1 against due time D2:D3.
     asm.cmp_dn_w(2, 0)
-    asm.branch_word(0x6500, "scheduler_wait")  # clock high < due high
-    asm.branch_word(0x6200, "scheduler_due")   # clock high > due high
+    asm.branch_word(0x6500, "scheduler_wait")
+    asm.branch_word(0x6200, "scheduler_due")
     asm.cmp_dn_w(3, 1)
-    asm.branch_word(0x6500, "scheduler_wait")  # equal high; low still early
+    asm.branch_word(0x6500, "scheduler_wait")
     asm.label("scheduler_due")
     asm.move_imm_absw(SATURN_MIDI_68K_STREAM_FLAG_RUNNING, _svc(SATURN_MIDI_68K_STREAM_FLAGS_OFFSET))
 
@@ -332,7 +334,6 @@ def build_srk_saturn_midi_68k_resident_stream_service_image() -> SaturnMidi68KRe
     )
     asm = _Assembler68K()
 
-    # Initialize persistent MIDI state exactly once at service boot.
     _emit_word_block(asm, SATURN_MIDI_68K_STATE_ADDRESS, summary_words)
     _emit_word_block(asm, SATURN_MIDI_68K_CONTROLLER_ADDRESS, controller_words)
     _emit_word_block(asm, SATURN_MIDI_68K_ACTIVE_NOTES_ADDRESS, active_note_words)
@@ -371,21 +372,17 @@ def build_srk_saturn_midi_68k_resident_stream_service_image() -> SaturnMidi68KRe
     asm.move_imm_absw(0, _MB_READ_INDEX)
     asm.move_imm_absw(0, _MB_LAST_ERROR)
 
-    # Continuous producer/refill loop.
     asm.label("poll_batch")
     asm.move_imm_absw(SATURN_MIDI_68K_STREAM_FLAG_WAIT_BATCH, _svc(SATURN_MIDI_68K_STREAM_FLAGS_OFFSET))
     asm.move_absw_to_dn(_MB_FLAGS, 0)
     asm.andi_w(SATURN_MIDI_MAILBOX_FLAG_READY, 0)
     asm.branch_word(0x6700, "poll_batch")
 
-    # READY with the already-acknowledged sequence is simply the producer still
-    # holding the previous batch; wait rather than processing it twice.
     asm.move_absw_to_dn(_MB_WRITE_SEQUENCE, 0)
     asm.move_absw_to_dn(_MB_READ_SEQUENCE, 1)
     asm.cmp_dn_w(1, 0)
     asm.branch_word(0x6700, "poll_batch")
 
-    # Enforce strict non-zero sequence continuity, wrapping FFFF -> 1.
     asm.cmpi_w(0, 1)
     asm.branch_word(0x6700, "expect_first_sequence")
     asm.addq_w(1, 1)
@@ -399,7 +396,6 @@ def build_srk_saturn_midi_68k_resident_stream_service_image() -> SaturnMidi68KRe
     asm.cmp_dn_w(1, 0)
     asm.branch_word(0x6600, "error_sequence")
 
-    # Mailbox identity/capacity/count contract.
     asm.move_absw_to_dn(_MB_MAGIC0, 0)
     asm.cmpi_w(SATURN_MIDI_MAILBOX_MAGIC0, 0)
     asm.branch_word(0x6600, "error_magic")
@@ -421,8 +417,6 @@ def build_srk_saturn_midi_68k_resident_stream_service_image() -> SaturnMidi68KRe
     asm.cmp_dn_w(0, 1)
     asm.branch_word(0x6600, "error_count")
 
-    # Validate the complete refill before any state mutation.  D0:D1 carries
-    # the last executed timestamp across refill boundaries.
     asm.move_absw_to_dn(_svc(SATURN_MIDI_68K_STREAM_LAST_DUE_HI_OFFSET), 0)
     asm.move_absw_to_dn(_svc(SATURN_MIDI_68K_STREAM_LAST_DUE_LO_OFFSET), 1)
     asm.move_imm_absw(0, _svc(SATURN_MIDI_68K_STREAM_CURRENT_INDEX_OFFSET))
@@ -431,7 +425,6 @@ def build_srk_saturn_midi_68k_resident_stream_service_image() -> SaturnMidi68KRe
     _emit_record_byte_reads(asm)
     _emit_record_validation(asm)
 
-    # Require event time D2:D3 >= previous accepted time D0:D1.
     asm.cmp_dn_w(0, 2)
     asm.branch_word(0x6500, "error_timestamp")
     asm.branch_word(0x6200, "validation_time_ok")
@@ -448,7 +441,6 @@ def build_srk_saturn_midi_68k_resident_stream_service_image() -> SaturnMidi68KRe
     asm.cmp_dn_w(5, 4)
     asm.branch_word(0x6600, "validation_loop")
 
-    # Batch is now fully accepted; reset per-batch progress and schedule it.
     asm.move_imm_absw(0, _svc(SATURN_MIDI_68K_STREAM_CURRENT_INDEX_OFFSET))
     asm.move_imm_absw(0, _state_telemetry(SATURN_MIDI_68K_RESIDENT_STATE_DECODER_TELEMETRY_PROCESSED_OFFSET))
     asm.move_imm_absw(0, _state_telemetry(SATURN_MIDI_68K_RESIDENT_STATE_DECODER_TELEMETRY_CURRENT_RECORD_OFFSET))
@@ -471,7 +463,6 @@ def build_srk_saturn_midi_68k_resident_stream_service_image() -> SaturnMidi68KRe
     asm.move_dn_absw(2, _state_telemetry(SATURN_MIDI_68K_RESIDENT_STATE_DECODER_TELEMETRY_FINAL_TIME_HI_OFFSET))
     asm.move_dn_absw(3, _state_telemetry(SATURN_MIDI_68K_RESIDENT_STATE_DECODER_TELEMETRY_FINAL_TIME_LO_OFFSET))
 
-    # Increment 32-bit total processed count.
     asm.move_absw_to_dn(_svc(SATURN_MIDI_68K_STREAM_TOTAL_LO_OFFSET), 0)
     asm.addq_w(1, 0)
     asm.move_dn_absw(0, _svc(SATURN_MIDI_68K_STREAM_TOTAL_LO_OFFSET))
@@ -486,10 +477,9 @@ def build_srk_saturn_midi_68k_resident_stream_service_image() -> SaturnMidi68KRe
     asm.cmp_dn_w(5, 4)
     asm.branch_word(0x6600, "schedule_record")
 
-    # Acknowledge this refill only after every record reached its timestamp and
-    # mutated state.
+    # Complete every associated success field before publishing READ_SEQUENCE.
+    # The SH-2 producer treats READ_SEQUENCE as the acknowledgement commit marker.
     asm.move_absw_to_dn(_MB_WRITE_SEQUENCE, 0)
-    asm.move_dn_absw(0, _MB_READ_SEQUENCE)
     asm.move_dn_absw(0, _svc(SATURN_MIDI_68K_STREAM_CURRENT_SEQUENCE_OFFSET))
     asm.move_dn_absw(4, _MB_READ_INDEX)
     asm.move_absw_to_dn(_svc(SATURN_MIDI_68K_STREAM_BATCH_COUNT_OFFSET), 0)
@@ -498,6 +488,8 @@ def build_srk_saturn_midi_68k_resident_stream_service_image() -> SaturnMidi68KRe
     asm.move_imm_absw(0, _MB_LAST_ERROR)
     asm.move_imm_absw(0, _svc(SATURN_MIDI_68K_STREAM_LAST_ERROR_OFFSET))
     asm.move_imm_absw(1, _state_telemetry(SATURN_MIDI_68K_RESIDENT_STATE_DECODER_TELEMETRY_READY_OFFSET))
+    asm.move_absw_to_dn(_MB_WRITE_SEQUENCE, 0)
+    asm.move_dn_absw(0, _MB_READ_SEQUENCE)
     asm.branch_word(0x6000, "poll_batch")
 
     _emit_service_error(asm, "error_magic", SATURN_MIDI_68K_STREAM_ERROR_MAGIC)
