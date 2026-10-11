@@ -8,10 +8,26 @@ The license notices below apply to the corresponding third-party assets only; th
 
 ## Double Impact MIDI Pack
 
-Repository source:
+The supplied upstream archive is represented in Git as five lossless ASCII base64 transport segments:
 
 ```text
-assets/midi/cc0/double-impact/dbimmidi-oga-mid.zip
+assets/midi/cc0/double-impact/dbimmidi-oga-mid.zip.b64.000
+assets/midi/cc0/double-impact/dbimmidi-oga-mid.zip.b64.001
+assets/midi/cc0/double-impact/dbimmidi-oga-mid.zip.b64.002
+assets/midi/cc0/double-impact/dbimmidi-oga-mid.zip.b64.003
+assets/midi/cc0/double-impact/dbimmidi-oga-mid.zip.b64.004
+```
+
+Concatenating those files in numeric order and base64-decoding the resulting ASCII stream reproduces the original supplied ZIP byte-for-byte. The transport envelope exists only to avoid binary mutation by repository-upload tooling; it is not a conversion of the MIDI data.
+
+Transport segment sizes are locked as:
+
+```text
+.000 : 15113 ASCII bytes
+.001 : 15113 ASCII bytes
+.002 : 15113 ASCII bytes
+.003 :  7556 ASCII bytes
+.004 :  7557 ASCII bytes
 ```
 
 Upstream page:
@@ -28,7 +44,7 @@ The upstream copyright/attribution notice is:
 
 The page uploader/author account is `northivanastan`; the contributor credit above is the pack's stated attribution notice.
 
-Supplied archive provenance:
+Supplied archive provenance after decoding the repository transport:
 
 ```text
 Filename : dbimmidi-oga-mid.zip
@@ -36,7 +52,7 @@ Bytes    : 45337
 SHA-256  : c665dd930726d25305f8c8e104a235399a04a04cf50d2f3eda251dd7be8d658c
 ```
 
-The archive is committed unchanged. Its MIDI members and hashes are:
+The decoded archive's MIDI members and hashes are:
 
 ```text
 midis/E1M2, E4M3 - Matzu - Space Spectre.mid
