@@ -58,8 +58,11 @@ def derive_resident_state_candidate_main(r20_main: str) -> str:
         1,
     )
 
-    alias_marker = "#ifdef SRK_MIDI_68K_RESIDENT_DECODER_PHYSICAL_CANDIDATE\n"
-    if main.count(alias_marker) < 1:
+    alias_marker = (
+        "#ifdef SRK_MIDI_68K_RESIDENT_DECODER_PHYSICAL_CANDIDATE\n"
+        "typedef"
+    )
+    if main.count(alias_marker) != 1:
         raise SaturnMidi68KResidentStateCandidateUIError(
             "R20 proof alias block shape changed"
         )
@@ -76,8 +79,9 @@ def derive_resident_state_candidate_main(r20_main: str) -> str:
             "#define SRK_MIDI_68K_PROOF_BEGIN srk_saturn_midi_68k_resident_state_physical_proof_begin",
             "#define SRK_MIDI_68K_PROOF_POLL srk_saturn_midi_68k_resident_state_physical_proof_poll",
             "#elif defined(SRK_MIDI_68K_RESIDENT_DECODER_PHYSICAL_CANDIDATE)",
+            "typedef",
         )
-    ) + "\n"
+    )
     main = main.replace(alias_marker, state_alias, 1)
 
     last_error_block = "\n".join(
