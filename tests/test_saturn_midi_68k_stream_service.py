@@ -58,7 +58,7 @@ class SaturnMidi68KStreamServiceTests(unittest.TestCase):
         batches = build_srk_saturn_midi_stream_batches(_program(70))
         self.assertEqual(tuple(len(batch.records) for batch in batches), (32, 32, 6))
         self.assertEqual(tuple(batch.sequence for batch in batches), (1, 2, 3))
-        validate_srk_saturn_midi_stream_batches(batches)
+        validate_srk_saturn_midi_68k_stream_batches(batches)
 
     def test_sequence_wrap_skips_zero(self):
         self.assertEqual(next_saturn_midi_stream_sequence(0), 1)
@@ -141,7 +141,7 @@ class SaturnMidi68KStreamServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(SaturnMidi68KStreamServiceError, "clock must be monotonic"):
             simulate_srk_saturn_midi_stream_timeline(_program(2), (1000, 999))
 
-    def test_generated_producer_contract_is_c89_and_has_no_scsp_or_smpc_access(self):
+    def test_generated_producer_contract_is_c89_fail_closed_and_has_no_scsp_or_smpc_access(self):
         header = render_srk_saturn_midi_68k_stream_service_header()
         source = render_srk_saturn_midi_68k_stream_service_source()
         self.assertIn("srk_saturn_midi_stream_clock_publish", header)
@@ -149,6 +149,10 @@ class SaturnMidi68KStreamServiceTests(unittest.TestCase):
         self.assertIn("CLOCK_GENERATION", header)
         self.assertIn("generation", source)
         self.assertIn("SRK_MIDI_MAILBOX_FLAG_READY", source)
+        self.assertIn("SRK_MIDI_MB_READ_SEQUENCE", source)
+        self.assertIn("write_sequence != read_sequence", source)
+        self.assertIn("expected_sequence = (unsigned short)(read_sequence + 1u)", source)
+        self.assertIn("if(sequence != expected_sequence)", source)
         combined = (header + source).upper()
         self.assertNotIn("SCSP", combined)
         self.assertNotIn("SMPC", combined)
