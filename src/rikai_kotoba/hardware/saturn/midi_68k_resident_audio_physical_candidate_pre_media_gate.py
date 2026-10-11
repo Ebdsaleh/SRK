@@ -488,7 +488,7 @@ def _verify_candidate_gate(root: Path, manifest: dict) -> tuple[str, str, str, s
         "SRK_R23_PROOF_SCSP",
         "srk_r23_expected_voice_on",
         "srk_r23_expected_voice_off",
-        "srk_r23_verify_midi_state",
+        "srk_r23_verify_final_midi_state",
     ):
         if marker not in runtime_text:
             raise SaturnMidi68KResidentAudioPhysicalCandidatePreMediaGateError(
