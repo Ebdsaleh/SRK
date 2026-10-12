@@ -57,7 +57,9 @@ Terminal image : SRK-DIAG_IMG(1).jpg
 SHA-256        : ed8a0eb6be22c97e989eae103e20abbdc15b69b4347903fe91429243ebcbbee3
 ```
 
-The source MIDI duration is 108151354 us. The terminal hardware clock reached 108347424 us, only 196070 us after the source end point; the recording duration also covers one complete performance plus the short pre/post capture margin.
+The source MIDI duration is 108151354 us. The terminal image shows the hardware clock at 108347424 us, 196070 us after the source end point. This is terminal polling latency, not a measurement of individual event timing accuracy.
+
+The user intentionally shortened the video to reduce its file size. Despite its 109.466667-second container duration, it includes launch/menu time and ends while playback is still RUNNING, at approximately 82.3 seconds on the song clock (229 records, batch 7). It therefore documents playback in progress, not the complete performance or terminal result. Full-stream completion is supported separately by the terminal image and the user's confirmation. The visible `Song PASS: 310 events / peak voices 2` line while RUNNING is the expected-result label; the live status and counters determine whether that boundary has actually been reached.
 
 ## What R24 physically proves
 
