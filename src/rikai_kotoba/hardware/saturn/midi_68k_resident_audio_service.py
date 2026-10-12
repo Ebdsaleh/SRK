@@ -388,6 +388,21 @@ def _emit_audio_note_off(asm: _AudioAssembler68K, prefix: str) -> None:
     asm.label(done)
 
 
+def _emit_audio_idle(asm: _AudioAssembler68K) -> None:
+    """Optional derived-service work while the mailbox has no fresh batch.
+
+    The accepted R23 implementation intentionally emits nothing.  Later audio
+    revisions can temporarily replace this callback while deriving a fresh
+    image without changing the physically accepted R23 binary.
+    """
+
+
+def _emit_audio_wait_until_due(asm: _AudioAssembler68K) -> None:
+    """Optional derived-service scheduler hook; R23 remains byte-identical."""
+
+    _emit_wait_until_due(asm)
+
+
 def _emit_audio_state_mutation_dispatch(asm: _AudioAssembler68K) -> None:
     """Apply R22A MIDI state semantics plus R23 slot-0 audio actions."""
 
@@ -551,6 +566,7 @@ def build_srk_saturn_midi_68k_resident_audio_service_image() -> SaturnMidi68KRes
 
     asm.label("poll_batch")
     asm.move_imm_absw(SATURN_MIDI_68K_STREAM_FLAG_WAIT_BATCH, _svc(SATURN_MIDI_68K_STREAM_FLAGS_OFFSET))
+    _emit_audio_idle(asm)
     asm.move_absw_to_dn(_MB_FLAGS, 0)
     asm.andi_w(SATURN_MIDI_MAILBOX_FLAG_READY, 0)
     asm.branch_word(0x6700, "poll_batch")
@@ -624,7 +640,7 @@ def build_srk_saturn_midi_68k_resident_audio_service_image() -> SaturnMidi68KRes
 
     asm.label("schedule_record")
     _emit_record_byte_reads(asm)
-    _emit_wait_until_due(asm)
+    _emit_audio_wait_until_due(asm)
     _emit_audio_state_mutation_dispatch(asm)
 
     asm.label("stream_record_done")

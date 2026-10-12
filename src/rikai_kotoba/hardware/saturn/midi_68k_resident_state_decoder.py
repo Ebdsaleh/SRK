@@ -199,6 +199,11 @@ class _Assembler68K:
         self.word(0x0240 + data_register)
         self.word(immediate & 0xFFFF)
 
+    def addi_w(self, immediate: int, data_register: int) -> None:
+        self._require_dn(data_register)
+        self.word(0x0640 + data_register)
+        self.word(immediate & 0xFFFF)
+
     def cmp_dn_w(self, source_register: int, destination_register: int) -> None:
         self._require_dn(source_register)
         self._require_dn(destination_register)

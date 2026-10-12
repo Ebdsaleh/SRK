@@ -180,12 +180,16 @@ Once Eridu validates this expanded source/model gate, proceed as one substantial
 hardware-integration tranche:
 
 1. render the four-slot resident MC68EC000 service;
-2. add explicit HELD vs RELEASING slot telemetry;
-3. compile an RR calibration matrix without hardware I/O;
+2. expose HELD vs RELEASING ownership and release counters in its voice ledger;
+3. compile all 32 inert RR variants without hardware I/O;
 4. render the live `elapsed / total` timeline into the Saturn proof screen;
 5. add early/late Note Off timing telemetry;
 6. run a fresh inert standalone build;
 7. then build a fresh physical R25 calibration/song candidate.
+
+Steps 1 through 3 are implemented by the R25 resident-service compiler gate.
+They remain pending Eridu's legacy compiler evidence; no RR value is selected
+and no physical candidate is produced at this point.
 
 Physical R25 acceptance will require both machine proof and human observation:
 
