@@ -1,16 +1,14 @@
 """R24 two-slot resident MC68EC000 MIDI -> SCSP service.
 
-R23 is an immutable physical one-voice audio baseline.  R24 derives a new
-resident image without modifying that accepted source: it preserves the R22A/R23
-mailbox, refill, timestamp and MIDI-state engine, replaces only the audio
-initialisation/keying callbacks during image construction, and restores the R23
-module immediately afterwards.
+R23 is an immutable physical one-voice audio baseline. R24 derives a new image
+without modifying that accepted source. It preserves the accepted mailbox,
+refill, timestamp and MIDI-state machinery and replaces only the audio
+initialisation/keying callbacks while the new image is assembled.
 
-The new hardware contract owns SCSP slots 0 and 1, uses the physically proven
-100-sample PCM loop, installs the calibrated R24 MIDI-note pitch table, and adds
-a 128-entry velocity/mixer table.  There is no voice stealing.  The selected
-CC0 reference song peaks at exactly two simultaneous notes, so any third voice
-is a deterministic BUSY error rather than an implicit policy change.
+R24 owns SCSP slots 0 and 1, keeps the physically proven 100-sample waveform,
+installs the calibrated R24 pitch table and adds a 128-entry velocity/mixer
+table. There is no voice stealing: the selected CC0 reference song peaks at two
+simultaneous notes, so a third voice is a deterministic BUSY condition.
 """
 
 from __future__ import annotations
@@ -74,7 +72,7 @@ SATURN_MIDI_68K_R24_AUDIO_OWNERSHIP_END = 0x00002500
 SATURN_MIDI_68K_R24_VOICE_MAGIC = 0x5632  # "V2"
 SATURN_MIDI_68K_R24_VOICE_VERSION = 1
 
-# Global words in the R24 0x2300 voice ledger.
+# Global words inside the 0x2300 R24 voice ledger.
 SATURN_MIDI_68K_R24_VOICE_MAGIC_WORD = 0
 SATURN_MIDI_68K_R24_VOICE_VERSION_WORD = 1
 SATURN_MIDI_68K_R24_VOICE_OWNED_SLOTS_WORD = 2
@@ -168,7 +166,7 @@ def validate_saturn_midi_68k_r24_resident_audio_layout() -> None:
 
 
 def _emit_r24_audio_initialization(asm: _r23._AudioAssembler68K) -> None:
-    """Install the shared waveform, calibrated tables and two bounded SCSP slots."""
+    """Install the shared waveform, calibrated tables and two bounded slots."""
 
     validate_saturn_midi_68k_r24_resident_audio_layout()
     for index, word in enumerate(build_srk_saturn_midi_68k_r23_waveform_words()):
@@ -249,11 +247,16 @@ def _emit_r24_active_increment(
     *,
     prefix: str,
 ) -> None:
+    """Increment active/peak counters without clobbering live timestamp D2:D3."""
+
     asm.move_absw_to_dn(_global(SATURN_MIDI_68K_R24_VOICE_ACTIVE_COUNT_WORD), 0)
     asm.addq_w(1, 0)
     asm.move_dn_absw(0, _global(SATURN_MIDI_68K_R24_VOICE_ACTIVE_COUNT_WORD))
-    asm.move_absw_to_dn(_global(SATURN_MIDI_68K_R24_VOICE_PEAK_ACTIVE_WORD), 2)
-    asm.cmp_dn_w(2, 0)
+    # D2:D3 still hold the current record timestamp and are consumed after the
+    # audio callback by stream_record_done. D4 is scratch-safe here and the
+    # following note-bitmap helper reinitialises it.
+    asm.move_absw_to_dn(_global(SATURN_MIDI_68K_R24_VOICE_PEAK_ACTIVE_WORD), 4)
+    asm.cmp_dn_w(4, 0)
     asm.branch_word(0x6300, f"{prefix}_peak_done")  # BLS: active <= peak
     asm.move_dn_absw(0, _global(SATURN_MIDI_68K_R24_VOICE_PEAK_ACTIVE_WORD))
     asm.label(f"{prefix}_peak_done")
@@ -324,9 +327,8 @@ def _emit_r24_key_on_slot(
 
 
 def _emit_r24_audio_note_on(asm: _r23._AudioAssembler68K) -> None:
-    """Retrigger matching key or allocate the lowest free of SCSP slots 0/1."""
+    """Retrigger a matching key or allocate the lowest free slot 0/1."""
 
-    # Matching active key wins before free-slot allocation.
     for slot in range(SATURN_MIDI_68K_R24_OWNED_SLOTS):
         asm.move_absw_to_dn(_slot_word(slot, SATURN_MIDI_68K_R24_SLOT_ACTIVE_WORD), 0)
         asm.cmpi_w(0, 0)
@@ -339,7 +341,6 @@ def _emit_r24_audio_note_on(asm: _r23._AudioAssembler68K) -> None:
         asm.branch_word(0x6700, f"r24_note_on_slot_{slot}_retrigger")
         asm.label(f"r24_note_on_match_next_{slot}")
 
-    # Lowest free slot wins.
     for slot in range(SATURN_MIDI_68K_R24_OWNED_SLOTS):
         asm.move_absw_to_dn(_slot_word(slot, SATURN_MIDI_68K_R24_SLOT_ACTIVE_WORD), 0)
         asm.cmpi_w(0, 0)
@@ -415,7 +416,7 @@ def _emit_r24_release_slot(
 
 
 def _emit_r24_audio_note_off(asm: _r23._AudioAssembler68K, prefix: str) -> None:
-    """Release whichever owned slot currently owns D1=channel/D5=note."""
+    """Release the owned slot whose channel/note matches D1/D5."""
 
     done = f"{prefix}_r24_done"
     for slot in range(SATURN_MIDI_68K_R24_OWNED_SLOTS):
@@ -440,7 +441,7 @@ def _emit_r24_audio_note_off(asm: _r23._AudioAssembler68K, prefix: str) -> None:
 
 
 def build_srk_saturn_midi_68k_r24_resident_audio_service_image() -> SaturnMidi68KR24ResidentAudioServiceImage:
-    """Derive the R24 two-slot image while restoring the immutable R23 generator."""
+    """Derive R24 while restoring every immutable R23 generator callback."""
 
     validate_saturn_midi_68k_r24_resident_audio_layout()
     original_initialization = _r23._emit_audio_initialization
