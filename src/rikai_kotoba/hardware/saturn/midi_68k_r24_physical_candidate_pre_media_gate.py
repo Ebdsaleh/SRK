@@ -1,9 +1,9 @@
 """Independent read-only pre-media gate for the R24 real-SMF candidate.
 
-The completed candidate is re-opened as external evidence.  This module
+The completed candidate is re-opened as external evidence. This module
 re-parses the exact CC0 song, re-renders the R24 resident/player/FRT/stream and
 physical-proof sources, verifies the standalone build/report pairing and then
-asks the existing SAROO planner for a read-only fresh-destination plan.  It has
+asks the existing SAROO planner for a read-only fresh-destination plan. It has
 no card-write operation.
 """
 
@@ -278,16 +278,16 @@ def inspect_saturn_midi_68k_r24_physical_candidate_pre_media(
     profile = build_saturn_midi_68k_r24_song_profile(source)
     validate_saturn_midi_68k_r24_reference_song(profile)
     counts = dict(profile.opcode_counts)
-    batch_sizes = tuple(batch.record_count for batch in profile.batches)
     if (
         profile.source_sha256 != SATURN_MIDI_68K_R24_REFERENCE_SHA256
-        or profile.record_count != SATURN_MIDI_68K_R24_REFERENCE_RECORDS
-        or profile.duration_us != SATURN_MIDI_68K_R24_REFERENCE_DURATION_US
-        or len(profile.batches) != SATURN_MIDI_68K_R24_REFERENCE_BATCHES
-        or batch_sizes != (32, 32, 32, 32, 32, 32, 32, 32, 32, 22)
-        or profile.peak_polyphony != SATURN_MIDI_68K_R24_REFERENCE_PEAK_POLYPHONY
-        or counts.get(SaturnMidiOpcode.NOTE_ON, 0) != SATURN_MIDI_68K_R24_REFERENCE_NOTE_ON
-        or counts.get(SaturnMidiOpcode.NOTE_OFF, 0) != SATURN_MIDI_68K_R24_REFERENCE_NOTE_OFF
+        or profile.record_count != 310
+        or profile.duration_us != 108151354
+        or len(profile.batches) != 10
+        or tuple(batch.record_count for batch in profile.batches)
+        != (32, 32, 32, 32, 32, 32, 32, 32, 32, 22)
+        or profile.peak_polyphony != 2
+        or counts.get(SaturnMidiOpcode.NOTE_ON, 0) != 140
+        or counts.get(SaturnMidiOpcode.NOTE_OFF, 0) != 140
     ):
         raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
             "reviewed R24 real-song contract changed"
@@ -349,7 +349,6 @@ def inspect_saturn_midi_68k_r24_physical_candidate_pre_media(
         raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
             "accepted R24 resident image evidence changed"
         )
-
     hash_keys = {
         "r24_image_sha256": image_sha,
         "r24_resident_source_sha256": external_components[_R24_AUDIO_SOURCE],
@@ -377,17 +376,17 @@ def inspect_saturn_midi_68k_r24_physical_candidate_pre_media(
         "trigger_button": "A",
         "trigger_requires_release_after_screen_entry": True,
         "poll_mode": "at-most-once-per-frame-while-running",
-        "proof_records": 310,
-        "proof_duration_us": 108151354,
-        "queue_batches": 10,
+        "proof_records": SATURN_MIDI_68K_R24_REFERENCE_RECORDS,
+        "proof_duration_us": SATURN_MIDI_68K_R24_REFERENCE_DURATION_US,
+        "queue_batches": SATURN_MIDI_68K_R24_REFERENCE_BATCHES,
         "batch_sizes": [32, 32, 32, 32, 32, 32, 32, 32, 32, 22],
         "expected_final_read_sequence": 10,
-        "expected_final_read_index": 22,
+        "expected_final_read_index": SATURN_MIDI_68K_R24_REFERENCE_LAST_BATCH_RECORDS,
         "expected_final_batch_count": 10,
         "expected_total_records": 310,
-        "expected_note_on_count": 140,
-        "expected_note_off_count": 140,
-        "expected_peak_polyphony": 2,
+        "expected_note_on_count": SATURN_MIDI_68K_R24_REFERENCE_NOTE_ON,
+        "expected_note_off_count": SATURN_MIDI_68K_R24_REFERENCE_NOTE_OFF,
+        "expected_peak_polyphony": SATURN_MIDI_68K_R24_REFERENCE_PEAK_POLYPHONY,
         "expected_busy_count": 0,
         "expected_final_active_count": 0,
         "state_summary_words_verified": 256,
@@ -487,7 +486,7 @@ def inspect_saturn_midi_68k_r24_physical_candidate_pre_media(
         "state->telemetry.read_sequence != 10u", "state->telemetry.read_index != 22u",
         "state->telemetry.voice_key_on_count != 140u",
         "state->telemetry.voice_key_off_count != 140u",
-        "state->telemetry.voice_peak_active != 2u", "srk_r24_verify_final_midi_state",
+        "state->telemetry.voice_peak_active != 2u", "srk_r24_verify_final_state",
     ):
         if marker not in runtime_text:
             raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
