@@ -1,5 +1,6 @@
 """Compiler-facing contracts for the R24 Saturn SH-2 FRT backend."""
 
+import re
 import unittest
 
 from rikai_kotoba.hardware.saturn.midi_68k_r24_frt_backend import (
@@ -39,7 +40,9 @@ class SaturnMidi68KR24FRTBackendTests(unittest.TestCase):
         source = render_saturn_midi_68k_r24_frt_backend_source()
         self.assertNotIn("26874100", source)
         self.assertNotIn("28636360", source)
-        self.assertNotIn("source_hz =", source)
+        # Equality is expected in the guard `source_hz == 0UL`; reject only a
+        # single-equals assignment/default such as `source_hz = 26874100UL`.
+        self.assertIsNone(re.search(r"\bsource_hz\s*=(?!=)", source))
 
 
 if __name__ == "__main__":
