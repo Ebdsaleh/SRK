@@ -1,10 +1,10 @@
 """Independent read-only pre-media gate for the R24 real-SMF candidate.
 
-This gate re-opens the completed R24 physical candidate as external evidence.
-It rebuilds the reviewed CC0 song profile, re-renders every generated R24
-representation, verifies the physical proof and standalone build provenance,
-and asks the existing SAROO image planner for a read-only fresh-destination
-plan.  It never writes to the mounted card.
+The completed candidate is re-opened as external evidence.  This module
+re-parses the exact CC0 song, re-renders the R24 resident/player/FRT/stream and
+physical-proof sources, verifies the standalone build/report pairing and then
+asks the existing SAROO planner for a read-only fresh-destination plan.  It has
+no card-write operation.
 """
 
 from __future__ import annotations
@@ -172,7 +172,7 @@ def _project_file(root: Path, relative: str, label: str) -> Path:
     return path
 
 
-def _verify_generated_inventory(root: Path, manifest: dict) -> None:
+def _verify_inventory(root: Path, manifest: dict) -> None:
     entries = manifest.get("generated_files")
     if not isinstance(entries, list) or not entries:
         raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
@@ -205,22 +205,11 @@ def _verify_generated_inventory(root: Path, manifest: dict) -> None:
             raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
                 f"R24 generated input changed: {relative}"
             )
-
     required = {
-        _MAIN,
-        _MENU,
-        _RUNTIME,
-        _R24_AUDIO_SOURCE,
-        _R24_AUDIO_HEADER,
-        _R24_VOICE_HEADER,
-        _R24_PLAYER_SOURCE,
-        _R24_PLAYER_HEADER,
-        _R24_FRT_SOURCE,
-        _R24_FRT_HEADER,
-        _STREAM_SOURCE,
-        _STREAM_HEADER,
-        _PROOF_SOURCE,
-        _PROOF_HEADER,
+        _MAIN, _MENU, _RUNTIME, _R24_AUDIO_SOURCE, _R24_AUDIO_HEADER,
+        _R24_VOICE_HEADER, _R24_PLAYER_SOURCE, _R24_PLAYER_HEADER,
+        _R24_FRT_SOURCE, _R24_FRT_HEADER, _STREAM_SOURCE, _STREAM_HEADER,
+        _PROOF_SOURCE, _PROOF_HEADER,
     }
     missing = sorted(required - seen)
     if missing:
@@ -229,398 +218,19 @@ def _verify_generated_inventory(root: Path, manifest: dict) -> None:
         )
 
 
-def _verify_song_contract(profile) -> tuple[int, int, int]:
-    validate_saturn_midi_68k_r24_reference_song(profile)
-    counts = dict(profile.opcode_counts)
-    batch_sizes = tuple(batch.record_count for batch in profile.batches)
-    if (
-        profile.source_sha256 != SATURN_MIDI_68K_R24_REFERENCE_SHA256
-        or profile.record_count != SATURN_MIDI_68K_R24_REFERENCE_RECORDS
-        or profile.duration_us != SATURN_MIDI_68K_R24_REFERENCE_DURATION_US
-        or len(profile.batches) != SATURN_MIDI_68K_R24_REFERENCE_BATCHES
-        or batch_sizes != (32, 32, 32, 32, 32, 32, 32, 32, 32, 22)
-        or profile.peak_polyphony != SATURN_MIDI_68K_R24_REFERENCE_PEAK_POLYPHONY
-        or counts.get(SaturnMidiOpcode.NOTE_ON, 0) != SATURN_MIDI_68K_R24_REFERENCE_NOTE_ON
-        or counts.get(SaturnMidiOpcode.NOTE_OFF, 0) != SATURN_MIDI_68K_R24_REFERENCE_NOTE_OFF
-    ):
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "reviewed R24 real-song contract changed"
-        )
-    summaries, controllers, active = build_srk_saturn_midi_68k_r24_expected_midi_words(profile)
-    if (len(summaries), len(controllers), len(active)) != (256, 1024, 128):
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "R24 complete MIDI-state verification surface changed"
-        )
-    return len(summaries), len(controllers), len(active)
-
-
-def _verify_representation(
-    root: Path,
-    manifest: dict,
-    profile,
-    *,
-    expected_image_sha256: str,
-    expected_resident_source_sha256: str,
-    expected_resident_header_sha256: str,
-    expected_voice_header_sha256: str,
-    expected_player_source_sha256: str,
-    expected_player_header_sha256: str,
-    expected_frt_source_sha256: str,
-    expected_frt_header_sha256: str,
-    expected_stream_source_sha256: str,
-    expected_stream_header_sha256: str,
-) -> str:
-    gate = manifest.get(_GATE_KEY)
-    inert = manifest.get(_INERT_KEY)
-    if not isinstance(gate, dict) or gate.get("schema") != _GATE_SCHEMA:
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "R24 manifest has no recognized physical-candidate gate"
-        )
-    if not isinstance(inert, dict) or inert.get("schema") != _INERT_SCHEMA:
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "R24 candidate no longer carries accepted inert provenance"
-        )
-
-    expected = {
-        _R24_AUDIO_SOURCE: _require_sha(expected_resident_source_sha256, "resident source SHA-256"),
-        _R24_AUDIO_HEADER: _require_sha(expected_resident_header_sha256, "resident header SHA-256"),
-        _R24_VOICE_HEADER: _require_sha(expected_voice_header_sha256, "voice header SHA-256"),
-        _R24_PLAYER_SOURCE: _require_sha(expected_player_source_sha256, "player source SHA-256"),
-        _R24_PLAYER_HEADER: _require_sha(expected_player_header_sha256, "player header SHA-256"),
-        _R24_FRT_SOURCE: _require_sha(expected_frt_source_sha256, "FRT source SHA-256"),
-        _R24_FRT_HEADER: _require_sha(expected_frt_header_sha256, "FRT header SHA-256"),
-        _STREAM_SOURCE: _require_sha(expected_stream_source_sha256, "stream source SHA-256"),
-        _STREAM_HEADER: _require_sha(expected_stream_header_sha256, "stream header SHA-256"),
+def _rendered_hashes(profile) -> dict[str, str]:
+    blobs = {
+        _R24_AUDIO_SOURCE: render_srk_saturn_midi_68k_r24_resident_audio_service_source().encode("utf-8"),
+        _R24_AUDIO_HEADER: render_srk_saturn_midi_68k_r24_resident_audio_service_header().encode("utf-8"),
+        _R24_VOICE_HEADER: render_srk_saturn_midi_68k_r24_voice_header().encode("utf-8"),
+        _R24_PLAYER_SOURCE: render_saturn_midi_68k_r24_player_source(profile.program).encode("utf-8"),
+        _R24_PLAYER_HEADER: render_saturn_midi_68k_r24_player_header().encode("utf-8"),
+        _R24_FRT_SOURCE: render_saturn_midi_68k_r24_frt_backend_source().encode("utf-8"),
+        _R24_FRT_HEADER: render_saturn_midi_68k_r24_frt_backend_header().encode("utf-8"),
+        _STREAM_SOURCE: render_srk_saturn_midi_68k_stream_service_source().encode("utf-8"),
+        _STREAM_HEADER: render_srk_saturn_midi_68k_stream_service_header().encode("utf-8"),
     }
-    rendered = {
-        _R24_AUDIO_SOURCE: _sha256_bytes(
-            render_srk_saturn_midi_68k_r24_resident_audio_service_source().encode("utf-8")
-        ),
-        _R24_AUDIO_HEADER: _sha256_bytes(
-            render_srk_saturn_midi_68k_r24_resident_audio_service_header().encode("utf-8")
-        ),
-        _R24_VOICE_HEADER: _sha256_bytes(
-            render_srk_saturn_midi_68k_r24_voice_header().encode("utf-8")
-        ),
-        _R24_PLAYER_SOURCE: _sha256_bytes(
-            render_saturn_midi_68k_r24_player_source(profile.program).encode("utf-8")
-        ),
-        _R24_PLAYER_HEADER: _sha256_bytes(
-            render_saturn_midi_68k_r24_player_header().encode("utf-8")
-        ),
-        _R24_FRT_SOURCE: _sha256_bytes(
-            render_saturn_midi_68k_r24_frt_backend_source().encode("utf-8")
-        ),
-        _R24_FRT_HEADER: _sha256_bytes(
-            render_saturn_midi_68k_r24_frt_backend_header().encode("utf-8")
-        ),
-        _STREAM_SOURCE: _sha256_bytes(
-            render_srk_saturn_midi_68k_stream_service_source().encode("utf-8")
-        ),
-        _STREAM_HEADER: _sha256_bytes(
-            render_srk_saturn_midi_68k_stream_service_header().encode("utf-8")
-        ),
-    }
-    for relative, expected_sha in expected.items():
-        if rendered[relative] != expected_sha:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"current R24 generated representation changed: {relative}"
-            )
-        if _sha256_file(_project_file(root, relative, relative)) != expected_sha:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"candidate generated representation changed: {relative}"
-            )
-
-    image_sha = _require_sha(expected_image_sha256, "resident image SHA-256")
-    image = build_srk_saturn_midi_68k_r24_resident_audio_service_image()
-    if image.sha256 != image_sha:
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "current R24 resident generator no longer matches accepted evidence"
-        )
-    if (image.word_count, image.byte_size, image.end_address) != (7145, 14290, 0x000077D2):
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "accepted R24 resident image geometry changed"
-        )
-
-    manifest_hash_keys = {
-        "r24_image_sha256": image_sha,
-        "r24_resident_source_sha256": expected[_R24_AUDIO_SOURCE],
-        "r24_resident_header_sha256": expected[_R24_AUDIO_HEADER],
-        "r24_voice_header_sha256": expected[_R24_VOICE_HEADER],
-        "r24_player_source_sha256": expected[_R24_PLAYER_SOURCE],
-        "r24_player_header_sha256": expected[_R24_PLAYER_HEADER],
-        "r24_frt_source_sha256": expected[_R24_FRT_SOURCE],
-        "r24_frt_header_sha256": expected[_R24_FRT_HEADER],
-    }
-    for key, expected_sha in manifest_hash_keys.items():
-        if str(gate.get(key, "")).lower() != expected_sha:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"R24 physical gate representation mismatch: {key}"
-            )
-        if str(inert.get(key, "")).lower() != expected_sha:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"R24 inherited inert representation mismatch: {key}"
-            )
-    return image.sha256
-
-
-def _verify_candidate_gate(
-    root: Path,
-    manifest: dict,
-    profile,
-    *,
-    expected_baseline_manifest_sha256: str,
-    expected_baseline_report_sha256: str,
-    expected_baseline_bin_sha256: str,
-    expected_baseline_cue_sha256: str,
-    expected_candidate_main_sha256: str,
-    expected_candidate_menu_sha256: str,
-    expected_runtime_sha256: str,
-    expected_proof_header_sha256: str,
-    expected_proof_source_sha256: str,
-) -> tuple[str, str, str, str, str]:
-    gate = manifest.get(_GATE_KEY)
-    if not isinstance(gate, dict) or gate.get("schema") != _GATE_SCHEMA:
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "R24 candidate gate is missing"
-        )
-
-    required = {
-        "source_midi_sha256": SATURN_MIDI_68K_R24_REFERENCE_SHA256,
-        "candidate_define": _EXPECTED_DEFINE,
-        "candidate_menu_label": _EXPECTED_MENU_LABEL,
-        "trigger_button": "A",
-        "trigger_requires_release_after_screen_entry": True,
-        "poll_mode": "at-most-once-per-frame-while-running",
-        "proof_records": SATURN_MIDI_68K_R24_REFERENCE_RECORDS,
-        "proof_duration_us": SATURN_MIDI_68K_R24_REFERENCE_DURATION_US,
-        "queue_batches": SATURN_MIDI_68K_R24_REFERENCE_BATCHES,
-        "batch_sizes": [32, 32, 32, 32, 32, 32, 32, 32, 32, 22],
-        "expected_final_read_sequence": SATURN_MIDI_68K_R24_REFERENCE_BATCHES,
-        "expected_final_read_index": SATURN_MIDI_68K_R24_REFERENCE_LAST_BATCH_RECORDS,
-        "expected_final_batch_count": SATURN_MIDI_68K_R24_REFERENCE_BATCHES,
-        "expected_total_records": SATURN_MIDI_68K_R24_REFERENCE_RECORDS,
-        "expected_note_on_count": SATURN_MIDI_68K_R24_REFERENCE_NOTE_ON,
-        "expected_note_off_count": SATURN_MIDI_68K_R24_REFERENCE_NOTE_OFF,
-        "expected_peak_polyphony": SATURN_MIDI_68K_R24_REFERENCE_PEAK_POLYPHONY,
-        "expected_busy_count": 0,
-        "expected_final_active_count": 0,
-        "state_summary_words_verified": 256,
-        "controller_words_verified": 1024,
-        "active_note_words_verified": 128,
-        "clock_backend": "sh2-frt-div128-runtime-vdp2-clock-selection",
-        "clock_ntsc_a_hz": SATURN_MIDI_68K_R24_CLOCK_NTSC_A_HZ,
-        "clock_ntsc_b_hz": SATURN_MIDI_68K_R24_CLOCK_NTSC_B_HZ,
-        "clock_pal_a_hz": SATURN_MIDI_68K_R24_CLOCK_PAL_A_HZ,
-        "clock_pal_b_hz": SATURN_MIDI_68K_R24_CLOCK_PAL_B_HZ,
-        "clock_tvstat_pal_bit": 0,
-        "clock_tvmd_group_bit": 0,
-        "frt_original_tcr_restored_on_terminal_path": True,
-        "resident_installed_during_build": False,
-        "resident_executed_during_build": False,
-        "player_invoked_during_build": False,
-        "frt_invoked_during_build": False,
-        "scsp_mmio_during_build": False,
-        "sound_ram_writes_during_build": False,
-        "build_time_hardware_io": False,
-        "saroo_write": False,
-        "off_card_only": True,
-        "behaviorally_active_when_deployed_and_explicitly_triggered": True,
-    }
-    for key, expected in required.items():
-        if gate.get(key) != expected:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"R24 candidate contract mismatch: {key}"
-            )
-
-    chain = {
-        "baseline_manifest_sha256": _require_sha(
-            expected_baseline_manifest_sha256, "accepted inert manifest SHA-256"
-        ),
-        "baseline_report_sha256": _require_sha(
-            expected_baseline_report_sha256, "accepted inert report SHA-256"
-        ),
-        "accepted_inert_deploy_bin_sha256": _require_sha(
-            expected_baseline_bin_sha256, "accepted inert BIN SHA-256"
-        ),
-        "accepted_inert_deploy_cue_sha256": _require_sha(
-            expected_baseline_cue_sha256, "accepted inert CUE SHA-256"
-        ),
-    }
-    for key, expected in chain.items():
-        if str(gate.get(key, "")).lower() != expected:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"R24 accepted inert chain mismatch: {key}"
-            )
-
-    policy = manifest.get("policy")
-    required_policy = {
-        "sd_writes": False,
-        "midi_68k_r24_present": True,
-        "midi_68k_r24_linked": True,
-        "midi_68k_r24_resident_installed": False,
-        "midi_68k_r24_resident_executed": False,
-        "midi_68k_r24_player_invoked": False,
-        "midi_68k_r24_frt_invoked": False,
-        "midi_68k_r24_physical_candidate_bound": True,
-        "midi_68k_r24_build_time_hardware_io": False,
-    }
-    if not isinstance(policy, dict):
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "R24 policy is missing"
-        )
-    for key, expected in required_policy.items():
-        if policy.get(key) is not expected:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"R24 policy mismatch: {key}"
-            )
-
-    main = _project_file(root, _MAIN, "R24 main")
-    menu = _project_file(root, _MENU, "R24 menu")
-    runtime = _project_file(root, _RUNTIME, "R24 runtime")
-    proof_header = _project_file(root, _PROOF_HEADER, "R24 proof header")
-    proof_source = _project_file(root, _PROOF_SOURCE, "R24 proof source")
-    main_text = main.read_text(encoding="utf-8")
-    menu_text = menu.read_text(encoding="utf-8")
-    runtime_text = runtime.read_text(encoding="utf-8")
-
-    if not main_text.startswith(_EXPECTED_DEFINE + "\n"):
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "R24 main no longer begins with the real-song candidate define"
-        )
-    for marker in (
-        "SRK_MIDI_68K_PROOF_EXPECTED_INDEX 22u",
-        "MIDI / 68K REAL SONG",
-        "310 events - FRT clock - two SCSP voices",
-        "Song PASS: 310 events / peak voices 2",
-        "srk_saturn_midi_68k_r24_physical_proof_begin",
-        "srk_saturn_midi_68k_r24_physical_proof_poll",
-        "telemetry.voice_peak_active",
-        "telemetry.player_sequence",
-    ):
-        if marker not in main_text:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"R24 main is missing reviewed marker: {marker}"
-            )
-    if _EXPECTED_MENU_LABEL not in menu_text or "MIDI 68K Audio Proof" in menu_text:
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "R24 menu no longer isolates the real-song proof"
-        )
-    for marker in (
-        "0x25F80000UL",
-        "0x25F80004UL",
-        "26874100UL",
-        "28636400UL",
-        "26687700UL",
-        "28437700UL",
-        "srk_saturn_midi_r24_frt_configure_div128",
-        "SRK_R24_PROOF_FRT_TCR = state->original_tcr",
-        "srk_saturn_midi_r24_player_poll",
-        "state->telemetry.read_sequence != 10u",
-        "state->telemetry.read_index != 22u",
-        "state->telemetry.voice_key_on_count != 140u",
-        "state->telemetry.voice_key_off_count != 140u",
-        "state->telemetry.voice_peak_active != 2u",
-        "srk_r24_verify_final_midi_state",
-    ):
-        if marker not in runtime_text:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"R24 runtime is missing reviewed proof seam: {marker}"
-            )
-
-    actual = {
-        "candidate_main_sha256": _sha256_file(main),
-        "candidate_menu_sha256": _sha256_file(menu),
-        "runtime_after_sha256": _sha256_file(runtime),
-        "proof_header_sha256": _sha256_file(proof_header),
-        "proof_source_sha256": _sha256_file(proof_source),
-    }
-    external = {
-        "candidate_main_sha256": _require_sha(expected_candidate_main_sha256, "candidate main SHA-256"),
-        "candidate_menu_sha256": _require_sha(expected_candidate_menu_sha256, "candidate menu SHA-256"),
-        "runtime_after_sha256": _require_sha(expected_runtime_sha256, "candidate runtime SHA-256"),
-        "proof_header_sha256": _require_sha(expected_proof_header_sha256, "proof header SHA-256"),
-        "proof_source_sha256": _require_sha(expected_proof_source_sha256, "proof source SHA-256"),
-    }
-    for key, actual_sha in actual.items():
-        if actual_sha != external[key]:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"R24 externally accepted hash mismatch: {key}"
-            )
-        if str(gate.get(key, "")).lower() != actual_sha:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"R24 candidate provenance hash mismatch: {key}"
-            )
-
-    expected_header = _sha256_bytes(
-        render_srk_saturn_midi_68k_r24_physical_proof_header().encode("utf-8")
-    )
-    expected_source = _sha256_bytes(
-        render_srk_saturn_midi_68k_r24_physical_proof_source(profile).encode("utf-8")
-    )
-    if actual["proof_header_sha256"] != expected_header or actual["proof_source_sha256"] != expected_source:
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "R24 physical proof no longer matches its reviewed renderer"
-        )
-
-    return (
-        actual["candidate_main_sha256"],
-        actual["candidate_menu_sha256"],
-        actual["runtime_after_sha256"],
-        actual["proof_header_sha256"],
-        actual["proof_source_sha256"],
-    )
-
-
-def _verify_build_report(
-    root: Path,
-    manifest_sha256: str,
-    *,
-    expected_bin_sha256: str,
-    expected_cue_sha256: str,
-) -> tuple[str, str, str]:
-    report_path = root / _REPORT
-    if not report_path.is_file():
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            f"R24 build report is missing: {report_path}"
-        )
-    report = _load_json(report_path, "R24 build report")
-    if report.get("schema") != "srk.saturn.standalone-build.v1" or report.get("successful") is not True:
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "R24 build report is not a successful standalone build"
-        )
-    if str(report.get("project_manifest_sha256", "")).lower() != manifest_sha256.lower():
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "R24 build report does not match the current manifest"
-        )
-
-    expected_bin = _require_sha(expected_bin_sha256, "candidate BIN SHA-256")
-    expected_cue = _require_sha(expected_cue_sha256, "candidate CUE SHA-256")
-    artifacts = report.get("artifacts")
-    if not isinstance(artifacts, list):
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "R24 build report has no artifact inventory"
-        )
-    by_path = {
-        str(entry.get("path")): entry
-        for entry in artifacts
-        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
-    }
-    for relative, expected_sha, label in (
-        (_DEPLOY_BIN, expected_bin, "candidate BIN"),
-        (_DEPLOY_CUE, expected_cue, "candidate CUE"),
-    ):
-        entry = by_path.get(relative)
-        path = _project_file(root, relative, label)
-        if not isinstance(entry, dict) or str(entry.get("sha256", "")).lower() != expected_sha:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"R24 {label} report hash mismatch"
-            )
-        if _sha256_file(path) != expected_sha:
-            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-                f"R24 {label} disk hash mismatch"
-            )
-    return _sha256_file(report_path), expected_bin, expected_cue
+    return {relative: _sha256_bytes(payload) for relative, payload in blobs.items()}
 
 
 def inspect_saturn_midi_68k_r24_physical_candidate_pre_media(
@@ -666,7 +276,27 @@ def inspect_saturn_midi_68k_r24_physical_candidate_pre_media(
         )
 
     profile = build_saturn_midi_68k_r24_song_profile(source)
-    summary_count, controller_count, active_count = _verify_song_contract(profile)
+    validate_saturn_midi_68k_r24_reference_song(profile)
+    counts = dict(profile.opcode_counts)
+    batch_sizes = tuple(batch.record_count for batch in profile.batches)
+    if (
+        profile.source_sha256 != SATURN_MIDI_68K_R24_REFERENCE_SHA256
+        or profile.record_count != SATURN_MIDI_68K_R24_REFERENCE_RECORDS
+        or profile.duration_us != SATURN_MIDI_68K_R24_REFERENCE_DURATION_US
+        or len(profile.batches) != SATURN_MIDI_68K_R24_REFERENCE_BATCHES
+        or batch_sizes != (32, 32, 32, 32, 32, 32, 32, 32, 32, 22)
+        or profile.peak_polyphony != SATURN_MIDI_68K_R24_REFERENCE_PEAK_POLYPHONY
+        or counts.get(SaturnMidiOpcode.NOTE_ON, 0) != SATURN_MIDI_68K_R24_REFERENCE_NOTE_ON
+        or counts.get(SaturnMidiOpcode.NOTE_OFF, 0) != SATURN_MIDI_68K_R24_REFERENCE_NOTE_OFF
+    ):
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+            "reviewed R24 real-song contract changed"
+        )
+    summaries, controllers, active = build_srk_saturn_midi_68k_r24_expected_midi_words(profile)
+    if (len(summaries), len(controllers), len(active)) != (256, 1024, 128):
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+            "R24 complete MIDI-state verification surface changed"
+        )
 
     manifest_path = root / _MANIFEST
     if not manifest_path.is_file():
@@ -679,43 +309,260 @@ def inspect_saturn_midi_68k_r24_physical_candidate_pre_media(
             "R24 manifest identity is unsupported"
         )
     manifest_sha = _sha256_file(manifest_path)
+    gate = manifest.get(_GATE_KEY)
+    inert = manifest.get(_INERT_KEY)
+    if not isinstance(gate, dict) or gate.get("schema") != _GATE_SCHEMA:
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError("R24 candidate gate is missing")
+    if not isinstance(inert, dict) or inert.get("schema") != _INERT_SCHEMA:
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+            "R24 candidate no longer carries accepted inert provenance"
+        )
+    _verify_inventory(root, manifest)
 
-    _verify_generated_inventory(root, manifest)
-    image_sha = _verify_representation(
-        root,
-        manifest,
-        profile,
-        expected_image_sha256=expected_image_sha256,
-        expected_resident_source_sha256=expected_resident_source_sha256,
-        expected_resident_header_sha256=expected_resident_header_sha256,
-        expected_voice_header_sha256=expected_voice_header_sha256,
-        expected_player_source_sha256=expected_player_source_sha256,
-        expected_player_header_sha256=expected_player_header_sha256,
-        expected_frt_source_sha256=expected_frt_source_sha256,
-        expected_frt_header_sha256=expected_frt_header_sha256,
-        expected_stream_source_sha256=expected_stream_source_sha256,
-        expected_stream_header_sha256=expected_stream_header_sha256,
-    )
-    main_sha, menu_sha, runtime_sha, proof_header_sha, proof_source_sha = _verify_candidate_gate(
-        root,
-        manifest,
-        profile,
-        expected_baseline_manifest_sha256=expected_baseline_manifest_sha256,
-        expected_baseline_report_sha256=expected_baseline_report_sha256,
-        expected_baseline_bin_sha256=expected_baseline_bin_sha256,
-        expected_baseline_cue_sha256=expected_baseline_cue_sha256,
-        expected_candidate_main_sha256=expected_candidate_main_sha256,
-        expected_candidate_menu_sha256=expected_candidate_menu_sha256,
-        expected_runtime_sha256=expected_runtime_sha256,
-        expected_proof_header_sha256=expected_proof_header_sha256,
-        expected_proof_source_sha256=expected_proof_source_sha256,
-    )
-    report_sha, expected_bin, expected_cue = _verify_build_report(
-        root,
-        manifest_sha,
-        expected_bin_sha256=expected_bin_sha256,
-        expected_cue_sha256=expected_cue_sha256,
-    )
+    external_components = {
+        _R24_AUDIO_SOURCE: _require_sha(expected_resident_source_sha256, "resident source SHA-256"),
+        _R24_AUDIO_HEADER: _require_sha(expected_resident_header_sha256, "resident header SHA-256"),
+        _R24_VOICE_HEADER: _require_sha(expected_voice_header_sha256, "voice header SHA-256"),
+        _R24_PLAYER_SOURCE: _require_sha(expected_player_source_sha256, "player source SHA-256"),
+        _R24_PLAYER_HEADER: _require_sha(expected_player_header_sha256, "player header SHA-256"),
+        _R24_FRT_SOURCE: _require_sha(expected_frt_source_sha256, "FRT source SHA-256"),
+        _R24_FRT_HEADER: _require_sha(expected_frt_header_sha256, "FRT header SHA-256"),
+        _STREAM_SOURCE: _require_sha(expected_stream_source_sha256, "stream source SHA-256"),
+        _STREAM_HEADER: _require_sha(expected_stream_header_sha256, "stream header SHA-256"),
+    }
+    rendered = _rendered_hashes(profile)
+    for relative, expected_sha in external_components.items():
+        if rendered[relative] != expected_sha:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"current R24 generated representation changed: {relative}"
+            )
+        if _sha256_file(_project_file(root, relative, relative)) != expected_sha:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"candidate generated representation changed: {relative}"
+            )
+
+    image_sha = _require_sha(expected_image_sha256, "resident image SHA-256")
+    image = build_srk_saturn_midi_68k_r24_resident_audio_service_image()
+    if image.sha256 != image_sha or (image.word_count, image.byte_size, image.end_address) != (
+        7145, 14290, 0x000077D2
+    ):
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+            "accepted R24 resident image evidence changed"
+        )
+
+    hash_keys = {
+        "r24_image_sha256": image_sha,
+        "r24_resident_source_sha256": external_components[_R24_AUDIO_SOURCE],
+        "r24_resident_header_sha256": external_components[_R24_AUDIO_HEADER],
+        "r24_voice_header_sha256": external_components[_R24_VOICE_HEADER],
+        "r24_player_source_sha256": external_components[_R24_PLAYER_SOURCE],
+        "r24_player_header_sha256": external_components[_R24_PLAYER_HEADER],
+        "r24_frt_source_sha256": external_components[_R24_FRT_SOURCE],
+        "r24_frt_header_sha256": external_components[_R24_FRT_HEADER],
+    }
+    for key, expected_sha in hash_keys.items():
+        if str(gate.get(key, "")).lower() != expected_sha:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"R24 physical gate representation mismatch: {key}"
+            )
+        if str(inert.get(key, "")).lower() != expected_sha:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"R24 inherited inert representation mismatch: {key}"
+            )
+
+    required_gate = {
+        "source_midi_sha256": SATURN_MIDI_68K_R24_REFERENCE_SHA256,
+        "candidate_define": _EXPECTED_DEFINE,
+        "candidate_menu_label": _EXPECTED_MENU_LABEL,
+        "trigger_button": "A",
+        "trigger_requires_release_after_screen_entry": True,
+        "poll_mode": "at-most-once-per-frame-while-running",
+        "proof_records": 310,
+        "proof_duration_us": 108151354,
+        "queue_batches": 10,
+        "batch_sizes": [32, 32, 32, 32, 32, 32, 32, 32, 32, 22],
+        "expected_final_read_sequence": 10,
+        "expected_final_read_index": 22,
+        "expected_final_batch_count": 10,
+        "expected_total_records": 310,
+        "expected_note_on_count": 140,
+        "expected_note_off_count": 140,
+        "expected_peak_polyphony": 2,
+        "expected_busy_count": 0,
+        "expected_final_active_count": 0,
+        "state_summary_words_verified": 256,
+        "controller_words_verified": 1024,
+        "active_note_words_verified": 128,
+        "clock_backend": "sh2-frt-div128-runtime-vdp2-clock-selection",
+        "clock_ntsc_a_hz": SATURN_MIDI_68K_R24_CLOCK_NTSC_A_HZ,
+        "clock_ntsc_b_hz": SATURN_MIDI_68K_R24_CLOCK_NTSC_B_HZ,
+        "clock_pal_a_hz": SATURN_MIDI_68K_R24_CLOCK_PAL_A_HZ,
+        "clock_pal_b_hz": SATURN_MIDI_68K_R24_CLOCK_PAL_B_HZ,
+        "clock_tvstat_pal_bit": 0,
+        "clock_tvmd_group_bit": 0,
+        "frt_original_tcr_restored_on_terminal_path": True,
+        "resident_installed_during_build": False,
+        "resident_executed_during_build": False,
+        "player_invoked_during_build": False,
+        "frt_invoked_during_build": False,
+        "scsp_mmio_during_build": False,
+        "sound_ram_writes_during_build": False,
+        "build_time_hardware_io": False,
+        "saroo_write": False,
+        "off_card_only": True,
+        "behaviorally_active_when_deployed_and_explicitly_triggered": True,
+    }
+    for key, expected in required_gate.items():
+        if gate.get(key) != expected:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"R24 candidate contract mismatch: {key}"
+            )
+
+    chain = {
+        "baseline_manifest_sha256": _require_sha(expected_baseline_manifest_sha256, "inert manifest SHA-256"),
+        "baseline_report_sha256": _require_sha(expected_baseline_report_sha256, "inert report SHA-256"),
+        "accepted_inert_deploy_bin_sha256": _require_sha(expected_baseline_bin_sha256, "inert BIN SHA-256"),
+        "accepted_inert_deploy_cue_sha256": _require_sha(expected_baseline_cue_sha256, "inert CUE SHA-256"),
+    }
+    for key, expected in chain.items():
+        if str(gate.get(key, "")).lower() != expected:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"R24 accepted inert chain mismatch: {key}"
+            )
+
+    policy = manifest.get("policy")
+    required_policy = {
+        "sd_writes": False,
+        "midi_68k_r24_present": True,
+        "midi_68k_r24_linked": True,
+        "midi_68k_r24_resident_installed": False,
+        "midi_68k_r24_resident_executed": False,
+        "midi_68k_r24_player_invoked": False,
+        "midi_68k_r24_frt_invoked": False,
+        "midi_68k_r24_physical_candidate_bound": True,
+        "midi_68k_r24_build_time_hardware_io": False,
+    }
+    if not isinstance(policy, dict):
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError("R24 policy is missing")
+    for key, expected in required_policy.items():
+        if policy.get(key) is not expected:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"R24 policy mismatch: {key}"
+            )
+
+    main = _project_file(root, _MAIN, "R24 main")
+    menu = _project_file(root, _MENU, "R24 menu")
+    runtime = _project_file(root, _RUNTIME, "R24 runtime")
+    proof_header = _project_file(root, _PROOF_HEADER, "R24 proof header")
+    proof_source = _project_file(root, _PROOF_SOURCE, "R24 proof source")
+    main_text = main.read_text(encoding="utf-8")
+    menu_text = menu.read_text(encoding="utf-8")
+    runtime_text = runtime.read_text(encoding="utf-8")
+    if not main_text.startswith(_EXPECTED_DEFINE + "\n"):
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+            "R24 main no longer begins with the real-song candidate define"
+        )
+    for marker in (
+        "SRK_MIDI_68K_PROOF_EXPECTED_INDEX 22u",
+        "MIDI / 68K REAL SONG",
+        "310 events - FRT clock - two SCSP voices",
+        "Song PASS: 310 events / peak voices 2",
+        "srk_saturn_midi_68k_r24_physical_proof_begin",
+        "srk_saturn_midi_68k_r24_physical_proof_poll",
+        "telemetry.voice_peak_active",
+        "telemetry.player_batch_index",
+    ):
+        if marker not in main_text:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"R24 main is missing reviewed marker: {marker}"
+            )
+    if _EXPECTED_MENU_LABEL not in menu_text or "MIDI 68K Audio Proof" in menu_text:
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+            "R24 menu no longer isolates the real-song proof"
+        )
+    for marker in (
+        "0x25F80000UL", "0x25F80004UL", "26874100UL", "28636400UL",
+        "26687700UL", "28437700UL", "srk_saturn_midi_r24_frt_configure_div128",
+        "SRK_R24_PROOF_FRT_TCR = state->original_tcr", "srk_saturn_midi_r24_player_poll",
+        "state->telemetry.read_sequence != 10u", "state->telemetry.read_index != 22u",
+        "state->telemetry.voice_key_on_count != 140u",
+        "state->telemetry.voice_key_off_count != 140u",
+        "state->telemetry.voice_peak_active != 2u", "srk_r24_verify_final_midi_state",
+    ):
+        if marker not in runtime_text:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"R24 runtime is missing reviewed proof seam: {marker}"
+            )
+
+    actual_candidate = {
+        "candidate_main_sha256": _sha256_file(main),
+        "candidate_menu_sha256": _sha256_file(menu),
+        "runtime_after_sha256": _sha256_file(runtime),
+        "proof_header_sha256": _sha256_file(proof_header),
+        "proof_source_sha256": _sha256_file(proof_source),
+    }
+    external_candidate = {
+        "candidate_main_sha256": _require_sha(expected_candidate_main_sha256, "candidate main SHA-256"),
+        "candidate_menu_sha256": _require_sha(expected_candidate_menu_sha256, "candidate menu SHA-256"),
+        "runtime_after_sha256": _require_sha(expected_runtime_sha256, "candidate runtime SHA-256"),
+        "proof_header_sha256": _require_sha(expected_proof_header_sha256, "proof header SHA-256"),
+        "proof_source_sha256": _require_sha(expected_proof_source_sha256, "proof source SHA-256"),
+    }
+    for key, actual_sha in actual_candidate.items():
+        if actual_sha != external_candidate[key]:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"R24 externally accepted hash mismatch: {key}"
+            )
+        if str(gate.get(key, "")).lower() != actual_sha:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"R24 candidate provenance hash mismatch: {key}"
+            )
+    if actual_candidate["proof_header_sha256"] != _sha256_bytes(
+        render_srk_saturn_midi_68k_r24_physical_proof_header().encode("utf-8")
+    ) or actual_candidate["proof_source_sha256"] != _sha256_bytes(
+        render_srk_saturn_midi_68k_r24_physical_proof_source(profile).encode("utf-8")
+    ):
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+            "R24 physical proof no longer matches its reviewed renderer"
+        )
+
+    report_path = root / _REPORT
+    report = _load_json(report_path, "R24 build report") if report_path.is_file() else None
+    if not isinstance(report, dict) or report.get("schema") != "srk.saturn.standalone-build.v1" or report.get("successful") is not True:
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+            "R24 build report is not a successful standalone build"
+        )
+    if str(report.get("project_manifest_sha256", "")).lower() != manifest_sha:
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+            "R24 build report does not match the current manifest"
+        )
+    expected_bin = _require_sha(expected_bin_sha256, "candidate BIN SHA-256")
+    expected_cue = _require_sha(expected_cue_sha256, "candidate CUE SHA-256")
+    artifacts = report.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+            "R24 build report has no artifact inventory"
+        )
+    by_path = {
+        str(entry.get("path")): entry
+        for entry in artifacts
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+    }
+    for relative, expected_sha, label in (
+        (_DEPLOY_BIN, expected_bin, "candidate BIN"),
+        (_DEPLOY_CUE, expected_cue, "candidate CUE"),
+    ):
+        entry = by_path.get(relative)
+        path = _project_file(root, relative, label)
+        if not isinstance(entry, dict) or str(entry.get("sha256", "")).lower() != expected_sha:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"R24 {label} report hash mismatch"
+            )
+        if _sha256_file(path) != expected_sha:
+            raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
+                f"R24 {label} disk hash mismatch"
+            )
+    report_sha = _sha256_file(report_path)
 
     try:
         plan = plan_saroo_standalone_image_deployment(
@@ -728,13 +575,9 @@ def inspect_saturn_midi_68k_r24_physical_candidate_pre_media(
         raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
             f"read-only SAROO deployment plan rejected R24 candidate: {exc}"
         ) from exc
-    if plan.bin_sha256.lower() != expected_bin:
+    if plan.bin_sha256.lower() != expected_bin or plan.cue_sha256.lower() != expected_cue:
         raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "fresh R24 BIN SHA-256 does not match externally accepted build output"
-        )
-    if plan.cue_sha256.lower() != expected_cue:
-        raise SaturnMidi68KR24PhysicalCandidatePreMediaGateError(
-            "fresh R24 CUE SHA-256 does not match externally accepted build output"
+            "fresh R24 media hashes do not match externally accepted build output"
         )
 
     return SaturnMidi68KR24PhysicalCandidatePreMediaResult(
@@ -743,21 +586,21 @@ def inspect_saturn_midi_68k_r24_physical_candidate_pre_media(
         manifest_sha256=manifest_sha,
         report_sha256=report_sha,
         source_midi_sha256=profile.source_sha256,
-        image_sha256=image_sha,
-        candidate_main_sha256=main_sha,
-        candidate_menu_sha256=menu_sha,
-        runtime_after_sha256=runtime_sha,
-        proof_header_sha256=proof_header_sha,
-        proof_source_sha256=proof_source_sha,
+        image_sha256=image.sha256,
+        candidate_main_sha256=actual_candidate["candidate_main_sha256"],
+        candidate_menu_sha256=actual_candidate["candidate_menu_sha256"],
+        runtime_after_sha256=actual_candidate["runtime_after_sha256"],
+        proof_header_sha256=actual_candidate["proof_header_sha256"],
+        proof_source_sha256=actual_candidate["proof_source_sha256"],
         song_records=profile.record_count,
         song_batches=len(profile.batches),
         song_duration_us=profile.duration_us,
         note_on_count=SATURN_MIDI_68K_R24_REFERENCE_NOTE_ON,
         note_off_count=SATURN_MIDI_68K_R24_REFERENCE_NOTE_OFF,
         peak_polyphony=profile.peak_polyphony,
-        summary_words_verified=summary_count,
-        controller_words_verified=controller_count,
-        active_note_words_verified=active_count,
+        summary_words_verified=len(summaries),
+        controller_words_verified=len(controllers),
+        active_note_words_verified=len(active),
         deployable_bin_sha256=plan.bin_sha256,
         deployable_cue_sha256=plan.cue_sha256,
         plan=plan,
