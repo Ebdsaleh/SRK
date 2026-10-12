@@ -62,6 +62,7 @@ from .midi_68k_stream_service import (
     render_srk_saturn_midi_68k_stream_service_header,
     render_srk_saturn_midi_68k_stream_service_source,
 )
+from .midi_program import SaturnMidiOpcode
 from .standalone_build import SaturnStandaloneBuildResult, build_saturn_standalone_project
 
 
@@ -426,6 +427,7 @@ def prepare_saturn_midi_68k_r24_inert_full_build_gate(
     validate_saturn_midi_68k_r24_reference_voice_trace(voice_trace)
     validate_saturn_midi_68k_r24_complete_player(profile.program)
     image = build_srk_saturn_midi_68k_r24_resident_audio_service_image()
+    opcode_counts = dict(profile.opcode_counts)
 
     blobs = {
         _R24_AUDIO_SOURCE: render_srk_saturn_midi_68k_r24_resident_audio_service_source().encode("utf-8"),
@@ -509,8 +511,8 @@ def prepare_saturn_midi_68k_r24_inert_full_build_gate(
             "song_duration_us": profile.duration_us,
             "song_batches": len(profile.batches),
             "song_batch_sizes": [batch.record_count for batch in profile.batches],
-            "note_on_count": profile.note_on_count,
-            "note_off_count": profile.note_off_count,
+            "note_on_count": opcode_counts.get(SaturnMidiOpcode.NOTE_ON, 0),
+            "note_off_count": opcode_counts.get(SaturnMidiOpcode.NOTE_OFF, 0),
             "peak_polyphony": profile.peak_polyphony,
             "r24_image_sha256": image.sha256,
             "r24_image_word_count": image.word_count,
