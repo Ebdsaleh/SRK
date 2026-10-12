@@ -110,6 +110,58 @@ Normal R25 Note Off policy must not immediately zero the mixer. It must issue KE
 and allow the envelope release segment to become audible, then recycle the slot only
 when the bounded release lifecycle says it is safe.
 
+### Held/releasing lifecycle
+
+`midi_68k_r25_release_lifecycle.py` now models the complete four-slot ownership
+contract before it is rendered into MC68EC000 code:
+
+```text
+FREE -> HELD -> RELEASING -> FREE
+```
+
+At every event timestamp, expired release tails are retired before new allocation.
+A matching-key retrigger reclaims that key's existing held or releasing slot. A new
+key uses the lowest free slot. If all four slots remain owned, the event reports
+BUSY and never steals another key.
+
+For the exact reference song with the 120-ms target lifecycle, the model records:
+
+```text
+Note On                 140
+Note Off                140
+release tails started   140
+release tails completed 138
+release tails cancelled 2 (same-key retrigger)
+busy                    0
+peak held               2
+peak releasing          1
+peak total owned        2
+final owned             0
+```
+
+The cancelled count is intentional and observable: two notes retrigger while their
+previous release tail is still owned. The invariant is therefore `completed +
+cancelled == started`, rather than incorrectly requiring every tail to decay fully.
+
+### Event-timing telemetry
+
+`midi_68k_r25_timing.py` defines source-vs-observed timing observations with signed
+microsecond error. It reports exact, early and late counts, maximum early/late and
+absolute error, plus violations against an explicit tolerance. The model does not
+choose a physical tolerance; that belongs to the later hardware gate.
+
+### RR calibration matrix
+
+`midi_68k_r25_rr_calibration.py` renders all 32 legal RR values and their exact EG1
+and EG2 register words. Selection is fail-closed: no RR can become R25 policy until
+the caller supplies positive physical release-duration measurements. The nearest
+measured release to the 120-ms target wins, with the lower RR as a deterministic tie
+break only when two measured errors are equal.
+
+`midi_68k_r25_fidelity.py` combines note-span auditing, the full release lifecycle,
+five deterministic progress checkpoints and the unmeasured RR matrix into one
+reference-song acceptance profile.
+
 ## R24 remains immutable
 
 The physically accepted R24 destination and media are never modified:
@@ -124,7 +176,8 @@ R25 must derive into fresh source/build/media destinations.
 
 ## Next gate after this source/model tranche
 
-Once Eridu validates this gate, proceed as one substantial tranche:
+Once Eridu validates this expanded source/model gate, proceed as one substantial
+hardware-integration tranche:
 
 1. render the four-slot resident MC68EC000 service;
 2. add explicit HELD vs RELEASING slot telemetry;
