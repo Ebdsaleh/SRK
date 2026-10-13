@@ -2,8 +2,8 @@
 
 R26 deliberately reuses the physically accepted R25 scheduler, full seven-opcode
 MIDI state decoder, due-time clock, and release lifecycle. The delta is musical:
-16 owned SCSP slots and a deterministic program-family timbre selector, with a
-separate channel-10 percussion timbre.
+16 owned SCSP slots, deterministic release-tail stealing, and a deterministic
+program-family timbre selector with a separate channel-10 percussion timbre.
 
 The synthetic bank is a hardware bring-up bank, not a claim of GM soundfont
 fidelity. It exists so real multi-channel/program MIDI can be audibly
@@ -69,9 +69,82 @@ class SaturnMidi68KR26ResidentAudioServiceImage:
         return sha256(payload).hexdigest()
 
 
+class _R26AudioAssembler68K(_r23._AudioAssembler68K):
+    """R26-local branch relaxation without changing accepted R23-R25 encoding.
+
+    R25's four-slot image fits signed 16-bit Bcc/BRA displacements. Expanding the
+    same proven logic to sixteen slots pushes some forward error branches beyond
+    +/-32767 bytes. R26 therefore emits long-safe forms from the beginning:
+
+    * BRA -> JMP (xxx).L
+    * Bcc -> B!cc.s +6 ; JMP (xxx).L
+
+    The MC68EC000 supports absolute-long JMP. Labels remain word indices, so the
+    absolute destination is resident-program base + label*2.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._r26_absolute_branches: list[tuple[int, int, str]] = []
+
+    def branch_word(self, opcode: int, target: str) -> None:
+        base = opcode & 0xFF00
+        if base == 0x6000:  # BRA
+            self.word(0x4EF9)  # JMP (xxx).L
+            hi_index = len(self.words)
+            self.word(0)
+            lo_index = len(self.words)
+            self.word(0)
+            self._r26_absolute_branches.append((hi_index, lo_index, target))
+            return
+        if base == 0x6100:
+            raise SaturnMidi68KR26ResidentAudioServiceError(
+                "R26 long-safe assembler does not accept BSR through branch_word"
+            )
+        if 0x6200 <= base <= 0x6F00:
+            inverse = base ^ 0x0100
+            # If the original condition is false, skip the six-byte JMP.
+            self.word(inverse | 0x0006)
+            self.word(0x4EF9)  # JMP (xxx).L
+            hi_index = len(self.words)
+            self.word(0)
+            lo_index = len(self.words)
+            self.word(0)
+            self._r26_absolute_branches.append((hi_index, lo_index, target))
+            return
+        raise SaturnMidi68KR26ResidentAudioServiceError(
+            f"unsupported R26 branch opcode 0x{base:04X}"
+        )
+
+    def finish(self) -> tuple[int, ...]:
+        if self.word_branches:
+            raise SaturnMidi68KR26ResidentAudioServiceError(
+                "R26 assembler unexpectedly contains legacy word-branch fixups"
+            )
+        words = list(self.words)
+        program_base = _r25.SATURN_MIDI_68K_R25_RESIDENT_AUDIO_PROGRAM_ADDRESS
+        for hi_index, lo_index, target_name in self._r26_absolute_branches:
+            try:
+                target_index = self.labels[target_name]
+            except KeyError as exc:
+                raise SaturnMidi68KR26ResidentAudioServiceError(
+                    f"undefined R26 68K branch target: {target_name}"
+                ) from exc
+            target_address = program_base + target_index * 2
+            if target_address < 0 or target_address > 0xFFFFFFFF:
+                raise SaturnMidi68KR26ResidentAudioServiceError(
+                    f"R26 branch target address out of range: 0x{target_address:X}"
+                )
+            words[hi_index] = (target_address >> 16) & 0xFFFF
+            words[lo_index] = target_address & 0xFFFF
+        return tuple(words)
+
+
 _ORIGINAL_VALIDATE = _r25.validate_saturn_midi_68k_r25_resident_audio_layout
 _ORIGINAL_INITIALIZATION = _r25._emit_r25_initialization
 _ORIGINAL_KEY_ON_SLOT = _r25._emit_r25_key_on_slot
+_ORIGINAL_NOTE_ON = _r25._emit_r25_note_on
+_ORIGINAL_ASSEMBLER = _r23._AudioAssembler68K
 
 
 def validate_srk_saturn_midi_68k_r26_resident_audio_layout() -> None:
@@ -184,6 +257,77 @@ def _emit_r26_key_on_slot(
     )
 
 
+def _emit_r26_note_on(asm: _r23._AudioAssembler68K) -> None:
+    """Allocate without dropping a Note On while any release tail can be reused."""
+
+    _r25._increment(asm, _r25.SATURN_MIDI_68K_R25_VOICE_KEY_ON_COUNT_WORD)
+    _r25._emit_retire_expired(asm, "r26_note_on")
+
+    # First preserve R25's exact-key retrigger semantics.
+    for slot in range(SATURN_MIDI_68K_R26_OWNED_SLOTS):
+        next_label = f"r26_note_on_match_next_{slot}"
+        asm.move_absw_to_dn(
+            _r25._slot_word(slot, _r25.SATURN_MIDI_68K_R25_SLOT_PHASE_WORD), 0
+        )
+        asm.cmpi_w(int(_r25.SaturnMidi68KR25SlotPhase.FREE), 0)
+        asm.branch_word(0x6700, next_label)
+        asm.move_absw_to_dn(
+            _r25._slot_word(slot, _r25.SATURN_MIDI_68K_R25_SLOT_CHANNEL_WORD), 0
+        )
+        asm.cmp_dn_w(1, 0)
+        asm.branch_word(0x6600, next_label)
+        asm.move_absw_to_dn(
+            _r25._slot_word(slot, _r25.SATURN_MIDI_68K_R25_SLOT_NOTE_WORD), 0
+        )
+        asm.cmp_dn_w(5, 0)
+        asm.branch_word(0x6600, next_label)
+        asm.move_absw_to_dn(
+            _r25._slot_word(slot, _r25.SATURN_MIDI_68K_R25_SLOT_PHASE_WORD), 0
+        )
+        asm.cmpi_w(int(_r25.SaturnMidi68KR25SlotPhase.RELEASING), 0)
+        asm.branch_word(0x6700, f"r26_note_on_slot_{slot}_releasing")
+        asm.branch_word(0x6000, f"r26_note_on_slot_{slot}_held")
+        asm.label(next_label)
+
+    # Then prefer a truly free voice.
+    for slot in range(SATURN_MIDI_68K_R26_OWNED_SLOTS):
+        asm.move_absw_to_dn(
+            _r25._slot_word(slot, _r25.SATURN_MIDI_68K_R25_SLOT_PHASE_WORD), 0
+        )
+        asm.cmpi_w(int(_r25.SaturnMidi68KR25SlotPhase.FREE), 0)
+        asm.branch_word(0x6700, f"r26_note_on_slot_{slot}_free")
+
+    # If all 16 are owned only because tails are decaying, preserve the new Note
+    # On by cancelling the lowest-numbered releasing slot. The physically useful
+    # invariant is therefore: BUSY only when all owned slots are still HELD.
+    for slot in range(SATURN_MIDI_68K_R26_OWNED_SLOTS):
+        asm.move_absw_to_dn(
+            _r25._slot_word(slot, _r25.SATURN_MIDI_68K_R25_SLOT_PHASE_WORD), 0
+        )
+        asm.cmpi_w(int(_r25.SaturnMidi68KR25SlotPhase.RELEASING), 0)
+        asm.branch_word(0x6700, f"r26_note_on_slot_{slot}_releasing")
+
+    _r25._increment(asm, _r25.SATURN_MIDI_68K_R25_VOICE_BUSY_COUNT_WORD)
+    asm.move_imm_absw(
+        _r25.SATURN_MIDI_68K_R25_VOICE_ERROR_BUSY,
+        _r25._global(_r25.SATURN_MIDI_68K_R25_VOICE_LAST_ERROR_WORD),
+    )
+    asm.branch_word(0x6000, "r25_audio_note_on_done")
+
+    for slot in range(SATURN_MIDI_68K_R26_OWNED_SLOTS):
+        for allocation in ("releasing", "held", "free"):
+            prefix = f"r26_note_on_slot_{slot}_{allocation}"
+            asm.label(prefix)
+            _emit_r26_key_on_slot(
+                asm,
+                slot,
+                prefix=prefix,
+                allocation=allocation,
+            )
+    # _ORIGINAL_KEY_ON_SLOT branches here after every successful allocation.
+    asm.label("r25_audio_note_on_done")
+
+
 def build_srk_saturn_midi_68k_r26_resident_audio_service_image(
     *, release_rate: int
 ) -> SaturnMidi68KR26ResidentAudioServiceImage:
@@ -199,8 +343,10 @@ def build_srk_saturn_midi_68k_r26_resident_audio_service_image(
         "validate_saturn_midi_68k_r25_resident_audio_layout",
         "_emit_r25_initialization",
         "_emit_r25_key_on_slot",
+        "_emit_r25_note_on",
     )
     original = {name: getattr(_r25, name) for name in patched_names}
+    original_assembler = _r23._AudioAssembler68K
     try:
         _r25.SATURN_MIDI_68K_R25_OWNED_SLOTS = SATURN_MIDI_68K_R26_OWNED_SLOTS
         _r25.SATURN_MIDI_68K_R25_VOICE_STATE_BYTES = SATURN_MIDI_68K_R26_VOICE_STATE_BYTES
@@ -212,10 +358,13 @@ def build_srk_saturn_midi_68k_r26_resident_audio_service_image(
         )
         _r25._emit_r25_initialization = _emit_r26_initialization
         _r25._emit_r25_key_on_slot = _emit_r26_key_on_slot
+        _r25._emit_r25_note_on = _emit_r26_note_on
+        _r23._AudioAssembler68K = _R26AudioAssembler68K
         derived = _r25.build_srk_saturn_midi_68k_r25_resident_audio_service_image(
             release_rate=release_rate
         )
     finally:
+        _r23._AudioAssembler68K = original_assembler
         for name, value in original.items():
             setattr(_r25, name, value)
 

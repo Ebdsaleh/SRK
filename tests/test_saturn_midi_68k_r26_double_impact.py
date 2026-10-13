@@ -34,10 +34,14 @@ def test_r26_space_spectre_profiles_real_multi_channel_midi():
     assert dict(profile.opcode_counts)[SaturnMidiOpcode.NOTE_ON] == profile.note_on_count
 
 
-def test_r26_space_spectre_fits_first_16_voice_release_policy():
+def test_r26_space_spectre_preserves_note_ons_by_stealing_release_tails():
     profile = build_srk_saturn_midi_68k_r26_space_spectre_profile(_ROOT)
-    assert profile.capacity.slot_capacity == SATURN_MIDI_68K_R26_TARGET_SLOTS
-    assert profile.capacity.peak_owned <= SATURN_MIDI_68K_R26_TARGET_SLOTS
+    assert profile.capacity.slot_capacity == SATURN_MIDI_68K_R26_TARGET_SLOTS == 16
+    assert profile.capacity.peak_held == 10
+    assert profile.capacity.peak_owned == 16
+    # Eridu proved the original non-stealing model dropped exactly 12 Note Ons.
+    # R26 now converts those pressure points into deterministic release-tail steals.
+    assert profile.capacity.release_steal_count == 12
     assert profile.capacity.busy_count == 0
     assert profile.capacity.final_held == 0
     assert profile.capacity.final_releasing == 0

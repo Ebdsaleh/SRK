@@ -53,6 +53,7 @@ class SaturnMidi68KR26Capacity:
     slot_capacity: int
     peak_held: int
     peak_owned: int
+    release_steal_count: int
     busy_count: int
     final_held: int
     final_releasing: int
@@ -164,14 +165,18 @@ def simulate_srk_saturn_midi_68k_r26_capacity(
     slot_capacity: int = SATURN_MIDI_68K_R26_TARGET_SLOTS,
     release_tail_us: int = SATURN_MIDI_68K_R26_RELEASE_TAIL_US,
 ) -> SaturnMidi68KR26Capacity:
+    """Model R26 allocation: never drop a note while a release tail can be stolen."""
+
     if slot_capacity < 1 or slot_capacity > 32:
         raise SaturnMidi68KR26DoubleImpactError("R26 slot capacity must be within 1..32")
     if release_tail_us < 0:
         raise SaturnMidi68KR26DoubleImpactError("R26 release tail cannot be negative")
 
+    # phase: 0 free, 1 held, 2 releasing; then channel, note, release deadline.
     slots = [[0, -1, -1, 0] for _ in range(slot_capacity)]
     peak_held = 0
     peak_owned = 0
+    release_steal_count = 0
     busy_count = 0
 
     def retire(now: int) -> None:
@@ -198,6 +203,13 @@ def simulate_srk_saturn_midi_68k_r26_capacity(
                 None,
             )
             target = match or next((slot for slot in slots if slot[0] == 0), None)
+            if target is None:
+                # R26 protects new musical information before an already-decaying
+                # tail. Lowest-slot releasing ownership is deterministic and mirrors
+                # the resident 68K fallback. Only an all-HELD pool is truly busy.
+                target = next((slot for slot in slots if slot[0] == 2), None)
+                if target is not None:
+                    release_steal_count += 1
             if target is None:
                 busy_count += 1
             else:
@@ -228,6 +240,7 @@ def simulate_srk_saturn_midi_68k_r26_capacity(
         slot_capacity=slot_capacity,
         peak_held=peak_held,
         peak_owned=peak_owned,
+        release_steal_count=release_steal_count,
         busy_count=busy_count,
         final_held=final_held,
         final_releasing=final_releasing,
