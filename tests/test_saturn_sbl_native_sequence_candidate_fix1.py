@@ -17,6 +17,18 @@ def test_fix1_uses_minimum_documented_native_sequence_surface():
     assert "SND_CtrlDirMidi" not in runtime
 
 
+def test_fix1_namespaces_gfs_sizing_constants_away_from_sega_header():
+    runtime = fix1._patched_runtime()
+
+    assert "#define SRK_GFS_OPEN_MAX 2" in runtime
+    assert "#define SRK_GFS_MAX_DIR 32" in runtime
+    assert "GFS_WORK_SIZE(SRK_GFS_OPEN_MAX)" in runtime
+    assert "GFS_Init(SRK_GFS_OPEN_MAX" in runtime
+    assert "GFS_DIRTBL_NDIR(&gfs_table)=SRK_GFS_MAX_DIR" in runtime
+    assert "#define GFS_OPEN_MAX" not in runtime
+    assert "#define GFS_MAX_DIR" not in runtime
+
+
 def test_fix1_patch_is_scoped_and_non_recursive():
     original_runtime = base._runtime
     original_main = base._native_main
