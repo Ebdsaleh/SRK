@@ -18,7 +18,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Convert the complete locked Space Spectre SMF type-1 file into an "
             "uncompressed Sega SDDRV M6 song and one-song Saturn sequence bank. "
-            "This is host-only conversion and never writes to SAROO."
+            "The converted sequence carries its Saturn tone-bank routing and this "
+            "host-only conversion never writes to SAROO."
         ),
     )
     parser.add_argument("--output", required=True, type=Path)
@@ -36,6 +37,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 2
 
+    bindings = ", ".join(
+        f"ch{channel + 1}->tone{bank}" for channel, bank in result.tone_bank_bindings
+    )
     print("SRK Space Spectre / native Sega Saturn sequence conversion")
     print("-----------------------------------------------------------")
     print(f"Output directory     : {result.output_directory}")
@@ -47,6 +51,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"End tick             : {result.end_tick}")
     print(f"Channel events       : {result.channel_event_count}")
     print(f"Notes                : {result.note_count}")
+    print(f"Tone-bank routing    : {bindings}")
     print(f"M6 song bytes        : {result.song_bytes}")
     print(f"M6 song SHA-256      : {result.song_sha256}")
     print(f"Sequence bank        : {result.bank_path}")
@@ -54,6 +59,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Sequence bank SHA-256: {result.bank_sha256}")
     print(f"Manifest             : {result.manifest_path}")
     print("Playback path        : Sega SDDRV native sequence")
+    print("SH-2 MIDI priming    : NO")
     print("Direct MIDI streaming: NO")
     print("SAROO writes         : NONE")
     return 0
