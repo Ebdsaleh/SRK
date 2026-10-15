@@ -1,15 +1,13 @@
-"""Compatibility fix for the first native SDDRV Space Spectre candidate build.
+"""Compatibility fix for the native SDDRV Space Spectre candidate build.
 
 The GATE3 candidate architecture remains unchanged: authored M6 sequence data is
-loaded with ``SND_KD_SEQ`` and started with ``SND_StartSeq``.  This wrapper only
-narrows the SH-2 status/telemetry surface and restores Sega's documented total-
-volume setup before sequence start.
+loaded with ``SND_KD_SEQ`` and started with ``SND_StartSeq``.  This wrapper keeps
+the SH-2 status/telemetry surface narrow, restores Sega's documented total-volume
+setup before sequence start, and avoids colliding with names owned by ``SEGA_GFS.H``.
 
-The first GATE3 host build failed before any media write.  Until the exact legacy
-compiler/linker diagnostic is available, do not add more SBL dependencies than
-playback actually needs.  ``SND_GetSeqPlayPos`` is optional telemetry; sequence
-completion only requires ``SND_GetSeqStat``.  Sega's Sound I/F calling sequence
-also sets total volume before ``SND_StartSeq``.
+Eridu's first FIX1 build proved the exact compile failure: the generated runtime
+redefined ``GFS_OPEN_MAX``, which is already defined by Sega's GFS header.  The
+runtime therefore uses SRK-private names for its local GFS sizing constants.
 """
 
 from __future__ import annotations
@@ -41,6 +39,11 @@ def _replace_once(text: str, old: str, new: str, label: str) -> str:
 
 def _patched_runtime() -> str:
     runtime = _ORIGINAL_RUNTIME()
+
+    # SEGA_GFS.H owns GFS_OPEN_MAX.  Keep every generated helper constant in an
+    # SRK namespace so -Werror cannot reject a macro collision with the SDK.
+    runtime = runtime.replace("GFS_OPEN_MAX", "SRK_GFS_OPEN_MAX")
+    runtime = runtime.replace("GFS_MAX_DIR", "SRK_GFS_MAX_DIR")
 
     runtime = _replace_once(
         runtime,
@@ -89,6 +92,14 @@ def _patched_runtime() -> str:
         "status storage",
     )
 
+    if "#define GFS_OPEN_MAX" in runtime or "#define GFS_MAX_DIR" in runtime:
+        raise SaturnSblNativeSequenceCandidateFix1Error(
+            "native candidate fix1 still defines Sega-owned GFS helper names"
+        )
+    if "#define SRK_GFS_OPEN_MAX 2" not in runtime or "#define SRK_GFS_MAX_DIR 32" not in runtime:
+        raise SaturnSblNativeSequenceCandidateFix1Error(
+            "native candidate fix1 lost SRK-private GFS sizing constants"
+        )
     if "SND_GetSeqPlayPos" in runtime or "SndSeqPlayPos" in runtime:
         raise SaturnSblNativeSequenceCandidateFix1Error(
             "native candidate fix1 still depends on sequence-position telemetry"
