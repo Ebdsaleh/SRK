@@ -11,11 +11,10 @@ from contextlib import contextmanager
 import os
 
 from . import midi_68k_r26_physical_candidate_full_build_gate as _gate
+from . import midi_68k_r26_resident_audio_service as _r26_audio
 from .midi_68k_r28_physical_candidate import derive_r28_percussion_candidate_main
 from .midi_68k_r28_resident_audio_service import (
     build_srk_saturn_midi_68k_r28_resident_audio_service_image,
-    render_srk_saturn_midi_68k_r28_resident_audio_service_header,
-    render_srk_saturn_midi_68k_r28_resident_audio_service_source,
 )
 
 
@@ -24,6 +23,41 @@ R28_RELEASE_RATE = _gate.ACCEPTED_R26_RELEASE_RATE
 
 class SaturnMidi68KR28FullBuildGateError(RuntimeError):
     """Raised when the fresh R28 percussion candidate cannot be built."""
+
+
+def _render_r28_resident_header(*, release_rate: int) -> str:
+    """Render the R26-compatible header with the R28 image exactly once.
+
+    Do not route this through R27's renderer wrapper: R27 itself temporarily
+    patches the R26 image builder. Repatching the R27 builder from R28 makes the
+    global name resolve back to R28 and recursively re-enters the same builder.
+    """
+
+    original_build = _r26_audio.build_srk_saturn_midi_68k_r26_resident_audio_service_image
+    try:
+        _r26_audio.build_srk_saturn_midi_68k_r26_resident_audio_service_image = (
+            build_srk_saturn_midi_68k_r28_resident_audio_service_image
+        )
+        return _r26_audio.render_srk_saturn_midi_68k_r26_resident_audio_service_header(
+            release_rate=release_rate
+        )
+    finally:
+        _r26_audio.build_srk_saturn_midi_68k_r26_resident_audio_service_image = original_build
+
+
+def _render_r28_resident_source(*, release_rate: int) -> str:
+    """Render the R26-compatible source with the R28 image without recursion."""
+
+    original_build = _r26_audio.build_srk_saturn_midi_68k_r26_resident_audio_service_image
+    try:
+        _r26_audio.build_srk_saturn_midi_68k_r26_resident_audio_service_image = (
+            build_srk_saturn_midi_68k_r28_resident_audio_service_image
+        )
+        return _r26_audio.render_srk_saturn_midi_68k_r26_resident_audio_service_source(
+            release_rate=release_rate
+        )
+    finally:
+        _r26_audio.build_srk_saturn_midi_68k_r26_resident_audio_service_image = original_build
 
 
 @contextmanager
@@ -46,10 +80,10 @@ def _patched_r28_gate(*, release_rate: int):
             build_srk_saturn_midi_68k_r28_resident_audio_service_image
         )
         _gate.render_srk_saturn_midi_68k_r26_resident_audio_service_header = (
-            render_srk_saturn_midi_68k_r28_resident_audio_service_header
+            _render_r28_resident_header
         )
         _gate.render_srk_saturn_midi_68k_r26_resident_audio_service_source = (
-            render_srk_saturn_midi_68k_r28_resident_audio_service_source
+            _render_r28_resident_source
         )
         _gate.derive_r26_double_impact_candidate_main = (
             derive_r28_percussion_candidate_main
