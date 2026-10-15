@@ -49,16 +49,16 @@ def test_discovery_prioritises_128_voice_gm_candidate(tmp_path):
     assert any(item.path == sample.resolve() and item.voice_count == 4 for item in candidates)
 
 
-def test_discovery_does_not_claim_arbitrary_bin_is_scspbin(tmp_path):
+def test_discovery_filters_arbitrary_unhinted_bin_instead_of_claiming_scspbin(tmp_path):
     arbitrary = tmp_path / "random.bin"
     arbitrary.write_bytes(b"not a Saturn tone bank" * 20)
 
     candidates = discover_official_tone_candidates(tmp_path)
 
-    matching = [item for item in candidates if item.path == arbitrary.resolve()]
-    assert matching
-    assert matching[0].structurally_valid is False
-    assert matching[0].voice_count is None
+    # A plain .bin receives only the one-point suffix hint.  Because it is not
+    # structurally valid SCSPBIN and has no tone/GM/path evidence, the scanner
+    # deliberately omits it rather than surfacing noise or claiming validity.
+    assert all(item.path != arbitrary.resolve() for item in candidates)
 
 
 def test_discovery_cli_is_read_only_root_and_limit():
