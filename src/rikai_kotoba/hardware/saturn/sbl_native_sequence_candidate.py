@@ -173,8 +173,11 @@ def _validate_sequence(directory: Path) -> tuple[dict, Path, str, int]:
     if native.get("percussion_program") != 0:
         raise SaturnSblNativeSequenceCandidateError("native sequence percussion voice must be program 0")
 
-    bank = directory / str(bank_info.get("filename", ""))
-    if bank.name != SEQUENCE_BANK_NAME or not bank.is_file():
+    filename = bank_info.get("filename")
+    if filename != SEQUENCE_BANK_NAME:
+        raise SaturnSblNativeSequenceCandidateError("native sequence bank filename changed")
+    bank = directory / SEQUENCE_BANK_NAME
+    if not bank.is_file():
         raise SaturnSblNativeSequenceCandidateError(f"native sequence bank missing: {bank}")
     actual_hash = _gm._sha(bank)
     expected_hash = bank_info.get("sha256")
@@ -257,9 +260,7 @@ def _runtime() -> str:
 #define ERR_TONE 4u
 #define ERR_SEQUENCE 5u
 #define ERR_MAP 6u
-#define ERR_MIX 7u
-#define ERR_VOLUME 8u
-#define ERR_START 9u
+#define ERR_START 7u
 static Uint32 gfs_work[GFS_WORK_SIZE(GFS_OPEN_MAX)/sizeof(Uint32)];
 static GfsDirTbl gfs_table;
 static GfsDirName gfs_names[GFS_MAX_DIR];
@@ -290,8 +291,6 @@ unsigned int srk_saturn_sbl_gm_begin(SRK_SBL_GM_STATE *s){{
  SND_MoveData((Uint16 *)tone,(Uint32)SRK_SBL_GM_TONE_BYTES,SND_KD_TONE,0);
  SND_MoveData((Uint16 *)drum,(Uint32)SRK_SBL_GM_DRUM_BYTES,SND_KD_TONE,1);
  SND_MoveData((Uint16 *)sequence,(Uint32)SRK_SBL_GM_SEQUENCE_BYTES,SND_KD_SEQ,{_SEQUENCE_BANK});
- r=SND_ChgMix(0,0);s->last_ret=(unsigned int)r;if(r!=SND_RET_SET){{fail(s,ERR_MIX);return 0u;}}
- r=SND_SetTlVl(15);s->last_ret=(unsigned int)r;if(r!=SND_RET_SET){{fail(s,ERR_VOLUME);return 0u;}}
  r=SND_StartSeq({_SEQUENCE_NUMBER},{_SEQUENCE_BANK},{_SEQUENCE_SONG},{_SEQUENCE_PRIORITY});s->last_ret=(unsigned int)r;
  if(r!=SND_RET_SET){{fail(s,ERR_START);return 0u;}}
  s->status=SRK_SBL_GM_PRIMING;return 1u;
