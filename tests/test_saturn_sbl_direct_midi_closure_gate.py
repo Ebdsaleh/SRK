@@ -55,6 +55,10 @@ def test_runtime_does_not_reintroduce_custom_scsp_synthesis():
         "KYONEX",
         "DIPAN",
         "DISDL",
-        "SND_CtrlDirMidi",
     ):
         assert forbidden not in source
+
+    # Comments may legitimately name the Sega API while explaining why this
+    # file only provides freestanding C memory primitives.  What matters is
+    # that the runtime helper does not itself call or reimplement Direct MIDI.
+    assert "SND_CtrlDirMidi(" not in source
