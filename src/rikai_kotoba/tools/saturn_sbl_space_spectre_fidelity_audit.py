@@ -37,6 +37,12 @@ def _layer_text(layer) -> str:
     )
 
 
+def _drum_note_text(drum_note) -> str:
+    """Render one resolved GM percussion-note summary without relying on object formatting."""
+
+    return f"Note {drum_note.note:3d}: {len(drum_note.layers)} matching layer(s)"
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -82,9 +88,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     print()
 
     print("Required percussion notes / drum voice 0")
-    for note in report.drum_notes:
-        print(f"  Note {note:3d}: {len(note.layers)} matching layer(s)")
-        for layer in note.layers:
+    for drum_note in report.drum_notes:
+        print(f"  {_drum_note_text(drum_note)}")
+        for layer in drum_note.layers:
             print(f"    {_layer_text(layer)}")
     print(
         "  Distinct sample SA : "
