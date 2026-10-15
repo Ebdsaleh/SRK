@@ -2,14 +2,22 @@
 
 GeneralUser GS exposes its real percussion presets through the SoundFont
 percussion bank and deliberately duplicates those kits into bank 120 so they
-can also be selected on non-percussion MIDI channels.  Space Spectre uses MIDI
+can also be selected on non-percussion MIDI channels. Space Spectre uses MIDI
 channel 10 for percussion, so SRK must prefer bank 128 rather than rejecting the
 legitimate bank-120 duplicate as ambiguous.
 
 The generated TON banks are also normalized to the first velocity curve from
-Sega's SBL 6.01 ``BOOTTONE.BIN`` sample.  That keeps the compact SoundFont
+Sega's SBL 6.01 ``BOOTTONE.BIN`` sample. That keeps the compact SoundFont
 conversion on a byte pattern directly proven by Sega's own tone-bank data rather
 than the converter's earlier synthetic placeholder curve.
+
+SoundFont global/local generator inheritance is also corrected here as a scoped
+policy around the Space Spectre bank build. At a given SoundFont hierarchy
+level, a local-zone generator supersedes the corresponding global-zone value;
+only after those per-level values are resolved are preset and instrument
+contributions combined. The base compact parser historically added all four
+maps in one pass, which can double-count attenuation, tuning, and envelope
+values and produce badly unbalanced Saturn TL values.
 """
 
 from __future__ import annotations
@@ -18,12 +26,13 @@ from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
 import struct
-from typing import Callable, Iterator
+from typing import Callable, Iterator, Mapping
 
 from . import sbl_soundfont_gm as _gm
 
 
 _DrumSelector = Callable[[_gm.Sf2Data], _gm.Sf2Preset]
+_ORIGINAL_MERGE_ZONE_MAPS = _gm._merge_zone_maps
 
 # SBL 6.01 SEGASMP/SND/SMPSND1 BOOTTONE.BIN, velocity table 0.
 # NON.ASM consumes this as K0,V0,L0,K1,V1,L1,K2,V2,L2,K3.
@@ -37,12 +46,7 @@ def select_channel10_drum_preset(
     *,
     fallback: _DrumSelector,
 ) -> _gm.Sf2Preset:
-    """Select the canonical SF2 percussion preset for MIDI channel 10.
-
-    Bank 128 is the SoundFont percussion-bank representation.  GeneralUser GS
-    also contains bank-120 copies specifically for use away from channel 10;
-    those copies must not make the channel-10 choice ambiguous.
-    """
+    """Select the canonical SF2 percussion preset for MIDI channel 10."""
 
     canonical = [
         preset
@@ -50,9 +54,7 @@ def select_channel10_drum_preset(
         if preset.bank == 128 and preset.program == 0 and preset.zones
     ]
     named = [
-        preset
-        for preset in canonical
-        if "standard 1" in preset.name.casefold()
+        preset for preset in canonical if "standard 1" in preset.name.casefold()
     ]
     if len(named) == 1:
         return named[0]
@@ -77,20 +79,60 @@ def select_channel10_drum_preset(
     return fallback(sf2)
 
 
+def _resolve_global_local_zone(
+    global_map: Mapping[int, int],
+    local_map: Mapping[int, int],
+) -> dict[int, int]:
+    """Resolve one SoundFont hierarchy level before cross-level addition."""
+
+    result = dict(global_map)
+    for range_op in (_gm._GEN_KEY_RANGE, _gm._GEN_VEL_RANGE):
+        global_value = global_map.get(range_op)
+        local_value = local_map.get(range_op)
+        if global_value is None and local_value is None:
+            continue
+        global_lo, global_hi = _gm._range(global_value)
+        local_lo, local_hi = _gm._range(local_value)
+        lo = max(global_lo, local_lo)
+        hi = min(global_hi, local_hi)
+        result[range_op] = lo | (hi << 8)
+
+    for op, value in local_map.items():
+        if op in (_gm._GEN_KEY_RANGE, _gm._GEN_VEL_RANGE):
+            continue
+        result[op] = value
+    return result
+
+
+def _space_spectre_merge_zone_maps(
+    *maps: Mapping[int, int],
+) -> dict[int, int]:
+    """Correct the parser's four-map SoundFont hierarchy merge."""
+
+    if len(maps) != 4:
+        return _ORIGINAL_MERGE_ZONE_MAPS(*maps)
+    preset_effective = _resolve_global_local_zone(maps[0], maps[1])
+    instrument_effective = _resolve_global_local_zone(maps[2], maps[3])
+    return _ORIGINAL_MERGE_ZONE_MAPS(preset_effective, instrument_effective)
+
+
 @contextmanager
 def _channel10_selector() -> Iterator[None]:
-    """Scope the channel-10 policy to one deterministic bank derivation."""
+    """Scope channel-10 and hierarchy policy to one deterministic derivation."""
 
-    original = _gm._select_drum_preset
+    original_selector = _gm._select_drum_preset
+    original_merge = _gm._merge_zone_maps
 
     def selector(sf2: _gm.Sf2Data) -> _gm.Sf2Preset:
-        return select_channel10_drum_preset(sf2, fallback=original)
+        return select_channel10_drum_preset(sf2, fallback=original_selector)
 
     _gm._select_drum_preset = selector
+    _gm._merge_zone_maps = _space_spectre_merge_zone_maps
     try:
         yield
     finally:
-        _gm._select_drum_preset = original
+        _gm._merge_zone_maps = original_merge
+        _gm._select_drum_preset = original_selector
 
 
 def _sha256_file(path: Path) -> str:
@@ -131,6 +173,7 @@ def ensure_channel10_space_spectre_tone_banks(
     normalize_sega_velocity_curve(banks.drum_path)
     with banks.report_path.open("a", encoding="utf-8", newline="\n") as report:
         report.write("velocity_curve=sbl601_boottone_table0\n")
+        report.write("soundfont_hierarchy=local_over_global_then_cross_level_add\n")
 
     return _gm.SaturnSoundfontBankFiles(
         melodic_path=banks.melodic_path,
