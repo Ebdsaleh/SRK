@@ -173,6 +173,42 @@ def _channel10_selector() -> Iterator[None]:
         _gm._select_drum_preset = original_selector
 
 
+def normalize_sega_velocity_curve_bytes(payload: bytes) -> bytes:
+    """Return TON bytes with velocity table 0 replaced by Sega's BOOTTONE curve."""
+
+    data = bytearray(payload)
+    if len(data) < 4:
+        raise _gm.SaturnSblSoundfontError("Saturn TON bank header is truncated")
+    velocity_offset = struct.unpack_from(">H", data, 2)[0]
+    end = velocity_offset + len(SEGA_BOOTTONE_VELOCITY_CURVE_0)
+    if velocity_offset < 8 or end > len(data):
+        raise _gm.SaturnSblSoundfontError(
+            f"Saturn TON velocity-table offset is invalid: {velocity_offset:#x}"
+        )
+    data[velocity_offset:end] = SEGA_BOOTTONE_VELOCITY_CURVE_0
+    return bytes(data)
+
+
+def build_channel10_space_spectre_tone_banks(
+    soundfont: Path | str,
+    requirements: _gm.MidiToneRequirements,
+) -> _gm.SaturnSoundfontBanks:
+    """Build corrected Space Spectre TON banks entirely in memory."""
+
+    with _channel10_selector():
+        banks = _gm.build_compact_saturn_gm_banks(soundfont, requirements)
+    return _gm.SaturnSoundfontBanks(
+        melodic_bytes=normalize_sega_velocity_curve_bytes(banks.melodic_bytes),
+        drum_bytes=normalize_sega_velocity_curve_bytes(banks.drum_bytes),
+        source_sha256=banks.source_sha256,
+        source_blob_sha1=banks.source_blob_sha1,
+        sample_rate=banks.sample_rate,
+        pcm8=banks.pcm8,
+        melodic_programs=banks.melodic_programs,
+        drum_notes=banks.drum_notes,
+    )
+
+
 def _sha256_file(path: Path) -> str:
     digest = sha256()
     with path.open("rb") as handle:
@@ -185,17 +221,7 @@ def normalize_sega_velocity_curve(path: Path | str) -> None:
     """Replace TON velocity table 0 with Sega's proven BOOTTONE curve."""
 
     tone = Path(path).expanduser().resolve(strict=True)
-    payload = bytearray(tone.read_bytes())
-    if len(payload) < 4:
-        raise _gm.SaturnSblSoundfontError(f"Saturn TON bank header is truncated: {tone}")
-    velocity_offset = struct.unpack_from(">H", payload, 2)[0]
-    end = velocity_offset + len(SEGA_BOOTTONE_VELOCITY_CURVE_0)
-    if velocity_offset < 8 or end > len(payload):
-        raise _gm.SaturnSblSoundfontError(
-            f"Saturn TON velocity-table offset is invalid: {velocity_offset:#x} in {tone}"
-        )
-    payload[velocity_offset:end] = SEGA_BOOTTONE_VELOCITY_CURVE_0
-    tone.write_bytes(payload)
+    tone.write_bytes(normalize_sega_velocity_curve_bytes(tone.read_bytes()))
 
 
 def ensure_channel10_space_spectre_tone_banks(
