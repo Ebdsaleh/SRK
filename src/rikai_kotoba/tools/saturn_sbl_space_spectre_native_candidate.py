@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
-from rikai_kotoba.hardware.saturn.sbl_native_sequence_candidate import (
+from rikai_kotoba.hardware.saturn.sbl_native_sequence_candidate_fix1 import (
     build_saturn_sbl_native_sequence_candidate,
 )
 from rikai_kotoba.hardware.saturn.sbl_space_spectre_sequence import (
