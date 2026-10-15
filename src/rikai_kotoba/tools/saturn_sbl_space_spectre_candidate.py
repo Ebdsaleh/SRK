@@ -10,13 +10,15 @@ from rikai_kotoba.hardware.saturn.sbl_gm_physical_candidate import (
     SaturnSblGmCandidateError,
     build_saturn_sbl_gm_candidate,
 )
+from rikai_kotoba.hardware.saturn.sbl_soundfont_channel10 import (
+    ensure_channel10_space_spectre_tone_banks,
+)
 from rikai_kotoba.hardware.saturn.sbl_soundfont_gm import (
     GENERALUSER_BLOB_SHA1,
     GENERALUSER_COMMIT,
     SaturnSblSoundfontError,
     derive_midi_tone_requirements,
     ensure_generaluser_soundfont,
-    ensure_space_spectre_tone_banks,
 )
 
 
@@ -61,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.soundfont is not None
             else ensure_generaluser_soundfont()
         )
-        banks = ensure_space_spectre_tone_banks(soundfont, requirements)
+        banks = ensure_channel10_space_spectre_tone_banks(soundfont, requirements)
         result = build_saturn_sbl_gm_candidate(
             args.baseline_project,
             args.saturn_root,
