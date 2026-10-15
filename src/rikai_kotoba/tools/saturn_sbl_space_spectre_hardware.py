@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
-from rikai_kotoba.hardware.saturn.sbl_gm_hardware_gate import (
+from rikai_kotoba.hardware.saturn.sbl_gm_hardware_gate_fix1 import (
     CONFIRMATION_TOKEN,
     DEFAULT_DESTINATION_NAME,
     run_saturn_sbl_gm_hardware_gate,
