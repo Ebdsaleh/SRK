@@ -18,6 +18,13 @@ only after those per-level values are resolved are preset and instrument
 contributions combined. The base compact parser historically added all four
 maps in one pass, which can double-count attenuation, tuning, and envelope
 values and produce badly unbalanced Saturn TL values.
+
+Sega's Tone Editor layer format documents Fine Tune as a signed value restricted
+to -63..+63.  The base converter historically allowed the full signed-byte
+range after SoundFont coarse/fine/sample-correction accumulation.  The scoped
+policy below folds excess cents into BASE NOTE in whole semitones, preserving
+the intended pitch while ensuring every emitted layer stays inside Sega's
+published range.
 """
 
 from __future__ import annotations
@@ -33,12 +40,15 @@ from . import sbl_soundfont_gm as _gm
 
 _DrumSelector = Callable[[_gm.Sf2Data], _gm.Sf2Preset]
 _ORIGINAL_MERGE_ZONE_MAPS = _gm._merge_zone_maps
+_ORIGINAL_NORMALIZE_TUNING = _gm._normalize_tuning
 
 # SBL 6.01 SEGASMP/SND/SMPSND1 BOOTTONE.BIN, velocity table 0.
 # NON.ASM consumes this as K0,V0,L0,K1,V1,L1,K2,V2,L2,K3.
 SEGA_BOOTTONE_VELOCITY_CURVE_0 = bytes(
     (0x08, 0x00, 0x7F, 0x0C, 0x7F, 0x7F, 0x08, 0x7F, 0x7F, 0x08)
 )
+SEGA_FINE_TUNE_MIN = -63
+SEGA_FINE_TUNE_MAX = 63
 
 
 def select_channel10_drum_preset(
@@ -116,21 +126,49 @@ def _space_spectre_merge_zone_maps(
     return _ORIGINAL_MERGE_ZONE_MAPS(preset_effective, instrument_effective)
 
 
+def normalize_sega_fine_tuning(
+    root: int,
+    cents: int,
+    rate_octaves: int,
+) -> tuple[int, int]:
+    """Preserve pitch while constraining TON Fine Tune to Sega's -63..+63."""
+
+    base, fine = _ORIGINAL_NORMALIZE_TUNING(root, cents, rate_octaves)
+    while fine > SEGA_FINE_TUNE_MAX:
+        fine -= 100
+        base -= 1
+    while fine < SEGA_FINE_TUNE_MIN:
+        fine += 100
+        base += 1
+    if not 0 <= base <= 127:
+        raise _gm.SaturnSblSoundfontError(
+            f"tone base note {base} is outside Saturn byte range after Sega fine-tune folding"
+        )
+    if not SEGA_FINE_TUNE_MIN <= fine <= SEGA_FINE_TUNE_MAX:
+        raise _gm.SaturnSblSoundfontError(
+            f"tone fine tune {fine} is outside Sega range after folding"
+        )
+    return base, fine
+
+
 @contextmanager
 def _channel10_selector() -> Iterator[None]:
-    """Scope channel-10 and hierarchy policy to one deterministic derivation."""
+    """Scope channel-10, hierarchy and Sega tuning policy to one derivation."""
 
     original_selector = _gm._select_drum_preset
     original_merge = _gm._merge_zone_maps
+    original_tuning = _gm._normalize_tuning
 
     def selector(sf2: _gm.Sf2Data) -> _gm.Sf2Preset:
         return select_channel10_drum_preset(sf2, fallback=original_selector)
 
     _gm._select_drum_preset = selector
     _gm._merge_zone_maps = _space_spectre_merge_zone_maps
+    _gm._normalize_tuning = normalize_sega_fine_tuning
     try:
         yield
     finally:
+        _gm._normalize_tuning = original_tuning
         _gm._merge_zone_maps = original_merge
         _gm._select_drum_preset = original_selector
 
@@ -174,6 +212,7 @@ def ensure_channel10_space_spectre_tone_banks(
     with banks.report_path.open("a", encoding="utf-8", newline="\n") as report:
         report.write("velocity_curve=sbl601_boottone_table0\n")
         report.write("soundfont_hierarchy=local_over_global_then_cross_level_add\n")
+        report.write("fine_tune_range=sega_-63_63_folded_into_base_note\n")
 
     return _gm.SaturnSoundfontBankFiles(
         melodic_path=banks.melodic_path,
