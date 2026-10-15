@@ -29,6 +29,14 @@ def test_fix1_namespaces_gfs_sizing_constants_away_from_sega_header():
     assert "#define GFS_MAX_DIR" not in runtime
 
 
+def test_fix1_loads_packaged_assets_using_gfs_byte_count():
+    runtime = fix1._patched_runtime()
+
+    assert "GFS_Load(id,0,dst,(Sint32)bytes)" in runtime
+    assert "GFS_Load(id,0,dst,(Sint32)((bytes+3UL)/4UL))" not in runtime
+    assert "return n==(Sint32)bytes" in runtime
+
+
 def test_fix1_patch_is_scoped_and_non_recursive():
     original_runtime = base._runtime
     original_main = base._native_main
