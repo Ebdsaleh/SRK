@@ -4,8 +4,12 @@ import struct
 
 import pytest
 
+from rikai_kotoba.hardware.saturn import sbl_soundfont_gm as _gm
 from rikai_kotoba.hardware.saturn.sbl_soundfont_channel10 import (
     SEGA_BOOTTONE_VELOCITY_CURVE_0,
+    _channel10_selector,
+    _resolve_global_local_zone,
+    _space_spectre_merge_zone_maps,
     normalize_sega_velocity_curve,
     select_channel10_drum_preset,
 )
@@ -20,6 +24,10 @@ def _preset(bank: int, name: str) -> Sf2Preset:
     # The selector only needs a non-empty zone tuple; zone contents are tested
     # by the compact converter's existing fixture suite.
     return Sf2Preset(name=name, program=0, bank=bank, zones=(object(),))  # type: ignore[arg-type]
+
+
+def _packed_range(lo: int, hi: int) -> int:
+    return lo | (hi << 8)
 
 
 def test_channel10_prefers_bank_128_over_generaluser_bank_120_duplicate():
@@ -72,6 +80,91 @@ def test_channel10_refuses_multiple_bank_128_standard_1_presets():
             sf2,
             fallback=lambda _sf2: pytest.fail("ambiguous bank 128 must not fall back"),
         )
+
+
+def test_local_zone_supersedes_same_level_global_generators():
+    global_map = {
+        _gm._GEN_ATTENUATION: 100,
+        _gm._GEN_FINE_TUNE: 12,
+        _gm._GEN_ATTACK: 80,
+        _gm._GEN_KEY_RANGE: _packed_range(20, 100),
+        _gm._GEN_VEL_RANGE: _packed_range(10, 120),
+    }
+    local_map = {
+        _gm._GEN_ATTENUATION: 40,
+        _gm._GEN_FINE_TUNE: -2,
+        _gm._GEN_ATTACK: 20,
+        _gm._GEN_KEY_RANGE: _packed_range(30, 90),
+        _gm._GEN_VEL_RANGE: _packed_range(40, 100),
+    }
+
+    resolved = _resolve_global_local_zone(global_map, local_map)
+
+    assert resolved[_gm._GEN_ATTENUATION] == 40
+    assert resolved[_gm._GEN_FINE_TUNE] == -2
+    assert resolved[_gm._GEN_ATTACK] == 20
+    assert resolved[_gm._GEN_KEY_RANGE] == _packed_range(30, 90)
+    assert resolved[_gm._GEN_VEL_RANGE] == _packed_range(40, 100)
+
+
+def test_four_level_merge_resolves_locals_before_cross_level_addition():
+    preset_global = {
+        _gm._GEN_ATTENUATION: 100,
+        _gm._GEN_FINE_TUNE: 12,
+        _gm._GEN_ATTACK: 80,
+        _gm._GEN_KEY_RANGE: _packed_range(20, 100),
+        _gm._GEN_VEL_RANGE: _packed_range(10, 120),
+    }
+    preset_local = {
+        _gm._GEN_ATTENUATION: 40,
+        _gm._GEN_FINE_TUNE: -2,
+        _gm._GEN_ATTACK: 20,
+        _gm._GEN_KEY_RANGE: _packed_range(30, 90),
+        _gm._GEN_VEL_RANGE: _packed_range(40, 100),
+    }
+    instrument_global = {
+        _gm._GEN_ATTENUATION: 80,
+        _gm._GEN_FINE_TUNE: 7,
+        _gm._GEN_ATTACK: 70,
+        _gm._GEN_KEY_RANGE: _packed_range(10, 80),
+        _gm._GEN_VEL_RANGE: _packed_range(20, 127),
+    }
+    instrument_local = {
+        _gm._GEN_ATTENUATION: 10,
+        _gm._GEN_FINE_TUNE: 3,
+        _gm._GEN_ATTACK: 30,
+        _gm._GEN_KEY_RANGE: _packed_range(40, 70),
+        _gm._GEN_VEL_RANGE: _packed_range(50, 90),
+    }
+
+    merged = _space_spectre_merge_zone_maps(
+        preset_global,
+        preset_local,
+        instrument_global,
+        instrument_local,
+    )
+
+    # Old all-four additive behavior produced attenuation 230. Correct SF2
+    # hierarchy is preset local 40 + instrument local 10 = 50.
+    assert merged[_gm._GEN_ATTENUATION] == 50
+    assert merged[_gm._GEN_FINE_TUNE] == 1
+    assert merged[_gm._GEN_ATTACK] == 50
+    assert merged[_gm._GEN_KEY_RANGE] == _packed_range(40, 70)
+    assert merged[_gm._GEN_VEL_RANGE] == _packed_range(50, 90)
+
+
+def test_scoped_policy_restores_parser_hooks_after_exception():
+    original_selector = _gm._select_drum_preset
+    original_merge = _gm._merge_zone_maps
+
+    with pytest.raises(RuntimeError, match="sentinel"):
+        with _channel10_selector():
+            assert _gm._select_drum_preset is not original_selector
+            assert _gm._merge_zone_maps is _space_spectre_merge_zone_maps
+            raise RuntimeError("sentinel")
+
+    assert _gm._select_drum_preset is original_selector
+    assert _gm._merge_zone_maps is original_merge
 
 
 def test_velocity_table_is_normalized_to_sega_boottone_curve(tmp_path):
