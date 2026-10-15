@@ -20,7 +20,7 @@ def test_native_candidate_cli_reports_sequence_playback(monkeypatch, tmp_path, c
         project_root=output,
         build=build,
         note_count=4381,
-        sequence_bank_bytes=23104,
+        sequence_bank_bytes=23127,
         assets=assets,
     )
 
@@ -28,11 +28,14 @@ def test_native_candidate_cli_reports_sequence_playback(monkeypatch, tmp_path, c
         assert Path(destination) == output
         return result
 
+    validated = []
+    monkeypatch.setattr(cli, "_validate_locked_sequence_directory", lambda path: validated.append(Path(path)))
     monkeypatch.setattr(cli, "build_saturn_sbl_native_sequence_candidate", fake_build)
+    sequence = tmp_path / "sequence"
     rc = cli.main(
         [
             "--baseline", str(tmp_path / "baseline"),
-            "--sequence", str(tmp_path / "sequence"),
+            "--sequence", str(sequence),
             "--saturn-root", str(tmp_path / "Saturn-Dev"),
             "--output", str(output),
         ]
@@ -41,6 +44,7 @@ def test_native_candidate_cli_reports_sequence_playback(monkeypatch, tmp_path, c
 
     assert rc == 0
     assert captured.err == ""
+    assert validated == [sequence]
     assert "Playback API         : SND_StartSeq" in captured.out
     assert "Sequence status      : SND_GetSeqStat" in captured.out
     assert "Direct MIDI streaming: NO" in captured.out
