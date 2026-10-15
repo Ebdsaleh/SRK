@@ -42,6 +42,12 @@ class SaturnSpaceSpectreSequenceError(RuntimeError):
 MANIFEST_NAME = "SRK_SPACE_SPECTRE_SEQUENCE.json"
 BANK_NAME = "SPACESEQ.BNK"
 EXPECTED_NOTE_COUNT = 4381
+EXPECTED_CHANNEL_EVENT_COUNT = 4779
+EXPECTED_TONE_BANK_BINDINGS = ((0, 0), (1, 0), (2, 0), (3, 0), (9, 1))
+EXPECTED_SONG_BYTES = 23121
+EXPECTED_SONG_SHA256 = "dad9125dc963c49b8572631b1d3edd4a825928994553036d3a4ece160193bb15"
+EXPECTED_BANK_BYTES = 23127
+EXPECTED_BANK_SHA256 = "56eef2dda77221e861b6e34724a493597d0e8e4b9523a2b48b2af18adac49967"
 PERCUSSION_CHANNEL = 9
 PERCUSSION_TONE_BANK = 1
 PERCUSSION_PROGRAM = 0
@@ -233,11 +239,20 @@ def build_space_spectre_native_sequence(
         raise SaturnSpaceSpectreSequenceError("Space Spectre unexpectedly uses SMPTE timing")
 
     authored_midi, bindings = _bind_saturn_tone_banks(midi)
+    if bindings != EXPECTED_TONE_BANK_BINDINGS:
+        raise SaturnSpaceSpectreSequenceError(
+            f"Space Spectre tone-bank routing changed: {bindings}"
+        )
     sequence = compile_midi_to_saturn_m6(authored_midi)
     if sequence.note_count != EXPECTED_NOTE_COUNT:
         raise SaturnSpaceSpectreSequenceError(
             f"Space Spectre native note count changed: expected {EXPECTED_NOTE_COUNT}, "
             f"got {sequence.note_count}"
+        )
+    if sequence.channel_event_count != EXPECTED_CHANNEL_EVENT_COUNT:
+        raise SaturnSpaceSpectreSequenceError(
+            "Space Spectre native channel-event count changed: "
+            f"expected {EXPECTED_CHANNEL_EVENT_COUNT}, got {sequence.channel_event_count}"
         )
     _verify_roundtrip(sequence, bindings)
 
@@ -249,6 +264,14 @@ def build_space_spectre_native_sequence(
 
     song_sha = _sha(sequence.song)
     bank_sha = _sha(bank)
+    if len(sequence.song) != EXPECTED_SONG_BYTES or song_sha != EXPECTED_SONG_SHA256:
+        raise SaturnSpaceSpectreSequenceError(
+            "native M6 song changed from the Eridu-validated GATE3B lock"
+        )
+    if len(bank) != EXPECTED_BANK_BYTES or bank_sha != EXPECTED_BANK_SHA256:
+        raise SaturnSpaceSpectreSequenceError(
+            "native sequence bank changed from the Eridu-validated GATE3B lock"
+        )
     manifest = {
         "schema": "srk.saturn.sbl-space-spectre-sequence.v2",
         "source": {
