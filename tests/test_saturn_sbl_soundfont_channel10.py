@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import struct
+
 import pytest
 
 from rikai_kotoba.hardware.saturn.sbl_soundfont_channel10 import (
+    SEGA_BOOTTONE_VELOCITY_CURVE_0,
+    normalize_sega_velocity_curve,
     select_channel10_drum_preset,
 )
 from rikai_kotoba.hardware.saturn.sbl_soundfont_gm import (
@@ -68,3 +72,28 @@ def test_channel10_refuses_multiple_bank_128_standard_1_presets():
             sf2,
             fallback=lambda _sf2: pytest.fail("ambiguous bank 128 must not fall back"),
         )
+
+
+def test_velocity_table_is_normalized_to_sega_boottone_curve(tmp_path):
+    tone = bytearray(40)
+    struct.pack_into(">H", tone, 2, 16)
+    tone[16:26] = b"0123456789"
+    path = tmp_path / "tone.bin"
+    path.write_bytes(tone)
+
+    normalize_sega_velocity_curve(path)
+
+    result = path.read_bytes()
+    assert result[16:26] == SEGA_BOOTTONE_VELOCITY_CURVE_0
+    assert result[:16] == bytes(tone[:16])
+    assert result[26:] == bytes(tone[26:])
+
+
+def test_velocity_table_rejects_out_of_range_offset(tmp_path):
+    tone = bytearray(12)
+    struct.pack_into(">H", tone, 2, 8)
+    path = tmp_path / "tone.bin"
+    path.write_bytes(tone)
+
+    with pytest.raises(SaturnSblSoundfontError, match="offset is invalid"):
+        normalize_sega_velocity_curve(path)
