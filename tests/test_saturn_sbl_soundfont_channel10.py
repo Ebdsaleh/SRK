@@ -7,9 +7,12 @@ import pytest
 from rikai_kotoba.hardware.saturn import sbl_soundfont_gm as _gm
 from rikai_kotoba.hardware.saturn.sbl_soundfont_channel10 import (
     SEGA_BOOTTONE_VELOCITY_CURVE_0,
+    SEGA_FINE_TUNE_MAX,
+    SEGA_FINE_TUNE_MIN,
     _channel10_selector,
     _resolve_global_local_zone,
     _space_spectre_merge_zone_maps,
+    normalize_sega_fine_tuning,
     normalize_sega_velocity_curve,
     select_channel10_drum_preset,
 )
@@ -153,18 +156,37 @@ def test_four_level_merge_resolves_locals_before_cross_level_addition():
     assert merged[_gm._GEN_VEL_RANGE] == _packed_range(50, 90)
 
 
+def test_sega_fine_tune_positive_excess_folds_into_base_note():
+    base, fine = normalize_sega_fine_tuning(60, 80, 0)
+
+    assert (base, fine) == (59, -20)
+    assert SEGA_FINE_TUNE_MIN <= fine <= SEGA_FINE_TUNE_MAX
+    assert (60 - base) * 100 + fine == 80
+
+
+def test_sega_fine_tune_negative_excess_folds_into_base_note():
+    base, fine = normalize_sega_fine_tuning(60, -80, 0)
+
+    assert (base, fine) == (61, 20)
+    assert SEGA_FINE_TUNE_MIN <= fine <= SEGA_FINE_TUNE_MAX
+    assert (60 - base) * 100 + fine == -80
+
+
 def test_scoped_policy_restores_parser_hooks_after_exception():
     original_selector = _gm._select_drum_preset
     original_merge = _gm._merge_zone_maps
+    original_tuning = _gm._normalize_tuning
 
     with pytest.raises(RuntimeError, match="sentinel"):
         with _channel10_selector():
             assert _gm._select_drum_preset is not original_selector
             assert _gm._merge_zone_maps is _space_spectre_merge_zone_maps
+            assert _gm._normalize_tuning is normalize_sega_fine_tuning
             raise RuntimeError("sentinel")
 
     assert _gm._select_drum_preset is original_selector
     assert _gm._merge_zone_maps is original_merge
+    assert _gm._normalize_tuning is original_tuning
 
 
 def test_velocity_table_is_normalized_to_sega_boottone_curve(tmp_path):
