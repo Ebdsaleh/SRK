@@ -3,11 +3,15 @@
 The GATE3 candidate architecture remains unchanged: authored M6 sequence data is
 loaded with ``SND_KD_SEQ`` and started with ``SND_StartSeq``.  This wrapper keeps
 the SH-2 status/telemetry surface narrow, restores Sega's documented total-volume
-setup before sequence start, and avoids colliding with names owned by ``SEGA_GFS.H``.
+setup before sequence start, avoids colliding with names owned by ``SEGA_GFS.H``,
+and uses Sega GFS byte-count semantics for packaged-file loads.
 
-Eridu's first FIX1 build proved the exact compile failure: the generated runtime
-redefined ``GFS_OPEN_MAX``, which is already defined by Sega's GFS header.  The
-runtime therefore uses SRK-private names for its local GFS sizing constants.
+Eridu proved the compile-time GFS namespace collision, then the first physical
+GATE3D run isolated ``Error: 2`` to the SDDRVS.TSK load.  The generated native
+runtime had correctly sized its Uint32 destination arrays in words but incorrectly
+passed that word count to ``GFS_Load``.  Sega GFS expects a byte count; the already
+physically proven GATE2 runtime passes ``bytes`` directly.  This wrapper therefore
+restores that known-good file-load contract without changing sequence or tone data.
 """
 
 from __future__ import annotations
@@ -44,6 +48,17 @@ def _patched_runtime() -> str:
     # SRK namespace so -Werror cannot reject a macro collision with the SDK.
     runtime = runtime.replace("GFS_OPEN_MAX", "SRK_GFS_OPEN_MAX")
     runtime = runtime.replace("GFS_MAX_DIR", "SRK_GFS_MAX_DIR")
+
+    # GFS_Load's final argument is a byte count.  Destination buffers are Uint32
+    # arrays only for alignment/storage convenience; dividing the requested file
+    # size by four truncates every packaged asset load and made physical GATE3D
+    # stop at ERR_DRIVER (2).  Match the physically proven GATE2 loader exactly.
+    runtime = _replace_once(
+        runtime,
+        " n=GFS_Load(id,0,dst,(Sint32)((bytes+3UL)/4UL)); return n==(Sint32)bytes;\n",
+        " n=GFS_Load(id,0,dst,(Sint32)bytes); return n==(Sint32)bytes;\n",
+        "GFS packaged-file byte count",
+    )
 
     runtime = _replace_once(
         runtime,
@@ -99,6 +114,14 @@ def _patched_runtime() -> str:
     if "#define SRK_GFS_OPEN_MAX 2" not in runtime or "#define SRK_GFS_MAX_DIR 32" not in runtime:
         raise SaturnSblNativeSequenceCandidateFix1Error(
             "native candidate fix1 lost SRK-private GFS sizing constants"
+        )
+    if "GFS_Load(id,0,dst,(Sint32)bytes)" not in runtime:
+        raise SaturnSblNativeSequenceCandidateFix1Error(
+            "native candidate fix1 lost GFS byte-count loading"
+        )
+    if "GFS_Load(id,0,dst,(Sint32)((bytes+3UL)/4UL))" in runtime:
+        raise SaturnSblNativeSequenceCandidateFix1Error(
+            "native candidate fix1 still truncates packaged-file loads to Uint32 count"
         )
     if "SND_GetSeqPlayPos" in runtime or "SndSeqPlayPos" in runtime:
         raise SaturnSblNativeSequenceCandidateFix1Error(
