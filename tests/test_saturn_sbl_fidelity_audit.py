@@ -2,6 +2,7 @@ from pathlib import Path
 import struct
 
 from rikai_kotoba.hardware.saturn.sbl_fidelity_audit import (
+    SaturnDrumNoteAudit,
     audit_space_spectre_m6,
     parse_scspbin_tone_bank,
 )
@@ -9,7 +10,10 @@ from rikai_kotoba.hardware.saturn.sbl_space_spectre_sequence import (
     EXPECTED_BANK_SHA256,
     build_space_spectre_native_sequence,
 )
-from rikai_kotoba.tools.saturn_sbl_space_spectre_fidelity_audit import build_parser
+from rikai_kotoba.tools.saturn_sbl_space_spectre_fidelity_audit import (
+    _drum_note_text,
+    build_parser,
+)
 
 
 def _synthetic_drum_bank() -> bytes:
@@ -83,3 +87,8 @@ def test_fidelity_audit_cli_is_read_only_input_only():
     )
     assert args.project == Path("GATE3E")
     assert args.sequence == Path("GATE3B")
+
+
+def test_fidelity_audit_renders_drum_note_objects_by_note_number():
+    drum_note = SaturnDrumNoteAudit(note=35, layers=())
+    assert _drum_note_text(drum_note) == "Note  35: 0 matching layer(s)"
