@@ -11,7 +11,10 @@ from rikai_kotoba.hardware.saturn.sbl_space_spectre_sequence import (
     BANK_NAME,
     EXPECTED_NOTE_COUNT,
     MANIFEST_NAME,
+    PERCUSSION_CHANNEL,
+    PERCUSSION_PROGRAM,
     SaturnSpaceSpectreSequenceError,
+    TONE_BANK_CONTROLLER,
     build_space_spectre_native_sequence,
 )
 
@@ -25,6 +28,8 @@ def test_full_space_spectre_compiles_to_one_song_native_sequence_bank(tmp_path):
     assert result.note_count == EXPECTED_NOTE_COUNT == 4381
     assert result.bank_path == output / BANK_NAME
     assert result.manifest_path == output / MANIFEST_NAME
+    assert (PERCUSSION_CHANNEL, 1) in result.tone_bank_bindings
+    assert all(bank in (0, 1) for _, bank in result.tone_bank_bindings)
 
     bank = result.bank_path.read_bytes()
     assert int.from_bytes(bank[0:2], "big") == 1
@@ -36,12 +41,36 @@ def test_full_space_spectre_compiles_to_one_song_native_sequence_bank(tmp_path):
     assert sum(event.kind == "note_on" for event in decoded) == 4381
     assert sum(event.kind == "end_of_track" for event in decoded) == 1
 
+    bank_selects = {
+        (event.channel, event.data1)
+        for event in decoded
+        if event.kind == "midi"
+        and event.command == 0xB0
+        and event.data0 == TONE_BANK_CONTROLLER
+    }
+    assert set(result.tone_bank_bindings).issubset(bank_selects)
+    assert any(
+        event.kind == "midi"
+        and event.command == 0xC0
+        and event.channel == PERCUSSION_CHANNEL
+        and event.data0 == PERCUSSION_PROGRAM
+        for event in decoded
+    )
+
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-    assert manifest["schema"] == "srk.saturn.sbl-space-spectre-sequence.v1"
+    assert manifest["schema"] == "srk.saturn.sbl-space-spectre-sequence.v2"
     assert manifest["sequence_bank"]["song_count"] == 1
     assert manifest["sequence_bank"]["first_song_offset"] == 6
+    assert manifest["native_sequence"]["tone_bank_controller"] == 32
+    assert {
+        (item["channel_zero_based"], item["bank"])
+        for item in manifest["native_sequence"]["tone_bank_bindings"]
+    } == set(result.tone_bank_bindings)
+    assert manifest["native_sequence"]["percussion_channel_zero_based"] == 9
+    assert manifest["native_sequence"]["percussion_program"] == 0
     assert manifest["policy"]["playback_path"] == "Sega SDDRV native sequence"
     assert manifest["policy"]["direct_midi_streaming"] is False
+    assert manifest["policy"]["sh2_midi_priming"] is False
     assert manifest["policy"]["saroo_writes"] is False
     assert manifest["policy"]["source_modified"] is False
 
