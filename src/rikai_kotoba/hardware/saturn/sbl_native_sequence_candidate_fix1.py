@@ -23,6 +23,8 @@ from . import sbl_native_sequence_candidate as _base
 SaturnSblNativeSequenceCandidateError = _base.SaturnSblNativeSequenceCandidateError
 SaturnSblNativeSequenceAssets = _base.SaturnSblNativeSequenceAssets
 SaturnSblNativeSequenceCandidateResult = _base.SaturnSblNativeSequenceCandidateResult
+_ORIGINAL_RUNTIME = _base._runtime
+_ORIGINAL_MAIN = _base._native_main
 
 
 class SaturnSblNativeSequenceCandidateFix1Error(SaturnSblNativeSequenceCandidateError):
@@ -38,7 +40,7 @@ def _replace_once(text: str, old: str, new: str, label: str) -> str:
 
 
 def _patched_runtime() -> str:
-    runtime = _base._runtime()
+    runtime = _ORIGINAL_RUNTIME()
 
     runtime = _replace_once(
         runtime,
@@ -103,7 +105,7 @@ def _patched_runtime() -> str:
 
 
 def _patched_main(base: str) -> str:
-    main = _base._native_main(base)
+    main = _ORIGINAL_MAIN(base)
     if 'gm_field(2,7,9,"Position:")' in main:
         main = main.replace(
             'gm_field(2,7,9,"Position:")',
@@ -115,15 +117,15 @@ def _patched_main(base: str) -> str:
 
 @contextmanager
 def _compatibility_patch():
-    original_runtime = _base._runtime
-    original_main = _base._native_main
+    previous_runtime = _base._runtime
+    previous_main = _base._native_main
     _base._runtime = _patched_runtime
     _base._native_main = _patched_main
     try:
         yield
     finally:
-        _base._runtime = original_runtime
-        _base._native_main = original_main
+        _base._runtime = previous_runtime
+        _base._native_main = previous_main
 
 
 def _build_log_tail(output_directory: Path, limit: int = 48) -> str:
@@ -134,8 +136,7 @@ def _build_log_tail(output_directory: Path, limit: int = 48) -> str:
         lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return ""
-    tail = lines[-limit:]
-    return "\n".join(tail)
+    return "\n".join(lines[-limit:])
 
 
 def build_saturn_sbl_native_sequence_candidate(
