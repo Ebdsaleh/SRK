@@ -16,6 +16,7 @@ from rikai_kotoba.hardware.saturn.sbl_gm_hardware_gate import (
     _validate_tone_bank,
     run_saturn_sbl_gm_hardware_gate,
 )
+from rikai_kotoba.tools.saturn_sbl_space_spectre_hardware import build_parser
 
 
 def _tiny_tone(voices: int) -> bytes:
@@ -67,3 +68,23 @@ def test_apply_requires_space_spectre_specific_confirmation_before_any_io(tmp_pa
             apply=True,
             confirmation="DEPLOY-SATURN-IMAGE",
         )
+
+
+def test_hardware_cli_exposes_guarded_apply_contract():
+    args = build_parser().parse_args(
+        [
+            "--project",
+            "candidate",
+            "--workspace",
+            "workspace",
+            "--card-root",
+            "D:/",
+            "--apply",
+            "--confirm",
+            CONFIRMATION_TOKEN,
+        ]
+    )
+    assert args.apply is True
+    assert args.confirm == CONFIRMATION_TOKEN
+    assert args.category == "TEST"
+    assert args.name == DEFAULT_DESTINATION_NAME
