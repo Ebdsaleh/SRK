@@ -15,13 +15,49 @@ PREPARE_RECEIPT_SCHEMA = (
 SaturnMidi68KR27GuardPrepareError = _guard.SaturnMidi68KR26GuardPrepareError
 SaturnMidi68KR27GuardPrepareResult = _guard.SaturnMidi68KR26GuardPrepareResult
 
+# The reviewed R26 guard is intentionally reused for R27, but that guard reads
+# its accepted anchors through historical ACCEPTED_R26_* attribute names on its
+# active pre-media module.  R27 keeps native ACCEPTED_R27_* names.  Bridge those
+# names only while the R27 guard context is active, then restore the module
+# exactly.  This is deliberately scoped so the accepted R26 verifier remains
+# immutable outside this wrapper.
+_R26_COMPAT_ANCHORS = (
+    "ACCEPTED_R26_SOURCE_MIDI_SHA256",
+    "ACCEPTED_R26_RESIDENT_IMAGE_SHA256",
+    "ACCEPTED_R26_RESIDENT_SOURCE_SHA256",
+    "ACCEPTED_R26_RESIDENT_HEADER_SHA256",
+    "ACCEPTED_R26_VOICE_HEADER_SHA256",
+    "ACCEPTED_R26_PLAYER_SOURCE_SHA256",
+    "ACCEPTED_R26_PLAYER_HEADER_SHA256",
+    "ACCEPTED_R26_PROOF_SOURCE_SHA256",
+    "ACCEPTED_R26_PROOF_HEADER_SHA256",
+    "ACCEPTED_R26_MAIN_SHA256",
+    "ACCEPTED_R26_MENU_SHA256",
+    "ACCEPTED_R26_RUNTIME_SHA256",
+    "ACCEPTED_R26_BUILD_BIN_SHA256",
+    "ACCEPTED_R26_BUILD_ISO_SHA256",
+    "ACCEPTED_R26_BUILD_MAP_SHA256",
+    "ACCEPTED_R26_BIN_SHA256",
+    "ACCEPTED_R26_CUE_SHA256",
+    "ACCEPTED_R26_SECTOR_COUNT",
+    "ACCEPTED_R26_RAW_BYTES",
+    "ACCEPTED_R26_USER_BYTES",
+)
+_MISSING = object()
+
 
 @contextmanager
 def _patched_r27_guard_prepare():
     original_pre_module = _guard._pre
     original_inspect = _guard.inspect_saturn_midi_68k_r26_pre_media
     original_schema = _guard.PREPARE_RECEIPT_SCHEMA
+    original_compat = {
+        name: getattr(_pre, name, _MISSING) for name in _R26_COMPAT_ANCHORS
+    }
     try:
+        for r26_name in _R26_COMPAT_ANCHORS:
+            r27_name = r26_name.replace("ACCEPTED_R26_", "ACCEPTED_R27_", 1)
+            setattr(_pre, r26_name, getattr(_pre, r27_name))
         _guard._pre = _pre
         _guard.inspect_saturn_midi_68k_r26_pre_media = _pre.inspect_saturn_midi_68k_r27_pre_media
         _guard.PREPARE_RECEIPT_SCHEMA = PREPARE_RECEIPT_SCHEMA
@@ -30,6 +66,14 @@ def _patched_r27_guard_prepare():
         _guard._pre = original_pre_module
         _guard.inspect_saturn_midi_68k_r26_pre_media = original_inspect
         _guard.PREPARE_RECEIPT_SCHEMA = original_schema
+        for name, value in original_compat.items():
+            if value is _MISSING:
+                try:
+                    delattr(_pre, name)
+                except AttributeError:
+                    pass
+            else:
+                setattr(_pre, name, value)
 
 
 def prepare_saturn_midi_68k_r27_space_spectre_guard(
