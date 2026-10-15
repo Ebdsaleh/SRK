@@ -6,7 +6,7 @@ from pathlib import Path
 from rikai_kotoba.hardware.saturn.midi_68k_r26_double_impact import (
     build_srk_saturn_midi_68k_r26_space_spectre_profile,
 )
-from rikai_kotoba.hardware.saturn.sbl_gm_physical_candidate import (
+from rikai_kotoba.hardware.saturn.sbl_gm_candidate_contract import (
     SaturnSblGmCandidateError,
     build_saturn_sbl_gm_candidate,
 )
