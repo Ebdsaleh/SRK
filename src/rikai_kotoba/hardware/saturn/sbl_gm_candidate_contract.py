@@ -2,12 +2,14 @@
 
 The first real GeneralUser build reached the generated Saturn project and
 exposed a compile-time collision with ``SEGA_GFS.H``.  Review against Sega's
-SBL 6.01 sound-driver sources also found two area-map details that must be
-correct before physical execution:
+SBL 6.01 sound-driver sources also proved that area-map entries are two
+big-endian 32-bit bitfields, not the byte-oriented layout used by the first
+candidate.
 
-* area-map entries are two big-endian 32-bit bitfields, not byte fields;
-* ``SND_INI_ARA_SZ`` is the driver's encoded source-size value rather than the
-  raw byte count copied into the generated project.
+Sega's sample projects pass ``SND_INI_ARA_SZ`` as the raw map-file byte count
+(e.g. 34-byte SMPSND6.MP -> 0x22 and 74-byte BOOTSND.MP -> 0x4A), so this layer
+deliberately preserves the existing raw-byte value.  It does not reinterpret
+the driver's historical ``CHG_LONG`` implementation.
 
 Keep these corrections scoped around the existing candidate builder so the
 reviewed R26-R28 baselines and generic SBL probes remain immutable.
@@ -62,6 +64,9 @@ def build_sega_sbl_area_map(melodic_size: int, drum_size: int) -> tuple[bytes, i
         word1 = size & _AREA_SIZE_MASK
         return struct.pack(">II", word0, word1)
 
+    # Sega map files terminate on the high bit of the next map word.  Four
+    # bytes keeps the generated buffer longword-aligned while preserving that
+    # exact end-marker semantic.
     payload = (
         entry(0, _candidate._TONE_START, melodic_size)
         + entry(1, drum_start, drum_size)
@@ -79,15 +84,11 @@ _RUNTIME_REPLACEMENTS = (
     ("gfs_names[GFS_MAX_DIR]", "gfs_names[SRK_GFS_MAX_DIR]"),
     ("GFS_DIRTBL_NDIR(&gfs_table)=GFS_MAX_DIR", "GFS_DIRTBL_NDIR(&gfs_table)=SRK_GFS_MAX_DIR"),
     ("GFS_Init(GFS_OPEN_MAX,gfs_work,&gfs_table)", "GFS_Init(SRK_GFS_OPEN_MAX,gfs_work,&gfs_table)"),
-    (
-        "SND_INI_ARA_SZ(ini)=(Uint16)SRK_SBL_GM_MAP_BYTES;",
-        "SND_INI_ARA_SZ(ini)=(Uint16)((SRK_SBL_GM_MAP_BYTES-4UL)/2UL);",
-    ),
 )
 
 
 def rewrite_sega_sbl_runtime_contract(source: str) -> str:
-    """Apply fail-closed fixes to the generated physical-candidate C source."""
+    """Namespace SRK's local GFS sizing without redefining Sega header macros."""
 
     result = source
     for old, new in _RUNTIME_REPLACEMENTS:
@@ -143,7 +144,7 @@ def build_saturn_sbl_gm_candidate(
     drum_tone_bank=None,
     sound_driver=None,
 ) -> SaturnSblGmCandidateResult:
-    """Build with the reviewed Sega SBL map/GFS/initialization contract."""
+    """Build with the reviewed Sega SBL map/GFS contract."""
 
     output = Path(output_directory).expanduser().resolve(strict=False)
     try:
