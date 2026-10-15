@@ -21,7 +21,7 @@ def test_area_map_packs_sega_sound_driver_bitfields():
     assert area_map[16:20] == struct.pack(">I", 0x80000000)
 
 
-def test_runtime_contract_namespaces_gfs_and_encodes_20_byte_area_map_size():
+def test_runtime_contract_namespaces_gfs_and_preserves_raw_area_map_size():
     source = "\n".join(
         (
             "#define GFS_OPEN_MAX 2",
@@ -43,14 +43,10 @@ def test_runtime_contract_namespaces_gfs_and_encodes_20_byte_area_map_size():
     assert "GFS_WORK_SIZE(SRK_GFS_OPEN_MAX)" in result
     assert "gfs_names[SRK_GFS_MAX_DIR]" in result
     assert "GFS_Init(SRK_GFS_OPEN_MAX,gfs_work,&gfs_table)" in result
-    assert "SND_INI_ARA_SZ(ini)=(Uint16)((SRK_SBL_GM_MAP_BYTES-4UL)/2UL);" in result
 
-    # Sega SBL's CHG_LONG macro is ((words*2) + (4 - ((words*2)%4))).
-    # For our 20-byte map, an encoded value of 8 copies exactly 20 bytes.
-    encoded = (20 - 4) // 2
-    copied = encoded * 2 + (4 - ((encoded * 2) % 4))
-    assert encoded == 8
-    assert copied == 20
+    # Match Sega's own SBL sample convention: SND_INI_ARA_SZ is set to the raw
+    # .MP byte count (SMPSND6.MP 34 -> 0x22; BOOTSND.MP 74 -> 0x4A).
+    assert "SND_INI_ARA_SZ(ini)=(Uint16)SRK_SBL_GM_MAP_BYTES;" in result
 
 
 def test_runtime_contract_refuses_changed_anchor():
