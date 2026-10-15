@@ -31,22 +31,24 @@ def test_link_gate_pins_the_eridu_accepted_compiler_inputs():
 
 
 def test_relocatable_link_uses_only_exact_sound_library_and_no_default_runtime():
-    argv = _link_argv(
-        Path("C:/tool/sh-elf-gcc.exe"),
-        Path("adapter.o"),
-        Path("C:/sdk/LIB_ELF/sega_snd.a"),
-        Path("linked.o"),
-    )
+    compiler = Path("C:/tool/sh-elf-gcc.exe")
+    adapter = Path("adapter.o")
+    sound_library = Path("C:/sdk/LIB_ELF/sega_snd.a")
+    linked = Path("linked.o")
 
+    argv = _link_argv(compiler, adapter, sound_library, linked)
+
+    # Path string spelling is OS-native.  Test the command contract without
+    # hard-coding POSIX separators on Eridu/Windows.
     assert argv == (
-        "C:/tool/sh-elf-gcc.exe",
+        str(compiler),
         "-nostdlib",
         "-m2",
         "-Wl,-r",
         "-o",
-        "linked.o",
-        "adapter.o",
-        "C:/sdk/LIB_ELF/sega_snd.a",
+        str(linked),
+        str(adapter),
+        str(sound_library),
     )
     assert "-lgcc" not in argv
     assert all("sega_sat" not in item.casefold() for item in argv)
@@ -61,9 +63,11 @@ SYMBOL TABLE:
 00000000         *UND*  00000000 ___ashlsi3
 00000000         *UND*  00000000 _DMA_CpuStart
 """
+    # The parser promises a deterministic raw-symbol sort, not a semantic
+    # underscore-stripped sort.  Python's lexical order is stable here.
     assert _undefined_symbols_from_objdump(output) == (
-        "___ashlsi3",
         "_DMA_CpuStart",
+        "___ashlsi3",
     )
 
 
