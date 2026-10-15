@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+from rikai_kotoba.hardware.saturn import midi_68k_r26_guard_prepare as r26_guard
 from rikai_kotoba.hardware.saturn import midi_68k_r26_pre_media_gate as r26_pre
+from rikai_kotoba.hardware.saturn import midi_68k_r27_pre_media_gate as r27_pre
+from rikai_kotoba.hardware.saturn.midi_68k_r27_guard_prepare import (
+    PREPARE_RECEIPT_SCHEMA,
+    _patched_r27_guard_prepare,
+)
 from rikai_kotoba.hardware.saturn.midi_68k_r27_pre_media_gate import (
     ACCEPTED_R27_BIN_SHA256,
     ACCEPTED_R27_BUILD_BIN_SHA256,
@@ -56,3 +62,20 @@ def test_r27_pre_media_patch_is_scoped_and_restored():
         r26_pre._build.ACCEPTED_R26_IMAGE_SHA256,
     )
     assert after == before
+
+
+def test_r27_guard_wrapper_exposes_r26_compatibility_anchors_only_in_context():
+    assert not hasattr(r27_pre, "ACCEPTED_R26_RESIDENT_IMAGE_SHA256")
+    original_pre = r26_guard._pre
+    original_schema = r26_guard.PREPARE_RECEIPT_SCHEMA
+
+    with _patched_r27_guard_prepare():
+        assert r26_guard._pre is r27_pre
+        assert r26_guard.PREPARE_RECEIPT_SCHEMA == PREPARE_RECEIPT_SCHEMA
+        assert r27_pre.ACCEPTED_R26_RESIDENT_IMAGE_SHA256 == ACCEPTED_R27_RESIDENT_IMAGE_SHA256
+        assert r27_pre.ACCEPTED_R26_BIN_SHA256 == ACCEPTED_R27_BIN_SHA256
+        assert r27_pre.ACCEPTED_R26_SECTOR_COUNT == r27_pre.ACCEPTED_R27_SECTOR_COUNT
+
+    assert r26_guard._pre is original_pre
+    assert r26_guard.PREPARE_RECEIPT_SCHEMA == original_schema
+    assert not hasattr(r27_pre, "ACCEPTED_R26_RESIDENT_IMAGE_SHA256")
