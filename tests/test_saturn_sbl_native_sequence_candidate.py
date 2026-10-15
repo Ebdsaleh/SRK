@@ -19,15 +19,20 @@ def test_native_candidate_area_map_has_tone_drum_and_sequence_areas():
     )
 
 
-def test_native_candidate_runtime_uses_sddrv_sequence_api_not_direct_midi():
+def test_native_candidate_runtime_uses_sega_sequence_startup_not_direct_midi():
     source = _runtime()
 
+    assert "SND_ChgMap(0)" in source
+    assert "SND_MoveData((Uint16 *)tone" in source
+    assert "SND_MoveData((Uint16 *)drum" in source
     assert "SND_MoveData((Uint16 *)sequence" in source
     assert "SND_KD_SEQ,0" in source
     assert "SND_StartSeq(1,0,0,1)" in source
     assert "SND_GetSeqStat(&stat,1)" in source
     assert "SND_GetSeqPlayPos(&pos,1)" in source
     assert "SND_StopSeq(1)" in source
+    assert "SND_ChgMix" not in source
+    assert "SND_SetTlVl" not in source
     assert "SND_CtrlDirMidi" not in source
     assert "srk_saturn_sbl_direct_midi" not in source
 
