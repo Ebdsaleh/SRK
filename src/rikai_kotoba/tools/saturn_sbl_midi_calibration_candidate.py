@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from rikai_kotoba.hardware.saturn.sbl_midi_calibration_candidate import (
+from rikai_kotoba.hardware.saturn.sbl_midi_calibration_candidate_contract import (
     SaturnSblMidiCalibrationCandidateError,
     build_saturn_sbl_midi_calibration_candidate,
 )
