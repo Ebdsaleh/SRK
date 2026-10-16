@@ -48,16 +48,32 @@ _CURRENT_DIAGNOSTIC_FILES = (
     "srk_diag_video.c",
     "srk_diag_video.h",
 )
+_LEGACY_SOURCE_SUFFIXES = {".c", ".h", ".S"}
 
 
 def _legacy_c_text(payload: bytes) -> bytes:
-    """Return C text accepted by the recorded legacy SH-GCC warning policy."""
+    """Return source text accepted by the recorded legacy SH toolchain."""
 
     return payload if payload.endswith(b"\n") else payload + b"\n"
 
 
+def _normalize_staged_legacy_sources(source_root: Path) -> tuple[str, ...]:
+    """Guarantee EOF termination for every staged C/header/assembly source."""
+
+    normalized: list[str] = []
+    for path in sorted(source_root.iterdir(), key=lambda item: item.name.casefold()):
+        if not path.is_file() or path.suffix not in _LEGACY_SOURCE_SUFFIXES:
+            continue
+        payload = path.read_bytes()
+        legacy_payload = _legacy_c_text(payload)
+        if legacy_payload != payload:
+            path.write_bytes(legacy_payload)
+        normalized.append(path.name)
+    return tuple(normalized)
+
+
 def _overlay_current_diagnostics(stage: Path) -> tuple[str, ...]:
-    """Copy current diagnostics and guarantee legacy-C EOF termination."""
+    """Copy current diagnostics and normalize all staged legacy source text."""
 
     repo = _candidate._gm._root()
     source_root = repo / "integrations" / "saturn" / "diagnostics"
@@ -72,8 +88,10 @@ def _overlay_current_diagnostics(stage: Path) -> tuple[str, ...]:
                 f"current diagnostic source is missing: {source}"
             )
         destination = destination_root / filename
-        destination.write_bytes(_legacy_c_text(source.read_bytes()))
+        destination.write_bytes(source.read_bytes())
         copied.append(filename)
+
+    _normalize_staged_legacy_sources(destination_root)
     return tuple(copied)
 
 
