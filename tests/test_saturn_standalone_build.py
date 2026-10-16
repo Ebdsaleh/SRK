@@ -178,8 +178,9 @@ class SaturnStandaloneBuildTests(unittest.TestCase):
             result = build_saturn_standalone_project(project, _runner=runner)
 
             self.assertTrue(result.successful)
-            self.assertEqual(len(runner.calls), 15)
+            self.assertEqual(len(runner.calls), 16)
             self.assertTrue(any("src/srk_diag_vdp1.c" in call[0] for call in runner.calls))
+            self.assertTrue(any("src/srk_diag_midi_test.c" in call[0] for call in runner.calls))
             self.assertTrue(any("src/srk_saturn_runtime.c" in call[0] for call in runner.calls))
             include_flag = f'-I{Path(gfs["include_dir"])}'
             compile_calls = [call[0] for call in runner.calls if "-c" in call[0]]
