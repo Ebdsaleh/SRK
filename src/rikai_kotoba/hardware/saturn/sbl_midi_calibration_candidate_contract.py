@@ -1,14 +1,10 @@
-"""Keep the current SBL MIDI calibration build on SRK's diagnostics contract.
+"""Keep SBL MIDI calibration builds on SRK's current diagnostics contract.
 
-The physical calibration project still starts from an older, already validated
-standalone Saturn baseline because that baseline carries proven IP.BIN, linker,
-packaging and private-SDK metadata.  Generated C sources are not the source of
-truth, though: current diagnostics are overlaid immediately after the baseline
-copy.
-
-The public calibration build now routes through the consolidated screen-owned
-SBL lifecycle and complete 128-program family-bank author.  Historical GATE3/
-GATE4 modules remain untouched as forensic/reproduction references.
+The current public calibration command routes through the consolidated
+screen-owned SBL lifecycle and complete 128-program family-bank author.
+Historical GATE3/GATE4 reproduction code still passes explicit melodic/drum
+banks; that legacy signature is intentionally preserved and routed to the
+historical builder so prior physical evidence remains reproducible.
 """
 
 from __future__ import annotations
@@ -17,15 +13,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
+from . import sbl_midi_calibration_candidate as _legacy_candidate
 from . import sbl_midi_calibration_consolidated as _candidate
 
 
-SaturnSblMidiCalibrationCandidateError = (
-    _candidate.SaturnSblMidiCalibrationCandidateError
-)
-SaturnSblMidiCalibrationCandidateResult = (
-    _candidate.SaturnSblMidiCalibrationCandidateResult
-)
+SaturnSblMidiCalibrationCandidateError = _candidate.SaturnSblMidiCalibrationCandidateError
+SaturnSblMidiCalibrationCandidateResult = _candidate.SaturnSblMidiCalibrationCandidateResult
 
 
 _CURRENT_DIAGNOSTIC_FILES = (
@@ -96,6 +89,7 @@ def _overlay_current_diagnostics(stage: Path) -> tuple[str, ...]:
 
 @contextmanager
 def _current_diagnostics_contract() -> Iterator[None]:
+    # Both builders share the same sbl_gm_physical_candidate module object.
     original_copy_baseline = _candidate._gm._copy_baseline
 
     def copy_baseline_with_current_diagnostics(baseline, stage, manifest):
@@ -128,13 +122,34 @@ def build_saturn_sbl_midi_calibration_candidate(
     output_directory,
     *,
     soundfont=None,
+    melodic_tone_bank=None,
+    drum_tone_bank=None,
     sound_driver=None,
-) -> SaturnSblMidiCalibrationCandidateResult:
-    """Build consolidated calibration with current diagnostics over proven boot assets."""
+):
+    """Build current calibration, or reproduce historical explicit-bank candidates."""
 
     output = Path(output_directory).expanduser().resolve(strict=False)
+    historical = melodic_tone_bank is not None or drum_tone_bank is not None
+    if historical and soundfont is not None:
+        raise SaturnSblMidiCalibrationCandidateError(
+            "soundfont cannot be combined with historical explicit tone-bank inputs"
+        )
+    if historical and (melodic_tone_bank is None or drum_tone_bank is None):
+        raise SaturnSblMidiCalibrationCandidateError(
+            "historical calibration reproduction requires both melodic and drum banks"
+        )
+
     try:
         with _current_diagnostics_contract():
+            if historical:
+                return _legacy_candidate.build_saturn_sbl_midi_calibration_candidate(
+                    baseline_project,
+                    saturn_root,
+                    output,
+                    melodic_tone_bank=melodic_tone_bank,
+                    drum_tone_bank=drum_tone_bank,
+                    sound_driver=sound_driver,
+                )
             return _candidate.build_saturn_sbl_midi_calibration_candidate(
                 baseline_project,
                 saturn_root,
@@ -142,10 +157,15 @@ def build_saturn_sbl_midi_calibration_candidate(
                 soundfont=soundfont,
                 sound_driver=sound_driver,
             )
-    except SaturnSblMidiCalibrationCandidateError as exc:
+    except (
+        SaturnSblMidiCalibrationCandidateError,
+        _legacy_candidate.SaturnSblMidiCalibrationCandidateError,
+    ) as exc:
         tail = _build_log_tail(output)
         if tail:
             raise SaturnSblMidiCalibrationCandidateError(
                 f"{exc}\n--- standalone build log tail ---\n{tail}"
             ) from exc
-        raise
+        if isinstance(exc, SaturnSblMidiCalibrationCandidateError):
+            raise
+        raise SaturnSblMidiCalibrationCandidateError(str(exc)) from exc
