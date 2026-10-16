@@ -113,6 +113,24 @@ typedef struct SRK_DIAG_AUDIO_STATUS {
 } SRK_DIAG_AUDIO_STATUS;
 
 
+#define SRK_DIAG_MIDI_REVIEW_VERSION 1u
+
+typedef struct SRK_DIAG_MIDI_REVIEW_RECORD {
+    srk_u16 version;
+    srk_u16 program;
+    srk_u16 family;
+    srk_u16 channel;
+    srk_u16 note;
+    srk_u16 velocity;
+    srk_u16 pan;
+    srk_u16 saturn_bank;
+    srk_u16 saturn_voice;
+    srk_u16 flags;
+    srk_u32 held_us;
+    srk_u32 frame;
+} SRK_DIAG_MIDI_REVIEW_RECORD;
+
+
 typedef struct SRK_DIAG_HOST {
     void *context;
 
@@ -158,6 +176,31 @@ typedef struct SRK_DIAG_HOST {
     int (*present_audio_tone)(void *context, const SRK_DIAG_AUDIO_REQUEST *request);
     void (*stop_audio)(void *context);
     int (*read_audio_status)(void *context, SRK_DIAG_AUDIO_STATUS *status);
+
+    /*
+     * MIDI calibration keeps SDDRV/SAROO details out of the reusable core. The
+     * standalone host may load one eight-program GM family at a time, issue
+     * Direct MIDI channel messages for interactive audition, and persist one
+     * structured review record through a resident SAROO bridge.
+     */
+    int (*midi_select_program)(void *context, unsigned int program);
+    int (*midi_set_pan)(void *context, unsigned int channel, unsigned int pan);
+    int (*midi_note_on)(
+        void *context,
+        unsigned int channel,
+        unsigned int note,
+        unsigned int velocity
+    );
+    int (*midi_note_off)(
+        void *context,
+        unsigned int channel,
+        unsigned int note,
+        unsigned int velocity
+    );
+    int (*midi_persist_review)(
+        void *context,
+        const SRK_DIAG_MIDI_REVIEW_RECORD *record
+    );
 
     void (*end_frame)(void *context);
 
