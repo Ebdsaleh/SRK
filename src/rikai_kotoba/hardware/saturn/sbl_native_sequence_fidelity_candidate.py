@@ -19,7 +19,6 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from . import sbl_gm_physical_candidate as _gm
 from .sbl_fidelity_tone_authoring import build_space_spectre_fidelity_tone_banks
 from .sbl_fidelity_tone_build_audit import (
     _requirements_from_scope,
@@ -84,6 +83,8 @@ def _replace_manifest_hash(manifest: dict, relative: str, payload: bytes) -> Non
             f"baseline manifest does not uniquely contain {relative}"
         )
     matches[0]["sha256"] = _sha_bytes(payload)
+    if "size" in matches[0]:
+        matches[0]["size"] = len(payload)
     if "bytes" in matches[0]:
         matches[0]["bytes"] = len(payload)
 
