@@ -86,6 +86,19 @@ def _current_diagnostics_contract() -> Iterator[None]:
         _candidate._gm._copy_baseline = original_copy_baseline
 
 
+def _build_log_tail(output_directory: Path, limit: int = 6000) -> str:
+    """Return the preserved standalone build tail for an actionable failure."""
+
+    log_path = output_directory / "SRK_STANDALONE_BUILD_LOG.txt"
+    if not log_path.is_file():
+        return ""
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    return text[-limit:].strip()
+
+
 def build_saturn_sbl_midi_calibration_candidate(
     baseline_project,
     saturn_root,
@@ -97,12 +110,21 @@ def build_saturn_sbl_midi_calibration_candidate(
 ) -> SaturnSblMidiCalibrationCandidateResult:
     """Build calibration candidate with current diagnostics over the proven baseline."""
 
-    with _current_diagnostics_contract():
-        return _candidate.build_saturn_sbl_midi_calibration_candidate(
-            baseline_project,
-            saturn_root,
-            output_directory,
-            melodic_tone_bank=melodic_tone_bank,
-            drum_tone_bank=drum_tone_bank,
-            sound_driver=sound_driver,
-        )
+    output = Path(output_directory).expanduser().resolve(strict=False)
+    try:
+        with _current_diagnostics_contract():
+            return _candidate.build_saturn_sbl_midi_calibration_candidate(
+                baseline_project,
+                saturn_root,
+                output,
+                melodic_tone_bank=melodic_tone_bank,
+                drum_tone_bank=drum_tone_bank,
+                sound_driver=sound_driver,
+            )
+    except SaturnSblMidiCalibrationCandidateError as exc:
+        tail = _build_log_tail(output)
+        if tail:
+            raise SaturnSblMidiCalibrationCandidateError(
+                f"{exc}\n--- standalone build log tail ---\n{tail}"
+            ) from exc
+        raise
