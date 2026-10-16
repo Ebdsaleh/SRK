@@ -100,6 +100,7 @@ _C_SOURCES = (
     "srk_diag_audio.c",
     "srk_diag_input.c",
     "srk_diag_menu.c",
+    "srk_diag_midi_test.c",
     "srk_diag_flight_recorder.c",
     "srk_diag_vdp1.c",
     "srk_diag_video.c",
