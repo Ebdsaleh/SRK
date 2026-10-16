@@ -28,7 +28,7 @@ from .sbl_level_model_audit import (
 from .sbl_velocity_curve import table_for_velocity_amount
 
 
-class SaturnFidelityToneAuthoringError(RuntimeError):
+class SaturnFidelityToneAuthoringError(_gm.SaturnSblSoundfontError):
     """Raised when the corrected in-memory TON build cannot be proven safe."""
 
 
@@ -175,10 +175,7 @@ def _pack_tone_bank(
     return result
 
 
-def _catalog(
-    mapping: Mapping[ToneKey, int],
-    kind: str,
-) -> tuple[int, ...]:
+def _catalog(mapping: Mapping[ToneKey, int], kind: str) -> tuple[int, ...]:
     values = tuple(sorted({int(amount) for key, amount in mapping.items() if key[0] == kind}))
     if not values:
         raise SaturnFidelityToneAuthoringError(f"no {kind} velocity amounts were supplied")
@@ -230,11 +227,7 @@ def _fidelity_policy(state: _BuildState) -> Iterator[None]:
                 f"no resolved SoundFont velocity amount for tone row {key!r}"
             )
         amount = state.velocity_amount_by_key[key]
-        catalog = (
-            state.melodic_table_amounts
-            if state.current_kind == "melodic"
-            else state.drum_table_amounts
-        )
+        catalog = state.melodic_table_amounts if state.current_kind == "melodic" else state.drum_table_amounts
         table_index = catalog.index(amount)
         assert state.layer_table_index is not None
         assert state.rows is not None
