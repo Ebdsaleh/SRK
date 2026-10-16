@@ -69,6 +69,8 @@ _DIAGNOSTIC_FILES = (
     "srk_diag_input.h",
     "srk_diag_menu.c",
     "srk_diag_menu.h",
+    "srk_diag_midi_test.c",
+    "srk_diag_midi_test.h",
     "srk_diag_vdp1.c",
     "srk_diag_vdp1.h",
     "srk_diag_video.c",
