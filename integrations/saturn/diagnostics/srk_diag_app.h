@@ -5,6 +5,7 @@
 #include "srk_diag_flight_recorder.h"
 #include "srk_diag_input.h"
 #include "srk_diag_menu.h"
+#include "srk_diag_midi_test.h"
 #include "srk_diag_vdp1.h"
 #include "srk_diag_video.h"
 
@@ -20,6 +21,7 @@ typedef struct SRK_DIAG_APP {
     SRK_DIAG_VIDEO_STATE video;
     SRK_DIAG_VDP1_STATE vdp1;
     SRK_DIAG_AUDIO_STATE audio;
+    SRK_DIAG_MIDI_TEST_STATE midi;
     srk_u32 frame;
     srk_u16 rendered_screen;
     int rendered_screen_valid;
