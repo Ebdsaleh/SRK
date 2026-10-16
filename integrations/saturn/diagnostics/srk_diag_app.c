@@ -127,8 +127,8 @@ static void srk_diag_render_main(
         for(i=0; i<SRK_DIAG_MENU_ITEM_COUNT; i++)
             srk_diag_draw(host, 4, 4 + i, srk_diag_menu_label(i));
 
-        srk_diag_draw(host, 2, 14, "UP/DOWN Navigate   A Select");
-        srk_diag_draw(host, 2, 15, "Raw hardware values remain visible in tests.");
+        srk_diag_draw(host, 2, 15, "UP/DOWN Navigate   A Select");
+        srk_diag_draw(host, 2, 16, "Raw hardware values remain visible in tests.");
     }
 
     for(i=0; i<SRK_DIAG_MENU_ITEM_COUNT; i++)
@@ -508,6 +508,88 @@ static void srk_diag_render_flight(
 }
 
 
+static void srk_diag_render_midi(
+    SRK_DIAG_APP *app,
+    SRK_DIAG_HOST *host,
+    int full_render
+)
+{
+    char number[11];
+    unsigned int family;
+    const char *pan_label;
+
+    family = srk_diag_midi_test_family(&app->midi);
+    if(app->midi.pan < 64u)
+        pan_label = "LEFT";
+    else if(app->midi.pan > 64u)
+        pan_label = "RIGHT";
+    else
+        pan_label = "CENTER";
+
+    if(full_render){
+        srk_diag_draw(host, 2, 1, "MIDI TEST / GM CALIBRATION");
+        srk_diag_draw(host, 2, 2, "One instrument at a time; mapping before mix.");
+        srk_diag_draw(host, 2, 4, "Program:");
+        srk_diag_draw(host, 2, 5, "Instrument:");
+        srk_diag_draw(host, 2, 6, "Family:");
+        srk_diag_draw(host, 2, 7, "MIDI channel:");
+        srk_diag_draw(host, 2, 8, "Note:");
+        srk_diag_draw(host, 2, 9, "Velocity:");
+        srk_diag_draw(host, 2, 10, "L-R bias:");
+        srk_diag_draw(host, 2, 11, "Saturn bank/voice:");
+        srk_diag_draw(host, 2, 12, "State:");
+        srk_diag_draw(host, 2, 13, "Review:");
+        srk_diag_draw(host, 2, 14, "Marked this session:");
+        srk_diag_draw(host, 2, 15, "Persisted marks:");
+        srk_diag_draw(host, 2, 16, "Last A hold:");
+        srk_diag_draw(host, 2, 20, "LEFT/RIGHT Previous/next GM program");
+        srk_diag_draw(host, 2, 21, "L/R Pan left/right");
+        srk_diag_draw(host, 2, 22, "A Hold = NOTE ON; release = NOTE OFF");
+        srk_diag_draw(host, 2, 23, "X Mark current program for review");
+        srk_diag_draw(host, 2, 25, "START Note off + return to menu");
+    }
+
+    srk_diag_u32(number, (srk_u32)app->midi.program);
+    srk_diag_draw_field(host, 20, 4, 4, number);
+    srk_diag_draw_field(host, 25, 4, 5, "/ 127");
+    srk_diag_draw_field(host, 20, 5, 20, srk_diag_midi_program_name(app->midi.program));
+    srk_diag_draw_field(host, 20, 6, 20, srk_diag_midi_family_name(family));
+    srk_diag_u32(number, (srk_u32)app->midi.channel + 1u);
+    srk_diag_draw_field(host, 20, 7, 4, number);
+    srk_diag_draw_field(host, 20, 8, 8, "C4 / 60");
+    srk_diag_u32(number, app->midi.velocity);
+    srk_diag_draw_field(host, 20, 9, 4, number);
+    srk_diag_u32(number, app->midi.pan);
+    srk_diag_draw_field(host, 20, 10, 4, number);
+    srk_diag_draw_field(host, 25, 10, 8, pan_label);
+    srk_diag_u32(number, app->midi.program);
+    srk_diag_draw_field(host, 20, 11, 3, "0 /");
+    srk_diag_draw_field(host, 24, 11, 4, number);
+    if(app->midi.last_error)
+        srk_diag_draw_field(host, 20, 12, 16, "HOST ERROR");
+    else if(!app->midi.prepared)
+        srk_diag_draw_field(host, 20, 12, 16, "LOADING");
+    else if(app->midi.note_active)
+        srk_diag_draw_field(host, 20, 12, 16, "NOTE ON / HELD");
+    else
+        srk_diag_draw_field(host, 20, 12, 16, "READY");
+    srk_diag_draw_field(
+        host,
+        20,
+        13,
+        8,
+        srk_diag_midi_review_marked(&app->midi, app->midi.program) ? "YES" : "NO"
+    );
+    srk_diag_u32(number, app->midi.review_count);
+    srk_diag_draw_field(host, 24, 14, 8, number);
+    srk_diag_u32(number, app->midi.persisted_review_count);
+    srk_diag_draw_field(host, 20, 15, 8, number);
+    srk_diag_u32(number, app->midi.last_hold_us / 1000u);
+    srk_diag_draw_field(host, 20, 16, 10, number);
+    srk_diag_draw_field(host, 31, 16, 2, "ms");
+}
+
+
 static void srk_diag_render_placeholder(
     SRK_DIAG_APP *app,
     SRK_DIAG_HOST *host,
@@ -523,6 +605,80 @@ static void srk_diag_render_placeholder(
 }
 
 
+static void srk_diag_midi_prepare(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
+{
+    int ok;
+
+    app->midi.prepared = 0u;
+    app->midi.last_error = 0u;
+    ok = 0;
+    if(host->midi_select_program)
+        ok = host->midi_select_program(host->context, app->midi.program);
+    if(ok && host->midi_set_pan)
+        ok = host->midi_set_pan(host->context, app->midi.channel, app->midi.pan);
+    if(ok)
+        app->midi.prepared = 1u;
+    else
+        app->midi.last_error = 1u;
+}
+
+
+static void srk_diag_midi_note_off(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
+{
+    if(!app->midi.note_active)
+        return;
+    if(host->midi_note_off){
+        if(!host->midi_note_off(
+            host->context,
+            app->midi.channel,
+            app->midi.note,
+            0u
+        ))
+            app->midi.last_error = 1u;
+    }
+    app->midi.note_active = 0u;
+}
+
+
+static void srk_diag_midi_persist_current(
+    SRK_DIAG_APP *app,
+    SRK_DIAG_HOST *host
+)
+{
+    SRK_DIAG_MIDI_REVIEW_RECORD record;
+    int ok;
+
+    if(srk_diag_midi_review_marked(&app->midi, app->midi.program))
+        return;
+    if(!host->midi_persist_review){
+        app->midi.last_error = 1u;
+        return;
+    }
+
+    record.version = SRK_DIAG_MIDI_REVIEW_VERSION;
+    record.program = app->midi.program;
+    record.family = (srk_u16)srk_diag_midi_test_family(&app->midi);
+    record.channel = app->midi.channel;
+    record.note = app->midi.note;
+    record.velocity = app->midi.velocity;
+    record.pan = app->midi.pan;
+    record.saturn_bank = 0u;
+    record.saturn_voice = app->midi.program;
+    record.flags = 1u;
+    record.held_us = app->midi.last_hold_us;
+    record.frame = app->frame;
+
+    ok = host->midi_persist_review(host->context, &record);
+    if(!ok){
+        app->midi.last_error = 1u;
+        return;
+    }
+    if(srk_diag_midi_mark_review(&app->midi))
+        app->midi.persisted_review_count += 1u;
+    app->midi.last_error = 0u;
+}
+
+
 void srk_diag_app_reset(SRK_DIAG_APP *app)
 {
     if(!app)
@@ -534,6 +690,7 @@ void srk_diag_app_reset(SRK_DIAG_APP *app)
     srk_diag_video_reset(&app->video);
     srk_diag_vdp1_reset(&app->vdp1);
     srk_diag_audio_reset(&app->audio);
+    srk_diag_midi_test_reset(&app->midi);
     app->frame = 0;
     app->rendered_screen = 0xffffu;
     app->rendered_screen_valid = 0;
@@ -576,8 +733,11 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
             srk_diag_menu_move(&app->menu, -1);
         if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_DOWN))
             srk_diag_menu_move(&app->menu, 1);
-        if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_A))
+        if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_A)){
             srk_diag_menu_enter(&app->menu);
+            if(app->menu.active_screen == SRK_DIAG_SCREEN_MIDI_TEST)
+                srk_diag_midi_prepare(app, host);
+        }
     }else if(app->menu.active_screen == SRK_DIAG_SCREEN_INPUT_TEST){
         if((app->input.current & SRK_DIAG_INPUT_EXIT_MASK) == SRK_DIAG_INPUT_EXIT_MASK &&
            (app->input.pressed & SRK_DIAG_INPUT_EXIT_MASK) != 0){
@@ -617,6 +777,63 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
             srk_diag_menu_back(&app->menu);
         }else{
             srk_diag_audio_control(&app->audio, app->input.pressed);
+        }
+    }else if(app->menu.active_screen == SRK_DIAG_SCREEN_MIDI_TEST){
+        if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_START)){
+            srk_diag_midi_note_off(app, host);
+            srk_diag_menu_back(&app->menu);
+        }else{
+            if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_LEFT) ||
+               srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_RIGHT)){
+                srk_diag_midi_note_off(app, host);
+                if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_LEFT))
+                    srk_diag_midi_test_move_program(&app->midi, -1);
+                else
+                    srk_diag_midi_test_move_program(&app->midi, 1);
+                srk_diag_midi_prepare(app, host);
+                app->rendered_screen_valid = 0;
+            }
+            if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_L)){
+                srk_diag_midi_test_move_pan(&app->midi, -(int)SRK_DIAG_MIDI_PAN_STEP);
+                if(!host->midi_set_pan || !host->midi_set_pan(
+                    host->context,
+                    app->midi.channel,
+                    app->midi.pan
+                ))
+                    app->midi.last_error = 1u;
+            }
+            if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_R)){
+                srk_diag_midi_test_move_pan(&app->midi, (int)SRK_DIAG_MIDI_PAN_STEP);
+                if(!host->midi_set_pan || !host->midi_set_pan(
+                    host->context,
+                    app->midi.channel,
+                    app->midi.pan
+                ))
+                    app->midi.last_error = 1u;
+            }
+            if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_A) &&
+               app->midi.prepared && !app->midi.note_active){
+                if(host->midi_note_on && host->midi_note_on(
+                    host->context,
+                    app->midi.channel,
+                    app->midi.note,
+                    app->midi.velocity
+                )){
+                    app->midi.note_active = 1u;
+                    app->midi.last_error = 0u;
+                }else{
+                    app->midi.last_error = 1u;
+                }
+            }
+            if(srk_diag_input_was_released(&app->input, SRK_DIAG_BUTTON_A)){
+                app->midi.last_hold_us = srk_diag_input_hold_us(
+                    &app->input,
+                    SRK_DIAG_BUTTON_A
+                );
+                srk_diag_midi_note_off(app, host);
+            }
+            if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_X))
+                srk_diag_midi_persist_current(app, host);
         }
     }else{
         if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_START)){
@@ -669,6 +886,8 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
         srk_diag_render_audio(app, host, full_render);
     else if(app->menu.active_screen == SRK_DIAG_SCREEN_FLIGHT_RECORDER)
         srk_diag_render_flight(app, host, full_render);
+    else if(app->menu.active_screen == SRK_DIAG_SCREEN_MIDI_TEST)
+        srk_diag_render_midi(app, host, full_render);
     else
         srk_diag_render_placeholder(app, host, full_render);
 
