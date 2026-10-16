@@ -30,7 +30,7 @@ from .sbl_gm_calibration_inventory import (
     SaturnGmCalibrationInventory,
     audit_gm_calibration_inventory,
 )
-from .sbl_velocity_curve import table_for_velocity_amount
+from .sbl_velocity_curve_fit import fit_velocity_table
 
 
 class SaturnGmCalibrationFamilyBankError(RuntimeError):
@@ -213,7 +213,7 @@ def build_gm_calibration_family_banks(
                 range(family * GM_FAMILY_SIZE, (family + 1) * GM_FAMILY_SIZE)
             )
             amounts = tuple(sorted({row_by_program[p].velocity_amount_cb for p in programs}))
-            tables = tuple(table_for_velocity_amount(amount) for amount in amounts)
+            tables = tuple(fit_velocity_table(amount) for amount in amounts)
             packed: list[tuple[_gm.SaturnToneLayer, _gm._PcmBlock, int]] = []
             voice_info: list[SaturnGmCalibrationVoice] = []
 
