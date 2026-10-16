@@ -6,6 +6,7 @@ import tempfile
 from rikai_kotoba.hardware.saturn.sbl_midi_calibration_candidate_contract import (
     _CURRENT_DIAGNOSTIC_FILES,
     _build_log_tail,
+    _legacy_c_text,
     _overlay_current_diagnostics,
 )
 
@@ -29,8 +30,21 @@ def test_current_diagnostics_overlay_includes_midi_screen_and_matches_repository
         for filename in copied:
             generated = stage / "src" / filename
             source = _DIAGNOSTICS / filename
+            source_bytes = source.read_bytes()
+            generated_bytes = generated.read_bytes()
             assert generated.is_file()
-            assert generated.read_bytes() == source.read_bytes()
+            assert generated_bytes == _legacy_c_text(source_bytes)
+            assert generated_bytes.endswith(b"\n")
+
+
+def test_audio_header_source_is_terminated_for_legacy_sh_gcc():
+    payload = (_DIAGNOSTICS / "srk_diag_audio.h").read_bytes()
+    assert payload.endswith(b"\n")
+
+
+def test_legacy_c_text_repairs_only_missing_final_newline():
+    assert _legacy_c_text(b"already\n") == b"already\n"
+    assert _legacy_c_text(b"missing") == b"missing\n"
 
 
 def test_failed_candidate_build_log_tail_is_available_for_console_error():
