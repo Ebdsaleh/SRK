@@ -61,27 +61,30 @@ def test_calibration_gate_audits_runtime_main_and_deployable_contract() -> None:
     assert _DEPLOY_BIN == "build/SRK-Diagnostics/SRK-Diagnostics.bin"
     assert _DEPLOY_CUE == "build/SRK-Diagnostics/SRK-Diagnostics.cue"
 
+    # Match the contract text itself rather than Python's choice of quote style.
+    # The original version accidentally required double quotes even though the
+    # gate stores these anchors in single-quoted string literals.
     for required in (
-        '"SND_Init(&ini);"',
-        '"SND_ChgMap(0)"',
-        '"SND_KD_TONE,0)"',
-        '"SND_KD_TONE,1)"',
-        '"#define SRK_SBL_CAL_BANK_CONTROLLER 32u"',
-        '"#define SRK_SBL_CAL_PAN_CONTROLLER 10u"',
-        '"host->midi_persist_review = 0;"',
-        '"srk_host.present_audio_tone = 0;"',
-        '"srk_host.stop_audio = 0;"',
-        '"srk_host.read_audio_status = 0;"',
-        '"cue-bin-mode1-2352"',
-        '"verified_against_iso"',
+        "SND_Init(&ini);",
+        "SND_ChgMap(0)",
+        "SND_KD_TONE,0)",
+        "SND_KD_TONE,1)",
+        "#define SRK_SBL_CAL_BANK_CONTROLLER 32u",
+        "#define SRK_SBL_CAL_PAN_CONTROLLER 10u",
+        "host->midi_persist_review = 0;",
+        "srk_host.present_audio_tone = 0;",
+        "srk_host.stop_audio = 0;",
+        "srk_host.read_audio_status = 0;",
+        "cue-bin-mode1-2352",
+        "verified_against_iso",
     ):
         assert required in source
 
     for forbidden_runtime_marker in (
-        '"0x25A00000"',
-        '"0x25B00000"',
-        '"SRK_AUDIO_SOUND_RAM"',
-        '"SRK_AUDIO_SCSP_SLOT0"',
+        "0x25A00000",
+        "0x25B00000",
+        "SRK_AUDIO_SOUND_RAM",
+        "SRK_AUDIO_SCSP_SLOT0",
     ):
         assert forbidden_runtime_marker in source
 
