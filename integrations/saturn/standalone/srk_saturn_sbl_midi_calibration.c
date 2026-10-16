@@ -9,6 +9,8 @@
 #define SRK_SBL_CAL_NOTE_ON 1u
 #define SRK_SBL_CAL_CONTROL_CHANGE 3u
 #define SRK_SBL_CAL_PROGRAM_CHANGE 4u
+#define SRK_SBL_CAL_BANK_CONTROLLER 32u
+#define SRK_SBL_CAL_MELODIC_BANK 0u
 #define SRK_SBL_CAL_PAN_CONTROLLER 10u
 #define SRK_SBL_CAL_MIDI_CHANNEL_MAX 15u
 #define SRK_SBL_CAL_MIDI_DATA_MAX 127u
@@ -25,8 +27,21 @@ static int srk_saturn_sbl_midi_select_program(
     unsigned int program
 )
 {
+    SndRet result;
+
     (void)context;
     if(program > SRK_SBL_CAL_MIDI_DATA_MAX)
+        return 0;
+
+    result = srk_saturn_sbl_direct_midi(
+        SRK_SBL_CAL_SEQ_NO,
+        SRK_SBL_CAL_SEQ_PRI,
+        SRK_SBL_CAL_CONTROL_CHANGE,
+        SRK_SBL_CAL_CHANNEL,
+        SRK_SBL_CAL_BANK_CONTROLLER,
+        SRK_SBL_CAL_MELODIC_BANK
+    );
+    if(!srk_saturn_sbl_midi_result(result))
         return 0;
 
     return srk_saturn_sbl_midi_result(
