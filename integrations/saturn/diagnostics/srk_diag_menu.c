@@ -9,7 +9,8 @@ static const char *srk_diag_menu_labels[SRK_DIAG_MENU_ITEM_COUNT] = {
     "Timing / Interrupt Test",
     "Memory / Dump Tools",
     "Flight Recorder",
-    "System Information"
+    "System Information",
+    "MIDI Test / GM Calibration"
 };
 
 
