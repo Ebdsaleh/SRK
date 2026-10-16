@@ -27,8 +27,14 @@ def test_calibration_binding_uses_verified_sega_direct_midi_contract():
     assert "#define SRK_SBL_CAL_NOTE_ON 1u" in source
     assert "#define SRK_SBL_CAL_CONTROL_CHANGE 3u" in source
     assert "#define SRK_SBL_CAL_PROGRAM_CHANGE 4u" in source
+    assert "#define SRK_SBL_CAL_BANK_CONTROLLER 32u" in source
+    assert "#define SRK_SBL_CAL_MELODIC_BANK 0u" in source
     assert "#define SRK_SBL_CAL_PAN_CONTROLLER 10u" in source
     assert "result == SND_RET_SET" in source
+
+    bank_select = source.index("SRK_SBL_CAL_BANK_CONTROLLER")
+    program_change = source.index("SRK_SBL_CAL_PROGRAM_CHANGE", bank_select)
+    assert bank_select < program_change
 
     assert "host->midi_select_program = srk_saturn_sbl_midi_select_program;" in source
     assert "host->midi_set_pan = srk_saturn_sbl_midi_set_pan;" in source
