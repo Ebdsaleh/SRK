@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
-from rikai_kotoba.hardware.saturn.sbl_native_sequence_fidelity_candidate import (
+from rikai_kotoba.hardware.saturn.sbl_native_sequence_fidelity_candidate_fix1 import (
     build_saturn_sbl_native_sequence_fidelity_candidate,
 )
 
@@ -99,6 +99,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print("Corrected static TL     : YES")
     print("Multi velocity tables   : YES")
     print("Golden TON hashes       : EXACT")
+    print("Manifest provenance     : PRE-BUILD LOCKED")
     print("SAROO writes            : NONE")
     print("Hardware execution      : NONE")
     print("GATE3F deployment       : BLOCKED")
