@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
-import shutil
 from typing import Iterator
 
 from . import sbl_midi_calibration_candidate as _candidate
@@ -51,8 +50,14 @@ _CURRENT_DIAGNOSTIC_FILES = (
 )
 
 
+def _legacy_c_text(payload: bytes) -> bytes:
+    """Return C text accepted by the recorded legacy SH-GCC warning policy."""
+
+    return payload if payload.endswith(b"\n") else payload + b"\n"
+
+
 def _overlay_current_diagnostics(stage: Path) -> tuple[str, ...]:
-    """Copy the current reusable diagnostics into a fresh candidate staging tree."""
+    """Copy current diagnostics and guarantee legacy-C EOF termination."""
 
     repo = _candidate._gm._root()
     source_root = repo / "integrations" / "saturn" / "diagnostics"
@@ -66,7 +71,8 @@ def _overlay_current_diagnostics(stage: Path) -> tuple[str, ...]:
             raise SaturnSblMidiCalibrationCandidateError(
                 f"current diagnostic source is missing: {source}"
             )
-        shutil.copy2(source, destination_root / filename)
+        destination = destination_root / filename
+        destination.write_bytes(_legacy_c_text(source.read_bytes()))
         copied.append(filename)
     return tuple(copied)
 
