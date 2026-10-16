@@ -1,15 +1,14 @@
-"""Keep the SBL MIDI calibration candidate on SRK's current diagnostics contract.
+"""Keep the current SBL MIDI calibration build on SRK's diagnostics contract.
 
-The physical calibration candidate deliberately starts from an older, already
-validated standalone Saturn project because that baseline carries proven IP.BIN,
-linker, packaging and private-SDK metadata.  Generated C sources are not the
-source of truth, though: the current standalone builder compiles the current SRK
-diagnostics set, including ``srk_diag_midi_test.c``.
+The physical calibration project still starts from an older, already validated
+standalone Saturn baseline because that baseline carries proven IP.BIN, linker,
+packaging and private-SDK metadata.  Generated C sources are not the source of
+truth, though: current diagnostics are overlaid immediately after the baseline
+copy.
 
-This wrapper overlays the current repository diagnostics into the fresh staging
-project immediately after the baseline is copied.  It prevents an older
-validated baseline from silently omitting newer reusable diagnostic sources while
-preserving the baseline's proven boot/link/package contract.
+The public calibration build now routes through the consolidated screen-owned
+SBL lifecycle and complete 128-program family-bank author.  Historical GATE3/
+GATE4 modules remain untouched as forensic/reproduction references.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-from . import sbl_midi_calibration_candidate as _candidate
+from . import sbl_midi_calibration_consolidated as _candidate
 
 
 SaturnSblMidiCalibrationCandidateError = (
@@ -128,11 +127,10 @@ def build_saturn_sbl_midi_calibration_candidate(
     saturn_root,
     output_directory,
     *,
-    melodic_tone_bank=None,
-    drum_tone_bank=None,
+    soundfont=None,
     sound_driver=None,
 ) -> SaturnSblMidiCalibrationCandidateResult:
-    """Build calibration candidate with current diagnostics over the proven baseline."""
+    """Build consolidated calibration with current diagnostics over proven boot assets."""
 
     output = Path(output_directory).expanduser().resolve(strict=False)
     try:
@@ -141,8 +139,7 @@ def build_saturn_sbl_midi_calibration_candidate(
                 baseline_project,
                 saturn_root,
                 output,
-                melodic_tone_bank=melodic_tone_bank,
-                drum_tone_bank=drum_tone_bank,
+                soundfont=soundfont,
                 sound_driver=sound_driver,
             )
     except SaturnSblMidiCalibrationCandidateError as exc:
