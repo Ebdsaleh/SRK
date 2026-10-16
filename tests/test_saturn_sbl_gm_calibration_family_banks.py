@@ -26,10 +26,11 @@ def test_calibration_families_cover_all_128_programs_without_placeholders():
     assert "GM_FAMILY_FILENAME_TEMPLATE = \"GMC{family:02d}.BIN\"" in text
 
 
-def test_calibration_families_apply_gate3f_fidelity_policy():
+def test_calibration_families_apply_gate3f_fidelity_policy_to_any_gm_amount():
     text = _source()
     assert "from .sbl_fidelity_tone_authoring import _static_total_level" in text
-    assert "table_for_velocity_amount" in text
+    assert "from .sbl_velocity_curve_fit import fit_velocity_table" in text
+    assert "fit_velocity_table(amount)" in text
     assert "total_level=_static_total_level(zone.attenuation_cb)" in text
     assert "data[0x1D] = velocity_table" in text
     assert "GM_CALIBRATION_TARGET_RATE = 11_025" in text
