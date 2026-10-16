@@ -144,12 +144,33 @@ def _requirements_from_scope(scope_rows) -> _gm.MidiToneRequirements:
     )
 
 
+def _tone_row_key(row) -> tuple[str, int, int]:
+    """Return the common semantic key used by every tone-audit row type.
+
+    Most tone-row dataclasses expose ``.key`` directly.  The projected level
+    row predates that convention and only exposes ``kind/program/note``.  Keep
+    the audit mapper tolerant of both shapes so read-only proof code does not
+    depend on a convenience property that is unrelated to tone semantics.
+    """
+
+    key = getattr(row, "key", None)
+    if key is not None:
+        return tuple(key)
+    try:
+        return str(row.kind), int(row.program), int(row.note)
+    except AttributeError as exc:
+        raise SaturnFidelityToneBuildAuditError(
+            f"tone row does not expose key or kind/program/note: {type(row).__name__}"
+        ) from exc
+
+
 def _row_map(rows):
     result = {}
     for row in rows:
-        if row.key in result:
-            raise SaturnFidelityToneBuildAuditError(f"duplicate tone row {row.key!r}")
-        result[row.key] = row
+        key = _tone_row_key(row)
+        if key in result:
+            raise SaturnFidelityToneBuildAuditError(f"duplicate tone row {key!r}")
+        result[key] = row
     return result
 
 
