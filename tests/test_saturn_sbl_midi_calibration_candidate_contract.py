@@ -7,6 +7,7 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_candidate_contract import
     _CURRENT_DIAGNOSTIC_FILES,
     _build_log_tail,
     _legacy_c_text,
+    _normalize_staged_legacy_sources,
     _overlay_current_diagnostics,
 )
 
@@ -45,6 +46,23 @@ def test_audio_header_source_is_terminated_for_legacy_sh_gcc():
 def test_legacy_c_text_repairs_only_missing_final_newline():
     assert _legacy_c_text(b"already\n") == b"already\n"
     assert _legacy_c_text(b"missing") == b"missing\n"
+
+
+def test_staged_legacy_source_normalizer_covers_baseline_sources_too():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        source_root = Path(temp_dir)
+        (source_root / "baseline.c").write_bytes(b"int x;")
+        (source_root / "baseline.h").write_bytes(b"#define X 1")
+        (source_root / "startup.S").write_bytes(b"nop")
+        (source_root / "ignore.bin").write_bytes(b"not source")
+
+        normalized = _normalize_staged_legacy_sources(source_root)
+
+        assert normalized == ("baseline.c", "baseline.h", "startup.S")
+        assert (source_root / "baseline.c").read_bytes().endswith(b"\n")
+        assert (source_root / "baseline.h").read_bytes().endswith(b"\n")
+        assert (source_root / "startup.S").read_bytes().endswith(b"\n")
+        assert (source_root / "ignore.bin").read_bytes() == b"not source"
 
 
 def test_failed_candidate_build_log_tail_is_available_for_console_error():
