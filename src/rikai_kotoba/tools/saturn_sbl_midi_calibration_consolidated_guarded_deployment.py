@@ -11,7 +11,9 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_consolidated_guarded_depl
     DESTINATION_NAME,
     EXPECTED_AREA_MAP_SHA256,
     EXPECTED_BIN_SHA256,
+    EXPECTED_BUILD_REPORT_SHA256,
     EXPECTED_CUE_SHA256,
+    EXPECTED_MANIFEST_SHA256,
     SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError,
     apply_sbl_midi_calibration_consolidated_guarded_deployment,
     prepare_sbl_midi_calibration_consolidated_guarded_deployment,
@@ -38,7 +40,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _print_locked_evidence(report) -> None:
+    print(f"Locked candidate manifest  : {EXPECTED_MANIFEST_SHA256}")
     print(f"Audited candidate manifest : {report.manifest_sha256}")
+    print(f"Locked build report        : {EXPECTED_BUILD_REPORT_SHA256}")
     print(f"Audited build report       : {report.build_report_sha256}")
     print(f"Locked external .MP map    : {EXPECTED_AREA_MAP_SHA256}")
     print(f"Locked deployable BIN      : {EXPECTED_BIN_SHA256}")
