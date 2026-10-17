@@ -53,8 +53,24 @@ def test_consolidated_runtime_is_screen_owned_and_family_loaded():
     assert "voice=program%SRK_SBL_CAL_FAMILY_SIZE" in runtime
     assert "SND_MoveData((Uint16 *)srk_cal_family" in runtime
     assert "SND_KD_TONE,0" in runtime
+    assert "SND_ChgMix(0,0)" in runtime
     assert "SND_SetTlVl(15)" in runtime
-    assert "SND_ChgMix" not in runtime
+
+    # Match Sega's Direct-MIDI one-shot setup around the resident tone bank:
+    # transfer tone -> select mixer -> set total level -> select bank/program.
+    move = runtime.index("SND_MoveData((Uint16 *)srk_cal_family")
+    mix = runtime.index("SND_ChgMix(0,0)")
+    volume = runtime.index("SND_SetTlVl(15)")
+    bank = runtime.index(
+        "srk_cal_send(SRK_SBL_CAL_CONTROL_CHANGE,SRK_SBL_CAL_CHANNEL,SRK_SBL_CAL_BANK_CONTROLLER,0u)"
+    )
+    program = runtime.index(
+        "srk_cal_send(SRK_SBL_CAL_PROGRAM_CHANGE,SRK_SBL_CAL_CHANNEL,(Uint8)voice,0u)"
+    )
+    assert move < mix < volume < bank < program
+
+    # Direct MIDI is deliberately not bootstrapped by a dummy sequence.
+    assert "SND_StartSeq" not in runtime
 
     # SND_Init is reachable only from lazy program preparation, not from _main.
     assert "static unsigned int srk_cal_begin(void *context)" in runtime
