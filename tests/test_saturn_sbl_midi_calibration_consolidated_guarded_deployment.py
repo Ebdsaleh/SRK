@@ -11,8 +11,10 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_consolidated_guarded_depl
     DESTINATION_NAME,
     EXPECTED_AREA_MAP_SHA256,
     EXPECTED_BIN_SHA256,
+    EXPECTED_BUILD_REPORT_SHA256,
     EXPECTED_CUE_SHA256,
     EXPECTED_FAMILY_COUNT,
+    EXPECTED_MANIFEST_SHA256,
     EXPECTED_MAX_FAMILY_BYTES,
     EXPECTED_PROGRAM_COUNT,
     SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError,
@@ -25,8 +27,8 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_consolidated_guarded_depl
 
 def _accepted_report(**changes):
     values = dict(
-        manifest_sha256="1" * 64,
-        build_report_sha256="2" * 64,
+        manifest_sha256=EXPECTED_MANIFEST_SHA256,
+        build_report_sha256=EXPECTED_BUILD_REPORT_SHA256,
         area_map_sha256=EXPECTED_AREA_MAP_SHA256,
         bin_sha256=EXPECTED_BIN_SHA256,
         cue_sha256=EXPECTED_CUE_SHA256,
@@ -44,6 +46,12 @@ def _accepted_report(**changes):
 
 
 def test_consolidated_guard_locks_exact_accepted_oneshot_pre_media_evidence() -> None:
+    assert EXPECTED_MANIFEST_SHA256 == (
+        "c54c63c072a51cdd836afc50b57de19a5a82c6e3d20263d8a6f2496187cff272"
+    )
+    assert EXPECTED_BUILD_REPORT_SHA256 == (
+        "ca4e82a402330fa1ed105f2bdad538dee1f3c6508740a84c767202cf2afdad0b"
+    )
     assert EXPECTED_AREA_MAP_SHA256 == (
         "40530e1a0f1b147a6f87aaaa00de7593b82fbec806f291bcddc2b09d865a4605"
     )
@@ -54,6 +62,13 @@ def test_consolidated_guard_locks_exact_accepted_oneshot_pre_media_evidence() ->
         "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
     )
     _validate_pre_media(_accepted_report())
+
+    for field in ("manifest_sha256", "build_report_sha256"):
+        with pytest.raises(
+            SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError,
+            match="no longer matches accepted pre-media evidence",
+        ):
+            _validate_pre_media(_accepted_report(**{field: "0" * 64}))
 
 
 def test_consolidated_guard_refuses_lifecycle_telemetry_or_oneshot_regression() -> None:
