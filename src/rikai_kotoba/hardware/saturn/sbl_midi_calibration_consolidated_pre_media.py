@@ -1,9 +1,10 @@
 """Read-only pre-media audit for the consolidated Sega SBL MIDI calibration build.
 
-This is the media-boundary proof for the post-GATE4 consolidation.  It locks the
+This is the media-boundary proof for the post-GATE4 consolidation. It locks the
 exact Eridu-built 128-program family assets, external Sega inputs, generated
-runtime/lifecycle contract, standalone build report and deployable BIN/CUE while
-performing no SAROO writes and no Saturn hardware execution.
+runtime/lifecycle contract, Sega Direct-MIDI one-shot setup order, standalone
+build report and deployable BIN/CUE while performing no SAROO writes and no
+Saturn hardware execution.
 """
 
 from __future__ import annotations
@@ -72,12 +73,12 @@ EXPECTED_FAMILIES = (
 )
 
 EXPECTED_ARTIFACTS = {
-    "build/srk_diag.bin": (84352, "5ae8a318639baef20efc1db74d203d479b615db314f3bb7ae6161ee01af5041c"),
-    "build/srk_diag.iso": (2097152, "6a009f8344cc628e39963da0e75ef155ccd8733837dc90d3d0a85dbf1ac62e43"),
-    "build/srk_diag.map": (69467, "1eb95b96b2e4bf5a45c9a52aefa25dbba460001552bcddc51aff2f782dfc2b69"),
-    "cd/0.bin": (84352, "5ae8a318639baef20efc1db74d203d479b615db314f3bb7ae6161ee01af5041c"),
+    "build/srk_diag.bin": (84416, "b92dfb585adf88f27922237e9f95d6d996cc14c893427b930ef36b92d05e2fbb"),
+    "build/srk_diag.iso": (2097152, "b816b72e93c0f737e52abce7ff768e70fef6af95bd1d985754a1076ad7f96ff4"),
+    "build/srk_diag.map": (69410, "cfc15377f66cdd8a17a9fd1946d3be40facfd988923bcf2fa4f2c17e1654d691"),
+    "cd/0.bin": (84416, "b92dfb585adf88f27922237e9f95d6d996cc14c893427b930ef36b92d05e2fbb"),
     "cd/SRKPCM.BIN": (1040, "d4b9e26d0e3b0e54085b6169c5c0fc784ec9c3f005bcbbda96529db443c07b39"),
-    _DEPLOY_BIN: (2408448, "3c03f4c49dd70e7f142faaa3b1fc69b1e1735eb13b5524beed0b46a4d3bfaff6"),
+    _DEPLOY_BIN: (2408448, "56fc685e8df1e3f4f28806ef703bbfcc26b5bd48105a7aeae5917f7158f967ca"),
     _DEPLOY_CUE: (81, "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"),
 }
 
@@ -124,6 +125,30 @@ def _verify_generated_inventory(root: Path, manifest: dict) -> set[str]:
     return seen
 
 
+def _require_sega_oneshot_order(runtime: str) -> None:
+    ordered = (
+        "SND_MoveData((Uint16 *)srk_cal_family",
+        "SND_ChgMix(0,0)",
+        "SND_SetTlVl(15)",
+        "srk_cal_send(SRK_SBL_CAL_CONTROL_CHANGE,SRK_SBL_CAL_CHANNEL,SRK_SBL_CAL_BANK_CONTROLLER,0u)",
+        "srk_cal_send(SRK_SBL_CAL_PROGRAM_CHANGE,SRK_SBL_CAL_CHANNEL,(Uint8)voice,0u)",
+    )
+    positions = tuple(runtime.find(anchor) for anchor in ordered)
+    if any(position < 0 for position in positions):
+        raise SaturnSblMidiCalibrationConsolidatedPreMediaError(
+            "consolidated runtime lacks the complete Sega Direct-MIDI one-shot setup"
+        )
+    if positions != tuple(sorted(positions)) or len(set(positions)) != len(positions):
+        raise SaturnSblMidiCalibrationConsolidatedPreMediaError(
+            "consolidated runtime no longer follows Sega one-shot order: "
+            "MoveData -> ChgMix -> SetTlVl -> CC32 -> Program Change"
+        )
+    if "SND_StartSeq" in runtime:
+        raise SaturnSblMidiCalibrationConsolidatedPreMediaError(
+            "Direct-MIDI calibration unexpectedly requires a sequence start"
+        )
+
+
 @dataclass(frozen=True)
 class SaturnSblMidiCalibrationConsolidatedPreMediaReport:
     project_root: Path
@@ -144,6 +169,7 @@ class SaturnSblMidiCalibrationConsolidatedPreMediaReport:
     screen_owned_sbl_lifecycle: bool
     raw_scsp_audio_test_retained: bool
     driver_execution_telemetry: bool
+    sega_oneshot_order: bool
     deployable_verified_against_iso: bool
 
 
@@ -315,10 +341,11 @@ def audit_consolidated_midi_calibration_pre_media(
             'static unsigned int srk_cal_begin(void *context)',
             'SND_Init(&ini);',
             'SND_ChgMap(0)',
+            'SND_MoveData((Uint16 *)srk_cal_family',
+            'SND_ChgMix(0,0)',
             'SND_SetTlVl(15)',
             'family=program/SRK_SBL_CAL_FAMILY_SIZE',
             'voice=program%SRK_SBL_CAL_FAMILY_SIZE',
-            'SND_MoveData((Uint16 *)srk_cal_family',
             'SND_KD_TONE,0',
             '0x25A00416UL',
             '0x25A0041AUL',
@@ -331,10 +358,7 @@ def audit_consolidated_midi_calibration_pre_media(
         ),
         "consolidated runtime",
     )
-    if "SND_ChgMix" in runtime:
-        raise SaturnSblMidiCalibrationConsolidatedPreMediaError(
-            "consolidated runtime unexpectedly reintroduced SND_ChgMix"
-        )
+    _require_sega_oneshot_order(runtime)
 
     main = _file(root, _MAIN, "consolidated main").read_text(
         encoding="utf-8", errors="strict"
@@ -423,5 +447,6 @@ def audit_consolidated_midi_calibration_pre_media(
         screen_owned_sbl_lifecycle=True,
         raw_scsp_audio_test_retained=True,
         driver_execution_telemetry=True,
+        sega_oneshot_order=True,
         deployable_verified_against_iso=True,
     )
