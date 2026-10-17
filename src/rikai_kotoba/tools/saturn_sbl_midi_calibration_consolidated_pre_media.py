@@ -15,7 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="srk-saturn-sbl-midi-calibration-consolidated-pre-media",
         description=(
             "Read-only pre-media audit for the consolidated 128-program Sega "
-            "SBL/SDDRV MIDI calibration diagnostic."
+            "SBL/SDDRV Direct-MIDI one-shot calibration diagnostic."
         ),
     )
     parser.add_argument("--project", required=True, type=Path)
@@ -62,7 +62,8 @@ def main(argv: list[str] | None = None) -> int:
     print("SBL lifecycle             : SCREEN-OWNED / DEFERRED")
     print("68K execution telemetry   : COMMAND HISTORY + DRIVER/CPU ERROR")
     print("Raw SCSP Audio Test       : RETAINED")
-    print("SND_ChgMix dependency     : ABSENT")
+    print("Sega one-shot order       : EXACT / MOVEDATA -> CHGMIX -> TL -> CC32 -> PROGRAM")
+    print("Sequence bootstrap        : NOT REQUIRED / SND_StartSeq ABSENT")
     print("Review persistence        : UNBOUND")
     print("SAROO writes              : NONE")
     print("Hardware execution        : NONE")
