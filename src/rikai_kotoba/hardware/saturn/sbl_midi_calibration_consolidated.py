@@ -140,6 +140,7 @@ def _runtime(families: SaturnGmCalibrationFamilyBanks) -> str:
 #define SRK_SBL_CAL_ERR_PAN 8u
 #define SRK_SBL_CAL_ERR_NOTE_ON 9u
 #define SRK_SBL_CAL_ERR_NOTE_OFF 10u
+#define SRK_SBL_CAL_ERR_MIX 11u
 #define SRK_SBL_CAL_NOTE_OFF 0u
 #define SRK_SBL_CAL_NOTE_ON 1u
 #define SRK_SBL_CAL_CONTROL_CHANGE 3u
@@ -205,7 +206,6 @@ static unsigned int srk_cal_begin(void *context){{
  SND_INI_ARA_ADR(ini)=(Uint16 *)srk_cal_map;SND_INI_ARA_SZ(ini)=(Uint16)SRK_SBL_CAL_MAP_BYTES;
  SND_Init(&ini);
  result=SND_ChgMap(0);srk_cal_state->last_ret=(unsigned int)result;if(result!=SND_RET_SET)return srk_cal_fail(srk_cal_state,SRK_SBL_CAL_ERR_MAP);
- result=SND_SetTlVl(15);srk_cal_state->last_ret=(unsigned int)result;if(result!=SND_RET_SET)return srk_cal_fail(srk_cal_state,SRK_SBL_CAL_ERR_VOLUME);
  srk_cal_state->initialized=1u;srk_cal_state->history_baseline=(unsigned short)SRK_SBL_CAL_HISTORY;srk_cal_state->history_current=srk_cal_state->history_baseline;
  srk_cal_sample(srk_cal_state);return 1u;
 }}
@@ -218,6 +218,8 @@ static int srk_cal_select_program(void *context,unsigned int program){{
   (void)SND_OffAllSound();
   if(!srk_cal_load(srk_cal_family_names[family],srk_cal_family,srk_cal_family_sizes[family]))return (int)srk_cal_fail(srk_cal_state,SRK_SBL_CAL_ERR_FAMILY);
   SND_MoveData((Uint16 *)srk_cal_family,(Uint32)srk_cal_family_sizes[family],SND_KD_TONE,0);
+  result=SND_ChgMix(0,0);srk_cal_state->last_ret=(unsigned int)result;if(result!=SND_RET_SET)return (int)srk_cal_fail(srk_cal_state,SRK_SBL_CAL_ERR_MIX);
+  result=SND_SetTlVl(15);srk_cal_state->last_ret=(unsigned int)result;if(result!=SND_RET_SET)return (int)srk_cal_fail(srk_cal_state,SRK_SBL_CAL_ERR_VOLUME);
   srk_cal_state->current_family=family;
  }}
  result=srk_cal_send(SRK_SBL_CAL_CONTROL_CHANGE,SRK_SBL_CAL_CHANNEL,SRK_SBL_CAL_BANK_CONTROLLER,0u);
