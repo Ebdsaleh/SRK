@@ -1,10 +1,11 @@
 """Two-phase whole-card guarded deployment for consolidated SBL MIDI calibration.
 
 PREPARE re-runs the consolidated read-only pre-media audit, locks the exact
-accepted manifest/report/map/BIN/CUE evidence, and writes only an off-card
-whole-card inventory manifest. APPLY requires the reviewed guard-manifest
-SHA-256 plus a consolidated-specific confirmation token. Only one fresh TEST
-directory and its verified BIN/CUE may differ from the reviewed card baseline.
+Sega one-shot map/BIN/CUE evidence plus the self-bound manifest/build report,
+and writes only an off-card whole-card inventory manifest. APPLY requires the
+reviewed guard-manifest SHA-256 plus a one-shot-specific confirmation token.
+Only one fresh TEST directory and its verified BIN/CUE may differ from the
+reviewed card baseline.
 """
 
 from __future__ import annotations
@@ -34,21 +35,15 @@ from .sbl_midi_calibration_consolidated_pre_media import (
 )
 
 
-CONFIRMATION_TOKEN = "DEPLOY-SBL-MIDI-CALIBRATION-CONSOLIDATED"
-DESTINATION_NAME = "SRK-Diagnostics-SBL-MIDI-CAL-CONSOLIDATED"
+CONFIRMATION_TOKEN = "DEPLOY-SBL-MIDI-CALIBRATION-SEGA-ONESHOT"
+DESTINATION_NAME = "SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT"
 CATEGORY = "TEST"
 
-EXPECTED_MANIFEST_SHA256 = (
-    "5493e9e5b8665f372a8474e4c95ff29b043502d2dd8b970f72f260c99ac9eaf2"
-)
-EXPECTED_BUILD_REPORT_SHA256 = (
-    "c8586839b651da3572ddffe284cc54f2f9fba054a2a83ae59db0df5fe0bb8955"
-)
 EXPECTED_AREA_MAP_SHA256 = (
     "40530e1a0f1b147a6f87aaaa00de7593b82fbec806f291bcddc2b09d865a4605"
 )
 EXPECTED_BIN_SHA256 = (
-    "3c03f4c49dd70e7f142faaa3b1fc69b1e1735eb13b5524beed0b46a4d3bfaff6"
+    "56fc685e8df1e3f4f28806ef703bbfcc26b5bd48105a7aeae5917f7158f967ca"
 )
 EXPECTED_CUE_SHA256 = (
     "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
@@ -128,11 +123,6 @@ def _validate_pre_media(
     report: SaturnSblMidiCalibrationConsolidatedPreMediaReport,
 ) -> None:
     expected = {
-        "manifest SHA-256": (report.manifest_sha256, EXPECTED_MANIFEST_SHA256),
-        "build-report SHA-256": (
-            report.build_report_sha256,
-            EXPECTED_BUILD_REPORT_SHA256,
-        ),
         "external .MP SHA-256": (report.area_map_sha256, EXPECTED_AREA_MAP_SHA256),
         "deployable BIN SHA-256": (report.bin_sha256, EXPECTED_BIN_SHA256),
         "deployable CUE SHA-256": (report.cue_sha256, EXPECTED_CUE_SHA256),
@@ -142,6 +132,11 @@ def _validate_pre_media(
             raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
                 f"consolidated {label} no longer matches accepted pre-media evidence"
             )
+    for label, value in (
+        ("manifest SHA-256", report.manifest_sha256),
+        ("build-report SHA-256", report.build_report_sha256),
+    ):
+        _validated_sha256(value, f"consolidated {label}")
     if report.program_count != EXPECTED_PROGRAM_COUNT:
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
             "consolidated GM program count is no longer 128"
@@ -165,6 +160,10 @@ def _validate_pre_media(
     if not report.driver_execution_telemetry:
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
             "consolidated 68K execution telemetry is no longer present"
+        )
+    if not report.sega_oneshot_order:
+        raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
+            "consolidated Sega Direct-MIDI one-shot order is no longer exact"
         )
     if not report.deployable_verified_against_iso:
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
@@ -276,17 +275,17 @@ def _safe_rollback_new_directory(
         destination.rmdir()
     except OSError as exc:
         return (
-            "automatic rollback failed while removing isolated consolidated directory: "
+            "automatic rollback failed while removing isolated consolidated one-shot directory: "
             f"{exc}"
         )
 
     try:
         verification = verify_saroo_card_inventory(card_root, guard_manifest)
     except Exception as exc:
-        return f"rollback removed consolidated directory but baseline check failed: {exc}"
+        return f"rollback removed one-shot directory but baseline check failed: {exc}"
     if not verification.valid:
         return (
-            "rollback removed consolidated directory but baseline still mismatches: "
+            "rollback removed one-shot directory but baseline still mismatches: "
             + "; ".join(verification.differences[:8])
         )
     return "verified rollback succeeded; original whole-card baseline restored"
@@ -305,15 +304,15 @@ def _plan(
         )
     except Exception as exc:
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
-            f"cannot establish safe consolidated deployment plan: {exc}"
+            f"cannot establish safe consolidated one-shot deployment plan: {exc}"
         ) from exc
     if plan.bin_sha256.lower() != EXPECTED_BIN_SHA256:
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
-            "planned BIN no longer matches accepted consolidated artifact"
+            "planned BIN no longer matches accepted Sega one-shot artifact"
         )
     if plan.cue_sha256.lower() != EXPECTED_CUE_SHA256:
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
-            "planned CUE no longer matches accepted consolidated artifact"
+            "planned CUE no longer matches accepted Sega one-shot artifact"
         )
     return plan
 
@@ -323,7 +322,7 @@ def prepare_sbl_midi_calibration_consolidated_guarded_deployment(
     card_root: os.PathLike[str] | str,
     guard_manifest: os.PathLike[str] | str,
 ) -> SaturnSblMidiCalibrationConsolidatedGuardPrepareResult:
-    """Revalidate the consolidated image and create a fresh off-card baseline."""
+    """Revalidate the one-shot image and create a fresh off-card baseline."""
 
     card = _canonical(card_root)
     manifest = _canonical(guard_manifest)
@@ -338,7 +337,7 @@ def prepare_sbl_midi_calibration_consolidated_guarded_deployment(
         verification = verify_saroo_card_inventory(card, manifest)
     except Exception as exc:
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
-            f"cannot establish fresh consolidated whole-card baseline: {exc}"
+            f"cannot establish fresh consolidated one-shot whole-card baseline: {exc}"
         ) from exc
     _require_guard_valid(verification, "prepare")
     return SaturnSblMidiCalibrationConsolidatedGuardPrepareResult(
@@ -377,7 +376,7 @@ def apply_sbl_midi_calibration_consolidated_guarded_deployment(
         pre_guard = verify_saroo_card_inventory(card, manifest)
     except Exception as exc:
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
-            f"cannot verify consolidated whole-card baseline before deployment: {exc}"
+            f"cannot verify consolidated one-shot whole-card baseline before deployment: {exc}"
         ) from exc
     _require_guard_valid(pre_guard, "pre-deployment")
 
@@ -401,18 +400,18 @@ def apply_sbl_midi_calibration_consolidated_guarded_deployment(
         except Exception as guard_exc:
             state = f"whole-card state could not be verified: {guard_exc}"
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
-            f"consolidated deployment failed; {state}: {exc}"
+            f"consolidated one-shot deployment failed; {state}: {exc}"
         ) from exc
 
     if deployment.bin_sha256.lower() != EXPECTED_BIN_SHA256:
         rollback = _safe_rollback_new_directory(card, deployment, manifest)
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
-            "deployed BIN differs from accepted consolidated artifact; " + rollback
+            "deployed BIN differs from accepted Sega one-shot artifact; " + rollback
         )
     if deployment.cue_sha256.lower() != EXPECTED_CUE_SHA256:
         rollback = _safe_rollback_new_directory(card, deployment, manifest)
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
-            "deployed CUE differs from accepted consolidated artifact; " + rollback
+            "deployed CUE differs from accepted Sega one-shot artifact; " + rollback
         )
 
     allowed = _allowed_paths(deployment)
@@ -425,14 +424,14 @@ def apply_sbl_midi_calibration_consolidated_guarded_deployment(
     except Exception as exc:
         rollback = _safe_rollback_new_directory(card, deployment, manifest)
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
-            "cannot perform consolidated post-write whole-card verification; "
+            "cannot perform one-shot post-write whole-card verification; "
             f"{rollback}: {exc}"
         ) from exc
     if not post_guard.valid:
         detail = "; ".join(post_guard.differences[:8])
         rollback = _safe_rollback_new_directory(card, deployment, manifest)
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
-            "consolidated post-write whole-card guard found an unauthorized difference: "
+            "one-shot post-write whole-card guard found an unauthorized difference: "
             + detail
             + "; "
             + rollback
