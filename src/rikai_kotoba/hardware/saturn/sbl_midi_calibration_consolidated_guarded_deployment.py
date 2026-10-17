@@ -1,11 +1,10 @@
 """Two-phase whole-card guarded deployment for consolidated SBL MIDI calibration.
 
 PREPARE re-runs the consolidated read-only pre-media audit, locks the exact
-Sega one-shot map/BIN/CUE evidence plus the self-bound manifest/build report,
-and writes only an off-card whole-card inventory manifest. APPLY requires the
-reviewed guard-manifest SHA-256 plus a one-shot-specific confirmation token.
-Only one fresh TEST directory and its verified BIN/CUE may differ from the
-reviewed card baseline.
+Sega one-shot manifest/report/map/BIN/CUE evidence, and writes only an off-card
+whole-card inventory manifest. APPLY requires the reviewed guard-manifest
+SHA-256 plus a one-shot-specific confirmation token. Only one fresh TEST
+directory and its verified BIN/CUE may differ from the reviewed card baseline.
 """
 
 from __future__ import annotations
@@ -39,6 +38,12 @@ CONFIRMATION_TOKEN = "DEPLOY-SBL-MIDI-CALIBRATION-SEGA-ONESHOT"
 DESTINATION_NAME = "SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT"
 CATEGORY = "TEST"
 
+EXPECTED_MANIFEST_SHA256 = (
+    "c54c63c072a51cdd836afc50b57de19a5a82c6e3d20263d8a6f2496187cff272"
+)
+EXPECTED_BUILD_REPORT_SHA256 = (
+    "ca4e82a402330fa1ed105f2bdad538dee1f3c6508740a84c767202cf2afdad0b"
+)
 EXPECTED_AREA_MAP_SHA256 = (
     "40530e1a0f1b147a6f87aaaa00de7593b82fbec806f291bcddc2b09d865a4605"
 )
@@ -123,6 +128,11 @@ def _validate_pre_media(
     report: SaturnSblMidiCalibrationConsolidatedPreMediaReport,
 ) -> None:
     expected = {
+        "manifest SHA-256": (report.manifest_sha256, EXPECTED_MANIFEST_SHA256),
+        "build-report SHA-256": (
+            report.build_report_sha256,
+            EXPECTED_BUILD_REPORT_SHA256,
+        ),
         "external .MP SHA-256": (report.area_map_sha256, EXPECTED_AREA_MAP_SHA256),
         "deployable BIN SHA-256": (report.bin_sha256, EXPECTED_BIN_SHA256),
         "deployable CUE SHA-256": (report.cue_sha256, EXPECTED_CUE_SHA256),
@@ -132,11 +142,6 @@ def _validate_pre_media(
             raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
                 f"consolidated {label} no longer matches accepted pre-media evidence"
             )
-    for label, value in (
-        ("manifest SHA-256", report.manifest_sha256),
-        ("build-report SHA-256", report.build_report_sha256),
-    ):
-        _validated_sha256(value, f"consolidated {label}")
     if report.program_count != EXPECTED_PROGRAM_COUNT:
         raise SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError(
             "consolidated GM program count is no longer 128"
