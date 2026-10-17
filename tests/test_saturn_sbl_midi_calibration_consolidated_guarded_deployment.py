@@ -11,10 +11,8 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_consolidated_guarded_depl
     DESTINATION_NAME,
     EXPECTED_AREA_MAP_SHA256,
     EXPECTED_BIN_SHA256,
-    EXPECTED_BUILD_REPORT_SHA256,
     EXPECTED_CUE_SHA256,
     EXPECTED_FAMILY_COUNT,
-    EXPECTED_MANIFEST_SHA256,
     EXPECTED_MAX_FAMILY_BYTES,
     EXPECTED_PROGRAM_COUNT,
     SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError,
@@ -27,8 +25,8 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_consolidated_guarded_depl
 
 def _accepted_report(**changes):
     values = dict(
-        manifest_sha256=EXPECTED_MANIFEST_SHA256,
-        build_report_sha256=EXPECTED_BUILD_REPORT_SHA256,
+        manifest_sha256="1" * 64,
+        build_report_sha256="2" * 64,
         area_map_sha256=EXPECTED_AREA_MAP_SHA256,
         bin_sha256=EXPECTED_BIN_SHA256,
         cue_sha256=EXPECTED_CUE_SHA256,
@@ -38,24 +36,19 @@ def _accepted_report(**changes):
         screen_owned_sbl_lifecycle=True,
         raw_scsp_audio_test_retained=True,
         driver_execution_telemetry=True,
+        sega_oneshot_order=True,
         deployable_verified_against_iso=True,
     )
     values.update(changes)
     return SimpleNamespace(**values)
 
 
-def test_consolidated_guard_locks_exact_accepted_pre_media_evidence() -> None:
-    assert EXPECTED_MANIFEST_SHA256 == (
-        "5493e9e5b8665f372a8474e4c95ff29b043502d2dd8b970f72f260c99ac9eaf2"
-    )
-    assert EXPECTED_BUILD_REPORT_SHA256 == (
-        "c8586839b651da3572ddffe284cc54f2f9fba054a2a83ae59db0df5fe0bb8955"
-    )
+def test_consolidated_guard_locks_exact_accepted_oneshot_pre_media_evidence() -> None:
     assert EXPECTED_AREA_MAP_SHA256 == (
         "40530e1a0f1b147a6f87aaaa00de7593b82fbec806f291bcddc2b09d865a4605"
     )
     assert EXPECTED_BIN_SHA256 == (
-        "3c03f4c49dd70e7f142faaa3b1fc69b1e1735eb13b5524beed0b46a4d3bfaff6"
+        "56fc685e8df1e3f4f28806ef703bbfcc26b5bd48105a7aeae5917f7158f967ca"
     )
     assert EXPECTED_CUE_SHA256 == (
         "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
@@ -63,7 +56,7 @@ def test_consolidated_guard_locks_exact_accepted_pre_media_evidence() -> None:
     _validate_pre_media(_accepted_report())
 
 
-def test_consolidated_guard_refuses_lifecycle_or_telemetry_regression() -> None:
+def test_consolidated_guard_refuses_lifecycle_telemetry_or_oneshot_regression() -> None:
     with pytest.raises(
         SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError,
         match="screen-owned",
@@ -74,17 +67,22 @@ def test_consolidated_guard_refuses_lifecycle_or_telemetry_regression() -> None:
         match="telemetry",
     ):
         _validate_pre_media(_accepted_report(driver_execution_telemetry=False))
+    with pytest.raises(
+        SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError,
+        match="one-shot",
+    ):
+        _validate_pre_media(_accepted_report(sega_oneshot_order=False))
 
 
-def test_consolidated_guard_has_fixed_isolated_destination_and_token() -> None:
+def test_consolidated_guard_has_fixed_isolated_oneshot_destination_and_token() -> None:
     assert CATEGORY == "TEST"
-    assert DESTINATION_NAME == "SRK-Diagnostics-SBL-MIDI-CAL-CONSOLIDATED"
-    assert CONFIRMATION_TOKEN == "DEPLOY-SBL-MIDI-CALIBRATION-CONSOLIDATED"
+    assert DESTINATION_NAME == "SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT"
+    assert CONFIRMATION_TOKEN == "DEPLOY-SBL-MIDI-CALIBRATION-SEGA-ONESHOT"
 
 
-def test_allowed_paths_are_only_new_consolidated_directory_and_bin_cue() -> None:
+def test_allowed_paths_are_only_new_oneshot_directory_and_bin_cue() -> None:
     destination = Path(
-        "D:/saroo/ISO/TEST/SRK-Diagnostics-SBL-MIDI-CAL-CONSOLIDATED"
+        "D:/saroo/ISO/TEST/SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT"
     )
     deployment = SimpleNamespace(
         plan=SimpleNamespace(destination_directory=destination),
@@ -92,9 +90,9 @@ def test_allowed_paths_are_only_new_consolidated_directory_and_bin_cue() -> None
         destination_cue=destination / "SRK-Diagnostics.cue",
     )
     assert set(_allowed_paths(deployment)) == {
-        "saroo/ISO/TEST/SRK-Diagnostics-SBL-MIDI-CAL-CONSOLIDATED",
-        "saroo/ISO/TEST/SRK-Diagnostics-SBL-MIDI-CAL-CONSOLIDATED/SRK-Diagnostics.bin",
-        "saroo/ISO/TEST/SRK-Diagnostics-SBL-MIDI-CAL-CONSOLIDATED/SRK-Diagnostics.cue",
+        "saroo/ISO/TEST/SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT",
+        "saroo/ISO/TEST/SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT/SRK-Diagnostics.bin",
+        "saroo/ISO/TEST/SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT/SRK-Diagnostics.cue",
     }
 
 
@@ -105,7 +103,7 @@ def test_apply_rejects_wrong_confirmation_before_audit_or_card_access() -> None:
     ) as audit:
         with pytest.raises(
             SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError,
-            match="DEPLOY-SBL-MIDI-CALIBRATION-CONSOLIDATED",
+            match="DEPLOY-SBL-MIDI-CALIBRATION-SEGA-ONESHOT",
         ):
             apply_sbl_midi_calibration_consolidated_guarded_deployment(
                 "missing-project",
@@ -121,7 +119,7 @@ def test_prepare_rejects_guard_manifest_stored_on_card_before_audit() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         card = Path(temp_dir) / "CARD"
         card.mkdir()
-        manifest = card / "consolidated-card-before.json"
+        manifest = card / "oneshot-card-before.json"
         with patch(
             "rikai_kotoba.hardware.saturn."
             "sbl_midi_calibration_consolidated_guarded_deployment._audit"
