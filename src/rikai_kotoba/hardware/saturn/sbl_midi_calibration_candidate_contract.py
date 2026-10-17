@@ -1,10 +1,10 @@
 """Keep SBL MIDI calibration builds on SRK's current diagnostics contract.
 
-The current public calibration command routes through the consolidated
-screen-owned SBL lifecycle and complete 128-program family-bank author.
-Historical GATE3/GATE4 reproduction code still passes explicit melodic/drum
-banks; that legacy signature is intentionally preserved and routed to the
-historical builder so prior physical evidence remains reproducible.
+The current public calibration command routes through the SDDRV Ver 2.10
+screen-owned Sega Direct-MIDI one-shot contract and complete 128-program family
+bank author. Historical GATE3/GATE4 reproduction code still passes explicit
+melodic/drum banks; that legacy signature is intentionally preserved and routed
+to the historical builder so prior physical evidence remains reproducible.
 """
 
 from __future__ import annotations
@@ -15,10 +15,11 @@ from typing import Iterator
 
 from . import sbl_midi_calibration_candidate as _legacy_candidate
 from . import sbl_midi_calibration_consolidated as _candidate
+from . import sbl_midi_calibration_sddrv210 as _sddrv210
 
 
-SaturnSblMidiCalibrationCandidateError = _candidate.SaturnSblMidiCalibrationCandidateError
-SaturnSblMidiCalibrationCandidateResult = _candidate.SaturnSblMidiCalibrationCandidateResult
+SaturnSblMidiCalibrationCandidateError = _sddrv210.SaturnSblMidiCalibrationCandidateError
+SaturnSblMidiCalibrationCandidateResult = _sddrv210.SaturnSblMidiCalibrationCandidateResult
 
 
 _CURRENT_DIAGNOSTIC_FILES = (
@@ -89,7 +90,7 @@ def _overlay_current_diagnostics(stage: Path) -> tuple[str, ...]:
 
 @contextmanager
 def _current_diagnostics_contract() -> Iterator[None]:
-    # Both builders share the same sbl_gm_physical_candidate module object.
+    # Historical and SDDRV210 builders share the same consolidated helper module.
     original_copy_baseline = _candidate._gm._copy_baseline
 
     def copy_baseline_with_current_diagnostics(baseline, stage, manifest):
@@ -126,7 +127,7 @@ def build_saturn_sbl_midi_calibration_candidate(
     drum_tone_bank=None,
     sound_driver=None,
 ):
-    """Build current calibration, or reproduce historical explicit-bank candidates."""
+    """Build current SDDRV210 calibration, or reproduce historical explicit-bank candidates."""
 
     output = Path(output_directory).expanduser().resolve(strict=False)
     historical = melodic_tone_bank is not None or drum_tone_bank is not None
@@ -150,7 +151,7 @@ def build_saturn_sbl_midi_calibration_candidate(
                     drum_tone_bank=drum_tone_bank,
                     sound_driver=sound_driver,
                 )
-            return _candidate.build_saturn_sbl_midi_calibration_candidate(
+            return _sddrv210.build_saturn_sbl_midi_calibration_candidate(
                 baseline_project,
                 saturn_root,
                 output,
