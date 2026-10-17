@@ -57,20 +57,20 @@ def test_pre_media_locks_all_16_real_family_banks_without_gaps():
 
 def test_pre_media_locks_final_and_intermediate_build_artifacts():
     assert EXPECTED_ARTIFACTS["build/srk_diag.bin"] == (
-        84352,
-        "5ae8a318639baef20efc1db74d203d479b615db314f3bb7ae6161ee01af5041c",
+        84416,
+        "b92dfb585adf88f27922237e9f95d6d996cc14c893427b930ef36b92d05e2fbb",
     )
     assert EXPECTED_ARTIFACTS["build/srk_diag.iso"] == (
         2097152,
-        "6a009f8344cc628e39963da0e75ef155ccd8733837dc90d3d0a85dbf1ac62e43",
+        "b816b72e93c0f737e52abce7ff768e70fef6af95bd1d985754a1076ad7f96ff4",
     )
     assert EXPECTED_ARTIFACTS["build/srk_diag.map"] == (
-        69467,
-        "1eb95b96b2e4bf5a45c9a52aefa25dbba460001552bcddc51aff2f782dfc2b69",
+        69410,
+        "cfc15377f66cdd8a17a9fd1946d3be40facfd988923bcf2fa4f2c17e1654d691",
     )
     assert EXPECTED_ARTIFACTS["build/SRK-Diagnostics/SRK-Diagnostics.bin"] == (
         2408448,
-        "3c03f4c49dd70e7f142faaa3b1fc69b1e1735eb13b5524beed0b46a4d3bfaff6",
+        "56fc685e8df1e3f4f28806ef703bbfcc26b5bd48105a7aeae5917f7158f967ca",
     )
     assert EXPECTED_ARTIFACTS["build/SRK-Diagnostics/SRK-Diagnostics.cue"] == (
         81,
@@ -78,7 +78,7 @@ def test_pre_media_locks_final_and_intermediate_build_artifacts():
     )
 
 
-def test_pre_media_requires_consolidated_lifecycle_telemetry_and_raw_scsp_contract():
+def test_pre_media_requires_consolidated_lifecycle_telemetry_and_sega_oneshot_order():
     text = SOURCE.read_text(encoding="utf-8")
     for required in (
         '"sbl_midi_calibration_consolidated": True',
@@ -93,9 +93,15 @@ def test_pre_media_requires_consolidated_lifecycle_telemetry_and_raw_scsp_contra
         "voice=program%SRK_SBL_CAL_FAMILY_SIZE",
         "history!=s->history_baseline",
         "srk_saturn_audio_bind(srk_cal_host,host_state);",
+        '"SND_MoveData((Uint16 *)srk_cal_family"',
+        '"SND_ChgMix(0,0)"',
+        '"SND_SetTlVl(15)"',
+        '"srk_cal_send(SRK_SBL_CAL_CONTROL_CHANGE,SRK_SBL_CAL_CHANNEL,SRK_SBL_CAL_BANK_CONTROLLER,0u)"',
+        '"srk_cal_send(SRK_SBL_CAL_PROGRAM_CHANGE,SRK_SBL_CAL_CHANNEL,(Uint8)voice,0u)"',
+        'if "SND_StartSeq" in runtime:',
+        "sega_oneshot_order=True",
     ):
         assert required in text
-    assert 'if "SND_ChgMix" in runtime:' in text
     assert "srk_host.present_audio_tone = 0;" in text
     assert "srk_host.stop_audio = 0;" in text
     assert "srk_host.read_audio_status = 0;" in text
