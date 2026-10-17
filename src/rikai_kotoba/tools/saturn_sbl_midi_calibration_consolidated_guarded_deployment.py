@@ -11,9 +11,7 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_consolidated_guarded_depl
     DESTINATION_NAME,
     EXPECTED_AREA_MAP_SHA256,
     EXPECTED_BIN_SHA256,
-    EXPECTED_BUILD_REPORT_SHA256,
     EXPECTED_CUE_SHA256,
-    EXPECTED_MANIFEST_SHA256,
     SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError,
     apply_sbl_midi_calibration_consolidated_guarded_deployment,
     prepare_sbl_midi_calibration_consolidated_guarded_deployment,
@@ -24,8 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="srk-saturn-sbl-midi-calibration-consolidated-guarded-deployment",
         description=(
-            "Prepare or explicitly apply the hash-locked consolidated SBL MIDI "
-            "calibration image inside a reviewed whole-card SAROO inventory. "
+            "Prepare or explicitly apply the hash-locked consolidated Sega one-shot "
+            "SBL MIDI calibration image inside a reviewed whole-card SAROO inventory. "
             "Without --apply the card is read only and only the requested off-card "
             "guard manifest is created."
         ),
@@ -39,12 +37,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _print_locked_evidence() -> None:
-    print(f"Locked candidate manifest  : {EXPECTED_MANIFEST_SHA256}")
-    print(f"Locked build report        : {EXPECTED_BUILD_REPORT_SHA256}")
+def _print_locked_evidence(report) -> None:
+    print(f"Audited candidate manifest : {report.manifest_sha256}")
+    print(f"Audited build report       : {report.build_report_sha256}")
     print(f"Locked external .MP map    : {EXPECTED_AREA_MAP_SHA256}")
     print(f"Locked deployable BIN      : {EXPECTED_BIN_SHA256}")
     print(f"Locked deployable CUE      : {EXPECTED_CUE_SHA256}")
+    print("Sega one-shot order        : EXACT")
     print(f"Fixed SAROO category       : {CATEGORY}")
     print(f"Fixed destination          : {DESTINATION_NAME}")
 
@@ -60,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print("SRK SBL MIDI Calibration / Consolidated GUARDED DEPLOYMENT PREPARE")
             print("------------------------------------------------------------------")
-            _print_locked_evidence()
+            _print_locked_evidence(result.pre_media)
             print()
             print(f"Card root                  : {result.guard_inventory.card_root}")
             print(f"Future destination         : {result.plan.destination_directory}")
@@ -72,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Files SHA-256ed            : {result.guard_inventory.hashed_file_count}")
             print("Consolidated pre-media     : EXACT")
             print("128-program family model   : EXACT")
+            print("Sega Direct-MIDI one-shot  : EXACT")
             print("Screen-owned SBL lifecycle : EXACT")
             print("Raw SCSP Audio Test        : RETAINED")
             print("68K execution telemetry    : REQUIRED")
@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print("SRK SBL MIDI Calibration / Consolidated GUARDED DEPLOYMENT APPLY")
         print("----------------------------------------------------------------")
-        _print_locked_evidence()
+        _print_locked_evidence(result.pre_media)
         print()
         print(f"Guard manifest             : {result.guard_manifest_path}")
         print(f"Guard manifest SHA-256     : {result.guard_manifest_sha256}")
@@ -110,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {relative}")
         print("Post-write whole-card      : PASS (only authorised additions differ)")
         print()
-        print("Result                     : CONSOLIDATED CALIBRATION DEPLOYMENT VERIFIED")
+        print("Result                     : CONSOLIDATED ONE-SHOT DEPLOYMENT VERIFIED")
         print("Existing SAROO content was not overwritten or removed.")
         print("Safely eject the SD card before moving it to the Saturn.")
         return 0
