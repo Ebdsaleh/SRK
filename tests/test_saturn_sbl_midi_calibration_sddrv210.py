@@ -52,7 +52,7 @@ def _families() -> SaturnGmCalibrationFamilyBanks:
                 velocity_amounts=(0,),
             )
         )
-    return SaturnSblMidiCalibrationFamilyBanks(
+    return SaturnGmCalibrationFamilyBanks(
         source_path=Path("GeneralUser-GS.sf2"),
         source_sha256="0" * 64,
         banks=tuple(banks),
