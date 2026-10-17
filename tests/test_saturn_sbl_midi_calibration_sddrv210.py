@@ -52,7 +52,7 @@ def _families() -> SaturnGmCalibrationFamilyBanks:
                 velocity_amounts=(0,),
             )
         )
-    return SaturnGmCalibrationFamilyBanks(
+    return SaturnSblMidiCalibrationFamilyBanks(
         source_path=Path("GeneralUser-GS.sf2"),
         source_sha256="0" * 64,
         banks=tuple(banks),
@@ -107,7 +107,8 @@ def test_sddrv210_runtime_validates_interface_table_and_history_ring():
         "SRK_SBL_CAL_HISTORY_RING_END 0x0FFFu",
         "SRK_SBL_CAL_HISTORY_ENTRY_BYTES 16u",
         "SRK_SBL_CAL_HISTORY_OFFSET_MASK 0x07F0u",
-        "raw>SRK_SBL_CAL_HISTORY_OFFSET_MASK",
+        "SRK_SBL_CAL_HISTORY_OFFSET_MAX 0x0800u",
+        "raw>SRK_SBL_CAL_HISTORY_OFFSET_MAX",
         "s->history_valid=(s->interface_valid&&history_valid",
         "s->commands_queued>0UL&&s->history_valid",
     ):
@@ -162,6 +163,7 @@ def test_sddrv210_manifest_records_exact_telemetry_contract():
     assert telemetry["command_history_ring_start"] == "0x0800"
     assert telemetry["command_history_ring_end"] == "0x0FFF"
     assert telemetry["command_history_entry_bytes"] == 16
+    assert telemetry["command_history_offset_max"] == "0x0800"
     assert telemetry["system_information_pointer_expected"] == "0x00000440"
     assert telemetry["host_interface_pointer_expected"] == "0x00000700"
     assert telemetry["area_map_current_pointer_expected"] == "0x00000500"
