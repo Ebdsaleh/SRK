@@ -37,6 +37,7 @@ _COMMAND_HISTORY_RING_START = 0x0800
 _COMMAND_HISTORY_RING_END = 0x0FFF
 _COMMAND_HISTORY_ENTRY_BYTES = 16
 _COMMAND_HISTORY_OFFSET_MASK = 0x07F0
+_COMMAND_HISTORY_OFFSET_MAX = 0x0800
 
 
 def _sha(path: Path) -> str:
@@ -44,17 +45,32 @@ def _sha(path: Path) -> str:
 
 
 def _driver(saturn_root, sound_driver) -> Path:
-    driver = _candidate._gm._driver(
-        _candidate._gm._path(saturn_root),
-        None if sound_driver is None else _candidate._gm._path(sound_driver),
-    )
-    digest = _sha(driver)
-    if digest.lower() != SDDRV210_SHA256:
+    root = _candidate._gm._path(saturn_root)
+    if sound_driver is not None:
+        driver = _candidate._gm._driver(root, _candidate._gm._path(sound_driver))
+        digest = _sha(driver)
+        if digest.lower() != SDDRV210_SHA256:
+            raise SaturnSblMidiCalibrationCandidateError(
+                "current Sega one-shot requires SDDRV Ver 2.10 exactly; "
+                f"expected SHA-256 {SDDRV210_SHA256}, got {digest} from {driver}"
+            )
+        return driver
+
+    matches = []
+    for candidate in _candidate._gm._walk(root):
+        if candidate.name.casefold() != "sddrvs.tsk":
+            continue
+        try:
+            if _sha(candidate).lower() == SDDRV210_SHA256:
+                matches.append(candidate)
+        except OSError:
+            continue
+    if not matches:
         raise SaturnSblMidiCalibrationCandidateError(
-            "current Sega one-shot requires SDDRV Ver 2.10 exactly; "
-            f"expected SHA-256 {SDDRV210_SHA256}, got {digest} from {driver}"
+            "SDDRV Ver 2.10 was not found under the Saturn development root; "
+            f"required SHA-256 {SDDRV210_SHA256}"
         )
-    return driver
+    return sorted(matches, key=lambda path: path.as_posix().casefold())[0]
 
 
 def _header(base: str) -> str:
@@ -82,6 +98,7 @@ def _runtime(base: str) -> str:
 #define SRK_SBL_CAL_HISTORY_RING_END 0x{_COMMAND_HISTORY_RING_END:04X}u
 #define SRK_SBL_CAL_HISTORY_ENTRY_BYTES {_COMMAND_HISTORY_ENTRY_BYTES}u
 #define SRK_SBL_CAL_HISTORY_OFFSET_MASK 0x{_COMMAND_HISTORY_OFFSET_MASK:04X}u
+#define SRK_SBL_CAL_HISTORY_OFFSET_MAX 0x{_COMMAND_HISTORY_OFFSET_MAX:04X}u
 #define SRK_SBL_CAL_SYSTEM_INFORMATION_POINTER_EXPECTED 0x{_SYSTEM_INFORMATION_POINTER_EXPECTED:08X}UL
 #define SRK_SBL_CAL_HOST_INTERFACE_POINTER_EXPECTED 0x{_HOST_INTERFACE_POINTER_EXPECTED:08X}UL
 #define SRK_SBL_CAL_AREA_MAP_CURRENT_POINTER_EXPECTED 0x{_AREA_MAP_CURRENT_POINTER_EXPECTED:08X}UL
@@ -111,8 +128,8 @@ static void srk_cal_sample(SRK_SBL_MIDI_CAL_RUNTIME_STATE *s){{
 }}
 static Uint32 srk_cal_cpu_error(void){{return srk_cal_read_u32(0x{_CPU_ERROR_ADDRESS:08X}UL);}}
 static Uint16 srk_cal_history_address(Uint16 raw,unsigned int *valid){{
- if((raw&0x000Fu)!=0u||raw>SRK_SBL_CAL_HISTORY_OFFSET_MASK){{if(valid)*valid=0u;return 0u;}}
- if(valid)*valid=1u;return (Uint16)(SRK_SBL_CAL_HISTORY_RING_START+raw);
+ if((raw&0x000Fu)!=0u||raw>SRK_SBL_CAL_HISTORY_OFFSET_MAX){{if(valid)*valid=0u;return 0u;}}
+ if(valid)*valid=1u;return (Uint16)(SRK_SBL_CAL_HISTORY_RING_START+(raw&SRK_SBL_CAL_HISTORY_OFFSET_MASK));
 }}
 static void srk_cal_sample(SRK_SBL_MIDI_CAL_RUNTIME_STATE *s){{
  Uint16 raw,history;unsigned int history_valid;if(!s)return;
@@ -196,6 +213,7 @@ def _telemetry_manifest(document: dict) -> dict:
             "command_history_ring_end": f"0x{_COMMAND_HISTORY_RING_END:04X}",
             "command_history_entry_bytes": _COMMAND_HISTORY_ENTRY_BYTES,
             "command_history_offset_mask": f"0x{_COMMAND_HISTORY_OFFSET_MASK:04X}",
+            "command_history_offset_max": f"0x{_COMMAND_HISTORY_OFFSET_MAX:04X}",
             "cpu_error_address": f"0x{_CPU_ERROR_ADDRESS:08X}",
             "command_history_proves_driver_execution": True,
             "interface_table_must_match_before_execution_proof": True,
