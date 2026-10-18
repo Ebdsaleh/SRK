@@ -1,10 +1,22 @@
 from pathlib import Path
 
+import pytest
+
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_consolidated as legacy
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_sddrv210 as sddrv210
 from rikai_kotoba.hardware.saturn.sbl_gm_calibration_family_banks import (
     SaturnGmCalibrationFamilyBank,
     SaturnGmCalibrationFamilyBanks,
+)
+from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_volume_guarded_deployment import (
+    CONFIRMATION_TOKEN,
+    DESTINATION_NAME,
+    EXPECTED_BIN_SHA256,
+    EXPECTED_BUILD_REPORT_SHA256,
+    EXPECTED_CUE_SHA256,
+    EXPECTED_MANIFEST_SHA256,
+    SaturnSblMidiCalibrationSddrv210VolumeGuardedDeploymentError,
+    _require_final_hash_lock,
 )
 from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_volume import (
     MASTER_VOLUME_DEFAULT,
@@ -143,3 +155,17 @@ def test_current_candidate_routes_through_volume_layer_without_rewriting_old_sdd
         "return _legacy_candidate.build_saturn_sbl_midi_calibration_candidate("
         in source
     )
+
+
+def test_sddrv210_volume_guard_is_new_destination_and_fails_closed_before_build_hashes():
+    assert DESTINATION_NAME == "SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT-SDDRV210-VOLUME"
+    assert CONFIRMATION_TOKEN == "DEPLOY-SBL-MIDI-CALIBRATION-SEGA-ONESHOT-SDDRV210-VOLUME"
+    assert EXPECTED_MANIFEST_SHA256 is None
+    assert EXPECTED_BUILD_REPORT_SHA256 is None
+    assert EXPECTED_BIN_SHA256 is None
+    assert EXPECTED_CUE_SHA256 is None
+    with pytest.raises(
+        SaturnSblMidiCalibrationSddrv210VolumeGuardedDeploymentError,
+        match="intentionally blocked",
+    ):
+        _require_final_hash_lock()
