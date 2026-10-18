@@ -25,6 +25,12 @@ TRANSITION_BUILD_REPORT_SHA256 = "473239f6fd8d65c8d7438121a2e2822d03f9e03891ebad
 TRANSITION_DEPLOYABLE_BIN_SHA256 = "f083a04d0eabd249083539db74f6a55482537e279210ab0a081da84aaf97d0ec"
 TRANSITION_DEPLOYABLE_CUE_SHA256 = "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
 
+# Exact telemetry-correct off-card build audited on Eridu on 2026-10-18.
+FINAL_MANIFEST_SHA256 = "799197d9babc8ce2a3e14cae5a32f84dd89369fc50b12a5ad8e9d23e284f1d82"
+FINAL_BUILD_REPORT_SHA256 = "cb91a8a35b2c5744c042b4b6abe4284e27fca31fda3aa7bbdd9991e2d4e14417"
+FINAL_DEPLOYABLE_BIN_SHA256 = "b43ac550f5560d1a99e686833e826e38167b28bdbc8e4dd49b7c270754c3189c"
+FINAL_DEPLOYABLE_CUE_SHA256 = "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
+
 _EXPECTED_TELEMETRY = {
     "driver_version": "2.10",
     "driver_sha256": SDDRV210_SHA256,
@@ -210,5 +216,10 @@ def audit_sddrv210_midi_calibration_pre_media(
         sega_oneshot_order=report.sega_oneshot_order,
         deployable_verified_against_iso=report.deployable_verified_against_iso,
         sddrv210_telemetry_contract=True,
-        final_deployment_hash_lock_ready=False,
+        final_deployment_hash_lock_ready=(
+            report.manifest_sha256.lower() == FINAL_MANIFEST_SHA256
+            and report.build_report_sha256.lower() == FINAL_BUILD_REPORT_SHA256
+            and report.bin_sha256.lower() == FINAL_DEPLOYABLE_BIN_SHA256
+            and report.cue_sha256.lower() == FINAL_DEPLOYABLE_CUE_SHA256
+        ),
     )
