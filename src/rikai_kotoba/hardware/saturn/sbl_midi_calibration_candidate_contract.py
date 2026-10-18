@@ -2,7 +2,8 @@
 
 The current public calibration command routes through the SDDRV Ver 2.10
 screen-owned Sega Direct-MIDI one-shot contract, explicit 0..15 master-volume
-control, and complete 128-program family bank author. Historical GATE3/GATE4 reproduction code still passes explicit
+control, read-only SDDRV210 voice-allocation telemetry, and complete 128-program
+family bank author. Historical GATE3/GATE4 reproduction code still passes explicit
 melodic/drum banks; that legacy signature is intentionally preserved and routed
 to the historical builder so prior physical evidence remains reproducible.
 """
@@ -15,11 +16,11 @@ from typing import Iterator
 
 from . import sbl_midi_calibration_candidate as _legacy_candidate
 from . import sbl_midi_calibration_consolidated as _candidate
-from . import sbl_midi_calibration_sddrv210_volume as _sddrv210_volume
+from . import sbl_midi_calibration_sddrv210_voice_probe as _sddrv210_probe
 
 
-SaturnSblMidiCalibrationCandidateError = _sddrv210_volume.SaturnSblMidiCalibrationCandidateError
-SaturnSblMidiCalibrationCandidateResult = _sddrv210_volume.SaturnSblMidiCalibrationCandidateResult
+SaturnSblMidiCalibrationCandidateError = _sddrv210_probe.SaturnSblMidiCalibrationCandidateError
+SaturnSblMidiCalibrationCandidateResult = _sddrv210_probe.SaturnSblMidiCalibrationCandidateResult
 
 
 _CURRENT_DIAGNOSTIC_FILES = (
@@ -151,7 +152,7 @@ def build_saturn_sbl_midi_calibration_candidate(
                     drum_tone_bank=drum_tone_bank,
                     sound_driver=sound_driver,
                 )
-            return _sddrv210_volume.build_saturn_sbl_midi_calibration_candidate(
+            return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate(
                 baseline_project,
                 saturn_root,
                 output,
