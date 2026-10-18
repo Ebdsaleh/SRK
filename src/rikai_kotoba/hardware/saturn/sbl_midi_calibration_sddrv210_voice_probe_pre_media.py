@@ -24,6 +24,20 @@ SaturnSblMidiCalibrationSddrv210VoiceProbePreMediaError = (
     _sddrv.SaturnSblMidiCalibrationSddrv210PreMediaError
 )
 
+FINAL_MANIFEST_SHA256 = "a84ce1e42d6b0db66a667da53ae91d169b70362dacf3e15c07c06b5482766a8b"
+FINAL_BUILD_REPORT_SHA256 = "fe47f189689d2580c6ec89c7e860dac2151c2d14be929de07d34aa84106653e7"
+FINAL_DEPLOYABLE_BIN_SHA256 = "539251c5552eb38075c1be14fea5817cc796f64bd2513cddc7353e8c0ca5f7b3"
+FINAL_DEPLOYABLE_CUE_SHA256 = "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
+
+
+def final_hash_lock_matches(report) -> bool:
+    return (
+        report.manifest_sha256.lower() == FINAL_MANIFEST_SHA256
+        and report.build_report_sha256.lower() == FINAL_BUILD_REPORT_SHA256
+        and report.bin_sha256.lower() == FINAL_DEPLOYABLE_BIN_SHA256
+        and report.cue_sha256.lower() == FINAL_DEPLOYABLE_CUE_SHA256
+    )
+
 
 @contextmanager
 def _probe_base_contract():
