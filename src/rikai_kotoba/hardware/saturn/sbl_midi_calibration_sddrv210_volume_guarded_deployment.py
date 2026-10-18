@@ -7,6 +7,10 @@ from contextlib import contextmanager
 from . import sbl_midi_calibration_consolidated_guarded_deployment as _guard
 from .sbl_midi_calibration_sddrv210 import SDDRV210_SHA256
 from .sbl_midi_calibration_sddrv210_volume_pre_media import (
+    FINAL_BUILD_REPORT_SHA256,
+    FINAL_DEPLOYABLE_BIN_SHA256,
+    FINAL_DEPLOYABLE_CUE_SHA256,
+    FINAL_MANIFEST_SHA256,
     audit_sddrv210_volume_pre_media,
 )
 
@@ -16,11 +20,11 @@ DESTINATION_NAME = "SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT-SDDRV210-VOLUME"
 CATEGORY = "TEST"
 EXPECTED_SOUND_DRIVER_SHA256 = SDDRV210_SHA256
 
-# Filled only after the first volume-enabled off-card build is audited.
-EXPECTED_MANIFEST_SHA256: str | None = None
-EXPECTED_BUILD_REPORT_SHA256: str | None = None
-EXPECTED_BIN_SHA256: str | None = None
-EXPECTED_CUE_SHA256: str | None = None
+# Exact volume-enabled off-card build audited on Eridu on 2026-10-18.
+EXPECTED_MANIFEST_SHA256: str | None = FINAL_MANIFEST_SHA256
+EXPECTED_BUILD_REPORT_SHA256: str | None = FINAL_BUILD_REPORT_SHA256
+EXPECTED_BIN_SHA256: str | None = FINAL_DEPLOYABLE_BIN_SHA256
+EXPECTED_CUE_SHA256: str | None = FINAL_DEPLOYABLE_CUE_SHA256
 
 SaturnSblMidiCalibrationSddrv210VolumeGuardedDeploymentError = (
     _guard.SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError
