@@ -48,7 +48,10 @@ def main(argv: list[str] | None = None) -> int:
     print("Execution proof           : POINTER + HISTORY VALIDITY REQUIRED")
     print("Sega one-shot order       : EXACT / MOVEDATA -> CHGMIX -> TL -> CC32 -> PROGRAM")
     print("SAROO writes              : NONE")
-    print("Deployment                : BLOCKED PENDING FINAL HASH LOCK")
+    if report.final_deployment_hash_lock_ready:
+        print("Deployment                : FINAL HASH LOCK MATCH / PREPARE ELIGIBLE")
+    else:
+        print("Deployment                : BLOCKED / FINAL HASH LOCK MISMATCH")
     print()
     print("Result                    : SUCCESS")
     return 0
