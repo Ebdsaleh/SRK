@@ -1,11 +1,11 @@
 """Guarded SAROO deployment contract for the SDDRV Ver 2.10 one-shot.
 
-The supplied 2026-10-17 build proves the exact Ver 2.10 input transition, but
-telemetry correction changes the executable. No SAROO write is permitted until
-a fresh telemetry-correct build has been produced and its exact manifest,
-build-report, BIN and CUE hashes are reviewed and filled into this contract.
-Once filled, the established whole-card guard/deployment implementation is reused
-under an SDDRV210-specific destination and confirmation token.
+The supplied 2026-10-17 build proves the exact Ver 2.10 input transition. The
+fresh telemetry-correct 2026-10-18 build is now hard-locked by exact manifest,
+build-report, BIN and CUE SHA-256 values. The established whole-card
+guard/deployment implementation is reused under an SDDRV210-specific destination
+and confirmation token; PREPARE remains read-only with respect to deployment and
+APPLY still requires the reviewed whole-card guard hash plus explicit confirmation.
 """
 
 from __future__ import annotations
@@ -28,12 +28,12 @@ DESTINATION_NAME = "SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT-SDDRV210"
 CATEGORY = "TEST"
 EXPECTED_SOUND_DRIVER_SHA256 = SDDRV210_SHA256
 
-# Intentionally unset until the first telemetry-correct SDDRV210 build is
-# returned from Eridu. None is a hard deployment stop, never a wildcard.
-EXPECTED_MANIFEST_SHA256: str | None = None
-EXPECTED_BUILD_REPORT_SHA256: str | None = None
-EXPECTED_BIN_SHA256: str | None = None
-EXPECTED_CUE_SHA256: str | None = None
+# Exact telemetry-correct SDDRV210 build audited off-card on Eridu on
+# 2026-10-18. These hashes are the deployment allow-list, never wildcards.
+EXPECTED_MANIFEST_SHA256: str | None = "799197d9babc8ce2a3e14cae5a32f84dd89369fc50b12a5ad8e9d23e284f1d82"
+EXPECTED_BUILD_REPORT_SHA256: str | None = "cb91a8a35b2c5744c042b4b6abe4284e27fca31fda3aa7bbdd9991e2d4e14417"
+EXPECTED_BIN_SHA256: str | None = "b43ac550f5560d1a99e686833e826e38167b28bdbc8e4dd49b7c270754c3189c"
+EXPECTED_CUE_SHA256: str | None = "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
 
 SaturnSblMidiCalibrationSddrv210GuardedDeploymentError = (
     _guard.SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError
