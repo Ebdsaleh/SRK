@@ -24,6 +24,27 @@ MASTER_VOLUME_MAX = 15
 MASTER_VOLUME_DEFAULT = 15
 
 
+def _telemetry_manifest(document: dict) -> dict:
+    candidate = dict(document)
+    policy = dict(candidate.get("policy") or {})
+    policy["sddrv210_master_volume_control"] = True
+    candidate["policy"] = policy
+    calibration = dict(candidate.get("sbl_midi_calibration") or {})
+    telemetry = dict(calibration.get("telemetry") or {})
+    telemetry.update(
+        {
+            "master_volume_min": MASTER_VOLUME_MIN,
+            "master_volume_max": MASTER_VOLUME_MAX,
+            "master_volume_default": MASTER_VOLUME_DEFAULT,
+            "master_volume_control": "DPAD_UP_DOWN",
+            "master_volume_command": "SND_SetTlVl",
+        }
+    )
+    calibration["telemetry"] = telemetry
+    candidate["sbl_midi_calibration"] = calibration
+    return candidate
+
+
 def _header(base: str) -> str:
     field_anchor = " unsigned long system_interface_work_pointer;\n"
     if base.count(field_anchor) != 1:
@@ -179,6 +200,7 @@ def _contract():
     old_header = _sddrv210._header
     old_runtime = _sddrv210._runtime
     old_main = _sddrv210._main
+    old_manifest = _sddrv210._telemetry_manifest
 
     def header(base: str) -> str:
         return _header(old_header(base))
@@ -189,15 +211,20 @@ def _contract():
     def main(base: str) -> str:
         return _main(old_main(base))
 
+    def telemetry_manifest(document: dict) -> dict:
+        return _telemetry_manifest(old_manifest(document))
+
     _sddrv210._header = header
     _sddrv210._runtime = runtime
     _sddrv210._main = main
+    _sddrv210._telemetry_manifest = telemetry_manifest
     try:
         yield
     finally:
         _sddrv210._header = old_header
         _sddrv210._runtime = old_runtime
         _sddrv210._main = old_main
+        _sddrv210._telemetry_manifest = old_manifest
 
 
 def build_saturn_sbl_midi_calibration_candidate(
