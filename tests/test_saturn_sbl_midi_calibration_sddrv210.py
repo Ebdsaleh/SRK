@@ -200,7 +200,7 @@ def test_sddrv210_guard_is_versioned_and_locks_exact_telemetry_correct_build():
     assert FINAL_DEPLOYABLE_BIN_SHA256 != TRANSITION_DEPLOYABLE_BIN_SHA256
 
 
-def test_current_candidate_contract_routes_nonhistorical_builds_through_sddrv210():
+def test_deployed_sddrv210_contract_remains_preserved_behind_current_volume_layer():
     source = (
         ROOT
         / "src"
@@ -209,6 +209,13 @@ def test_current_candidate_contract_routes_nonhistorical_builds_through_sddrv210
         / "saturn"
         / "sbl_midi_calibration_candidate_contract.py"
     ).read_text(encoding="utf-8")
-    assert "from . import sbl_midi_calibration_sddrv210 as _sddrv210" in source
-    assert "return _sddrv210.build_saturn_sbl_midi_calibration_candidate(" in source
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_volume as _sddrv210_volume"
+        in source
+    )
+    assert (
+        "return _sddrv210_volume.build_saturn_sbl_midi_calibration_candidate("
+        in source
+    )
+    assert "SND_SetTlVl(15)" in _runtime(legacy._runtime(_families()))
     assert "return _legacy_candidate.build_saturn_sbl_midi_calibration_candidate(" in source
