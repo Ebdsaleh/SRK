@@ -15,6 +15,10 @@ from contextlib import contextmanager
 from . import sbl_midi_calibration_consolidated_guarded_deployment as _guard
 from .sbl_midi_calibration_sddrv210 import SDDRV210_SHA256
 from .sbl_midi_calibration_sddrv210_pre_media import (
+    FINAL_BUILD_REPORT_SHA256,
+    FINAL_DEPLOYABLE_BIN_SHA256,
+    FINAL_DEPLOYABLE_CUE_SHA256,
+    FINAL_MANIFEST_SHA256,
     TRANSITION_BUILD_REPORT_SHA256,
     TRANSITION_DEPLOYABLE_BIN_SHA256,
     TRANSITION_DEPLOYABLE_CUE_SHA256,
@@ -30,10 +34,10 @@ EXPECTED_SOUND_DRIVER_SHA256 = SDDRV210_SHA256
 
 # Exact telemetry-correct SDDRV210 build audited off-card on Eridu on
 # 2026-10-18. These hashes are the deployment allow-list, never wildcards.
-EXPECTED_MANIFEST_SHA256: str | None = "799197d9babc8ce2a3e14cae5a32f84dd89369fc50b12a5ad8e9d23e284f1d82"
-EXPECTED_BUILD_REPORT_SHA256: str | None = "cb91a8a35b2c5744c042b4b6abe4284e27fca31fda3aa7bbdd9991e2d4e14417"
-EXPECTED_BIN_SHA256: str | None = "b43ac550f5560d1a99e686833e826e38167b28bdbc8e4dd49b7c270754c3189c"
-EXPECTED_CUE_SHA256: str | None = "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
+EXPECTED_MANIFEST_SHA256: str | None = FINAL_MANIFEST_SHA256
+EXPECTED_BUILD_REPORT_SHA256: str | None = FINAL_BUILD_REPORT_SHA256
+EXPECTED_BIN_SHA256: str | None = FINAL_DEPLOYABLE_BIN_SHA256
+EXPECTED_CUE_SHA256: str | None = FINAL_DEPLOYABLE_CUE_SHA256
 
 SaturnSblMidiCalibrationSddrv210GuardedDeploymentError = (
     _guard.SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError
