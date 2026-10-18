@@ -4,9 +4,14 @@ import pytest
 
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_consolidated as legacy
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_sddrv210 as sddrv210
+from rikai_kotoba.hardware.saturn import sbl_midi_calibration_consolidated_pre_media as consolidated_pre_media
 from rikai_kotoba.hardware.saturn.sbl_gm_calibration_family_banks import (
     SaturnGmCalibrationFamilyBank,
     SaturnGmCalibrationFamilyBanks,
+)
+from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_volume_pre_media import (
+    _VOLUME_ORDER_ANCHOR,
+    _volume_base_contract,
 )
 from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_volume_guarded_deployment import (
     CONFIRMATION_TOKEN,
@@ -169,3 +174,18 @@ def test_sddrv210_volume_guard_is_new_destination_and_fails_closed_before_build_
         match="intentionally blocked",
     ):
         _require_final_hash_lock()
+
+
+def test_volume_pre_media_substitutes_dynamic_one_shot_anchor_and_restores_historical_default():
+    families = _families()
+    runtime = _runtime(sddrv210._runtime(legacy._runtime(families)))
+
+    assert consolidated_pre_media.EXPECTED_VOLUME_ANCHOR == "SND_SetTlVl(15)"
+    assert "SND_SetTlVl(15)" not in runtime
+    assert _VOLUME_ORDER_ANCHOR in runtime
+
+    with _volume_base_contract():
+        assert consolidated_pre_media.EXPECTED_VOLUME_ANCHOR == _VOLUME_ORDER_ANCHOR
+        consolidated_pre_media._require_sega_oneshot_order(runtime)
+
+    assert consolidated_pre_media.EXPECTED_VOLUME_ANCHOR == "SND_SetTlVl(15)"
