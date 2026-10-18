@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_consolidated as legacy
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_sddrv210 as sddrv210
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_consolidated_pre_media as consolidated_pre_media
@@ -10,6 +8,10 @@ from rikai_kotoba.hardware.saturn.sbl_gm_calibration_family_banks import (
     SaturnGmCalibrationFamilyBanks,
 )
 from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_volume_pre_media import (
+    FINAL_BUILD_REPORT_SHA256,
+    FINAL_DEPLOYABLE_BIN_SHA256,
+    FINAL_DEPLOYABLE_CUE_SHA256,
+    FINAL_MANIFEST_SHA256,
     _VOLUME_ORDER_ANCHOR,
     _volume_base_contract,
 )
@@ -20,7 +22,6 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_volume_guarded_d
     EXPECTED_BUILD_REPORT_SHA256,
     EXPECTED_CUE_SHA256,
     EXPECTED_MANIFEST_SHA256,
-    SaturnSblMidiCalibrationSddrv210VolumeGuardedDeploymentError,
     _require_final_hash_lock,
 )
 from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_volume import (
@@ -162,18 +163,31 @@ def test_current_candidate_routes_through_volume_layer_without_rewriting_old_sdd
     )
 
 
-def test_sddrv210_volume_guard_is_new_destination_and_fails_closed_before_build_hashes():
+def test_sddrv210_volume_guard_is_new_destination_and_locks_exact_build():
     assert DESTINATION_NAME == "SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT-SDDRV210-VOLUME"
     assert CONFIRMATION_TOKEN == "DEPLOY-SBL-MIDI-CALIBRATION-SEGA-ONESHOT-SDDRV210-VOLUME"
-    assert EXPECTED_MANIFEST_SHA256 is None
-    assert EXPECTED_BUILD_REPORT_SHA256 is None
-    assert EXPECTED_BIN_SHA256 is None
-    assert EXPECTED_CUE_SHA256 is None
-    with pytest.raises(
-        SaturnSblMidiCalibrationSddrv210VolumeGuardedDeploymentError,
-        match="intentionally blocked",
-    ):
-        _require_final_hash_lock()
+    assert FINAL_MANIFEST_SHA256 == (
+        "6f7d29e898c9f527fe87e9135beeb0f8e47853fd617504e9bc90f3ae763df268"
+    )
+    assert FINAL_BUILD_REPORT_SHA256 == (
+        "483c39cb3207d92a38911059fc91343ed2af159df50f9a919b115ab687ec84fd"
+    )
+    assert FINAL_DEPLOYABLE_BIN_SHA256 == (
+        "d57668eb08171e6862af7e492868a6608a55d73f8d404ef6e6b45ee40a7d135a"
+    )
+    assert FINAL_DEPLOYABLE_CUE_SHA256 == (
+        "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
+    )
+    assert EXPECTED_MANIFEST_SHA256 == FINAL_MANIFEST_SHA256
+    assert EXPECTED_BUILD_REPORT_SHA256 == FINAL_BUILD_REPORT_SHA256
+    assert EXPECTED_BIN_SHA256 == FINAL_DEPLOYABLE_BIN_SHA256
+    assert EXPECTED_CUE_SHA256 == FINAL_DEPLOYABLE_CUE_SHA256
+    assert _require_final_hash_lock() == (
+        FINAL_MANIFEST_SHA256,
+        FINAL_BUILD_REPORT_SHA256,
+        FINAL_DEPLOYABLE_BIN_SHA256,
+        FINAL_DEPLOYABLE_CUE_SHA256,
+    )
 
 
 def test_volume_pre_media_substitutes_dynamic_one_shot_anchor_and_restores_historical_default():
