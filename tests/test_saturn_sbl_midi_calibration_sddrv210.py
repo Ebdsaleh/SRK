@@ -200,22 +200,46 @@ def test_sddrv210_guard_is_versioned_and_locks_exact_telemetry_correct_build():
     assert FINAL_DEPLOYABLE_BIN_SHA256 != TRANSITION_DEPLOYABLE_BIN_SHA256
 
 
-def test_deployed_sddrv210_contract_remains_preserved_behind_current_volume_layer():
-    source = (
+def test_deployed_sddrv210_contract_remains_preserved_behind_probe_and_volume_layers():
+    source_root = (
         ROOT
         / "src"
         / "rikai_kotoba"
         / "hardware"
         / "saturn"
-        / "sbl_midi_calibration_candidate_contract.py"
+    )
+    contract = (
+        source_root / "sbl_midi_calibration_candidate_contract.py"
     ).read_text(encoding="utf-8")
+    probe = (
+        source_root / "sbl_midi_calibration_sddrv210_voice_probe.py"
+    ).read_text(encoding="utf-8")
+    volume = (
+        source_root / "sbl_midi_calibration_sddrv210_volume.py"
+    ).read_text(encoding="utf-8")
+
     assert (
-        "from . import sbl_midi_calibration_sddrv210_volume as _sddrv210_volume"
-        in source
+        "from . import sbl_midi_calibration_sddrv210_voice_probe as _sddrv210_probe"
+        in contract
     )
     assert (
-        "return _sddrv210_volume.build_saturn_sbl_midi_calibration_candidate("
-        in source
+        "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
+        in contract
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_volume as _volume"
+        in probe
+    )
+    assert (
+        "return _volume.build_saturn_sbl_midi_calibration_candidate("
+        in probe
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210 as _sddrv210"
+        in volume
     )
     assert "SND_SetTlVl(15)" in _runtime(legacy._runtime(_families()))
-    assert "return _legacy_candidate.build_saturn_sbl_midi_calibration_candidate(" in source
+    assert (
+        "return _legacy_candidate.build_saturn_sbl_midi_calibration_candidate("
+        in contract
+    )
