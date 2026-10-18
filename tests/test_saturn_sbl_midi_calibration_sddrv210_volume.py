@@ -140,7 +140,7 @@ def test_sddrv210_volume_manifest_records_control_contract():
     assert telemetry["master_volume_command"] == "SND_SetTlVl"
 
 
-def test_current_candidate_routes_through_volume_layer_without_rewriting_old_sddrv210():
+def test_deployed_volume_layer_remains_preserved_behind_current_voice_probe():
     source = (
         ROOT
         / "src"
@@ -150,11 +150,11 @@ def test_current_candidate_routes_through_volume_layer_without_rewriting_old_sdd
         / "sbl_midi_calibration_candidate_contract.py"
     ).read_text(encoding="utf-8")
     assert (
-        "from . import sbl_midi_calibration_sddrv210_volume as _sddrv210_volume"
+        "from . import sbl_midi_calibration_sddrv210_voice_probe as _sddrv210_probe"
         in source
     )
     assert (
-        "return _sddrv210_volume.build_saturn_sbl_midi_calibration_candidate("
+        "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
         in source
     )
     assert (
