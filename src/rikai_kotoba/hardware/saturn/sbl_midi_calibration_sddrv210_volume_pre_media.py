@@ -19,6 +19,20 @@ SaturnSblMidiCalibrationSddrv210VolumePreMediaError = (
 
 _VOLUME_ORDER_ANCHOR = "SND_SetTlVl((SndTlVl)srk_cal_state->master_volume)"
 
+FINAL_MANIFEST_SHA256 = "6f7d29e898c9f527fe87e9135beeb0f8e47853fd617504e9bc90f3ae763df268"
+FINAL_BUILD_REPORT_SHA256 = "483c39cb3207d92a38911059fc91343ed2af159df50f9a919b115ab687ec84fd"
+FINAL_DEPLOYABLE_BIN_SHA256 = "d57668eb08171e6862af7e492868a6608a55d73f8d404ef6e6b45ee40a7d135a"
+FINAL_DEPLOYABLE_CUE_SHA256 = "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
+
+
+def final_hash_lock_matches(report) -> bool:
+    return (
+        report.manifest_sha256.lower() == FINAL_MANIFEST_SHA256
+        and report.build_report_sha256.lower() == FINAL_BUILD_REPORT_SHA256
+        and report.bin_sha256.lower() == FINAL_DEPLOYABLE_BIN_SHA256
+        and report.cue_sha256.lower() == FINAL_DEPLOYABLE_CUE_SHA256
+    )
+
 
 @contextmanager
 def _volume_base_contract():
