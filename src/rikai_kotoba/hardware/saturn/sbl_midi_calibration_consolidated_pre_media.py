@@ -52,6 +52,7 @@ EXPECTED_AREA_MAP_SHA256 = (
 EXPECTED_MAX_FAMILY_BYTES = 185568
 EXPECTED_PROGRAM_COUNT = 128
 EXPECTED_FAMILY_COUNT = 16
+EXPECTED_VOLUME_ANCHOR = "SND_SetTlVl(15)"
 
 EXPECTED_FAMILIES = (
     (0, "GMC00.BIN", tuple(range(0, 8)), 91004, "4ae4dc18cd63f4b8ebf7ebc0491882ffde8f56ff01129b47e51202be7dab6569"),
@@ -129,7 +130,7 @@ def _require_sega_oneshot_order(runtime: str) -> None:
     ordered = (
         "SND_MoveData((Uint16 *)srk_cal_family",
         "SND_ChgMix(0,0)",
-        "SND_SetTlVl(15)",
+        EXPECTED_VOLUME_ANCHOR,
         "srk_cal_send(SRK_SBL_CAL_CONTROL_CHANGE,SRK_SBL_CAL_CHANNEL,SRK_SBL_CAL_BANK_CONTROLLER,0u)",
         "srk_cal_send(SRK_SBL_CAL_PROGRAM_CHANGE,SRK_SBL_CAL_CHANNEL,(Uint8)voice,0u)",
     )
@@ -343,7 +344,7 @@ def audit_consolidated_midi_calibration_pre_media(
             'SND_ChgMap(0)',
             'SND_MoveData((Uint16 *)srk_cal_family',
             'SND_ChgMix(0,0)',
-            'SND_SetTlVl(15)',
+            EXPECTED_VOLUME_ANCHOR,
             'family=program/SRK_SBL_CAL_FAMILY_SIZE',
             'voice=program%SRK_SBL_CAL_FAMILY_SIZE',
             'SND_KD_TONE,0',
