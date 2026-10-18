@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 from rikai_kotoba.hardware.saturn.sbl_gm_calibration_family_banks import (
     SaturnGmCalibrationFamilyBank,
     SaturnGmCalibrationFamilyBanks,
@@ -22,10 +20,13 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_guarded_deployme
     EXPECTED_BUILD_REPORT_SHA256,
     EXPECTED_CUE_SHA256,
     EXPECTED_MANIFEST_SHA256,
-    SaturnSblMidiCalibrationSddrv210GuardedDeploymentError,
     _require_final_hash_lock,
 )
 from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_pre_media import (
+    FINAL_BUILD_REPORT_SHA256,
+    FINAL_DEPLOYABLE_BIN_SHA256,
+    FINAL_DEPLOYABLE_CUE_SHA256,
+    FINAL_MANIFEST_SHA256,
     TRANSITION_BUILD_REPORT_SHA256,
     TRANSITION_DEPLOYABLE_BIN_SHA256,
     TRANSITION_DEPLOYABLE_CUE_SHA256,
@@ -171,18 +172,32 @@ def test_sddrv210_manifest_records_exact_telemetry_contract():
     assert telemetry["interface_table_must_match_before_execution_proof"] is True
 
 
-def test_sddrv210_guard_is_versioned_and_fails_closed_until_rebuild_hashes_are_locked():
+def test_sddrv210_guard_is_versioned_and_locks_exact_telemetry_correct_build():
     assert DESTINATION_NAME == "SRK-Diagnostics-SBL-MIDI-CAL-SEGA-ONESHOT-SDDRV210"
     assert CONFIRMATION_TOKEN == "DEPLOY-SBL-MIDI-CALIBRATION-SEGA-ONESHOT-SDDRV210"
-    assert EXPECTED_MANIFEST_SHA256 is None
-    assert EXPECTED_BUILD_REPORT_SHA256 is None
-    assert EXPECTED_BIN_SHA256 is None
-    assert EXPECTED_CUE_SHA256 is None
-    with pytest.raises(
-        SaturnSblMidiCalibrationSddrv210GuardedDeploymentError,
-        match="intentionally blocked",
-    ):
-        _require_final_hash_lock()
+    assert FINAL_MANIFEST_SHA256 == (
+        "799197d9babc8ce2a3e14cae5a32f84dd89369fc50b12a5ad8e9d23e284f1d82"
+    )
+    assert FINAL_BUILD_REPORT_SHA256 == (
+        "cb91a8a35b2c5744c042b4b6abe4284e27fca31fda3aa7bbdd9991e2d4e14417"
+    )
+    assert FINAL_DEPLOYABLE_BIN_SHA256 == (
+        "b43ac550f5560d1a99e686833e826e38167b28bdbc8e4dd49b7c270754c3189c"
+    )
+    assert FINAL_DEPLOYABLE_CUE_SHA256 == (
+        "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
+    )
+    assert EXPECTED_MANIFEST_SHA256 == FINAL_MANIFEST_SHA256
+    assert EXPECTED_BUILD_REPORT_SHA256 == FINAL_BUILD_REPORT_SHA256
+    assert EXPECTED_BIN_SHA256 == FINAL_DEPLOYABLE_BIN_SHA256
+    assert EXPECTED_CUE_SHA256 == FINAL_DEPLOYABLE_CUE_SHA256
+    assert _require_final_hash_lock() == (
+        FINAL_MANIFEST_SHA256,
+        FINAL_BUILD_REPORT_SHA256,
+        FINAL_DEPLOYABLE_BIN_SHA256,
+        FINAL_DEPLOYABLE_CUE_SHA256,
+    )
+    assert FINAL_DEPLOYABLE_BIN_SHA256 != TRANSITION_DEPLOYABLE_BIN_SHA256
 
 
 def test_current_candidate_contract_routes_nonhistorical_builds_through_sddrv210():
