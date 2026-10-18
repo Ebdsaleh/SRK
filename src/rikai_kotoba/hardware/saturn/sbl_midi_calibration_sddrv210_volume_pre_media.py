@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import sbl_midi_calibration_sddrv210_pre_media as _sddrv
@@ -16,9 +17,22 @@ SaturnSblMidiCalibrationSddrv210VolumePreMediaError = (
     _sddrv.SaturnSblMidiCalibrationSddrv210PreMediaError
 )
 
+_VOLUME_ORDER_ANCHOR = "SND_SetTlVl((SndTlVl)srk_cal_state->master_volume)"
+
+
+@contextmanager
+def _volume_base_contract():
+    old = _sddrv._base.EXPECTED_VOLUME_ANCHOR
+    _sddrv._base.EXPECTED_VOLUME_ANCHOR = _VOLUME_ORDER_ANCHOR
+    try:
+        yield
+    finally:
+        _sddrv._base.EXPECTED_VOLUME_ANCHOR = old
+
 
 def audit_sddrv210_volume_pre_media(project_directory):
-    report = _sddrv.audit_sddrv210_midi_calibration_pre_media(project_directory)
+    with _volume_base_contract():
+        report = _sddrv.audit_sddrv210_midi_calibration_pre_media(project_directory)
     root = Path(project_directory).expanduser().resolve(strict=True)
 
     manifest_path = _sddrv._base._file(
