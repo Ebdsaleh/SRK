@@ -17,6 +17,20 @@ SaturnSblMidiCalibrationSddrv210VelocitySweepPreMediaError = (
     _r5.SaturnSblMidiCalibrationSddrv210LevelSeedPreMediaError
 )
 
+FINAL_MANIFEST_SHA256 = "60254a196e9dcbbd5ba5984f616d9e8b336ed41dc987c8d9ba95e23d1bf080c8"
+FINAL_BUILD_REPORT_SHA256 = "a227f1c62f8b8b61bf3835c739718393f2b23b87c856454872dbfe7011b30047"
+FINAL_DEPLOYABLE_BIN_SHA256 = "15b4b1bbdcb311521c19f95c0abc7fe98cac92f67799bdecf0bcc98718232386"
+FINAL_DEPLOYABLE_CUE_SHA256 = "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
+
+
+def final_hash_lock_matches(report) -> bool:
+    return (
+        report.manifest_sha256.lower() == FINAL_MANIFEST_SHA256
+        and report.build_report_sha256.lower() == FINAL_BUILD_REPORT_SHA256
+        and report.bin_sha256.lower() == FINAL_DEPLOYABLE_BIN_SHA256
+        and report.cue_sha256.lower() == FINAL_DEPLOYABLE_CUE_SHA256
+    )
+
 
 def audit_sddrv210_velocity_sweep_pre_media(project_directory):
     report = _r5.audit_sddrv210_level_seed_pre_media(project_directory)
