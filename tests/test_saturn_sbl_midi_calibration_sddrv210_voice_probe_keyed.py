@@ -183,23 +183,30 @@ def test_keyed_manifest_records_physical_raw_scsp_reference_without_writing_it()
     assert telemetry["raw_scsp_reference_audible_mixer_volume4_center"] == "0x8000"
 
 
-def test_current_candidate_routes_through_keyed_probe_and_preserves_redteam():
+def test_keyed_probe_remains_preserved_behind_current_level_seed_probe():
     source_root = ROOT / "src" / "rikai_kotoba" / "hardware" / "saturn"
     contract = (
         source_root / "sbl_midi_calibration_candidate_contract.py"
+    ).read_text(encoding="utf-8")
+    level_seed = (
+        source_root / "sbl_midi_calibration_sddrv210_voice_probe_level_seed.py"
     ).read_text(encoding="utf-8")
     keyed = (
         source_root / "sbl_midi_calibration_sddrv210_voice_probe_keyed.py"
     ).read_text(encoding="utf-8")
 
     assert (
-        "from . import sbl_midi_calibration_sddrv210_voice_probe_keyed "
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_level_seed "
         "as _sddrv210_probe"
         in contract
     )
     assert (
         "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
         in contract
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_keyed as _r4"
+        in level_seed
     )
     assert (
         "from . import sbl_midi_calibration_sddrv210_voice_probe_redteam as _r3"
