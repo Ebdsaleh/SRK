@@ -31,6 +31,20 @@ SaturnSblMidiCalibrationSddrv210VoiceProbeRedTeamPreMediaError = (
     _sddrv.SaturnSblMidiCalibrationSddrv210PreMediaError
 )
 
+FINAL_MANIFEST_SHA256 = "203d19d5925d40257b3619ee896bea62f4e03ac24d059152ceb7b6a415fb3656"
+FINAL_BUILD_REPORT_SHA256 = "eb65e5b39d62b96db550bbf173cfd0c11ef2f1904f143958b69ceb72b203afa8"
+FINAL_DEPLOYABLE_BIN_SHA256 = "27445ee35c639213bc522d6b762728e6321617fd9e9dbc43dc63fb0d9bf8b8f5"
+FINAL_DEPLOYABLE_CUE_SHA256 = "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
+
+
+def final_hash_lock_matches(report) -> bool:
+    return (
+        report.manifest_sha256.lower() == FINAL_MANIFEST_SHA256
+        and report.build_report_sha256.lower() == FINAL_BUILD_REPORT_SHA256
+        and report.bin_sha256.lower() == FINAL_DEPLOYABLE_BIN_SHA256
+        and report.cue_sha256.lower() == FINAL_DEPLOYABLE_CUE_SHA256
+    )
+
 
 def audit_sddrv210_voice_probe_redteam_pre_media(project_directory):
     # Validate the already-proven SDDRV210 + dynamic-volume contract, but do not
