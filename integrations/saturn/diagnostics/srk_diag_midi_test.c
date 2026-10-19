@@ -99,6 +99,21 @@ void srk_diag_midi_test_move_pan(SRK_DIAG_MIDI_TEST_STATE *state, int delta)
 }
 
 
+void srk_diag_midi_test_move_velocity(SRK_DIAG_MIDI_TEST_STATE *state, int delta)
+{
+    int value;
+
+    if(!state || delta == 0)
+        return;
+    value = (int)state->velocity + delta;
+    if(value < 1)
+        value = 1;
+    if(value > 127)
+        value = 127;
+    state->velocity = (srk_u8)value;
+}
+
+
 unsigned int srk_diag_midi_test_family(const SRK_DIAG_MIDI_TEST_STATE *state)
 {
     if(!state)
