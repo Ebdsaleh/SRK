@@ -17,6 +17,20 @@ SaturnSblMidiCalibrationSddrv210LevelSeedPreMediaError = (
     _r4.SaturnSblMidiCalibrationSddrv210VoiceProbeKeyedPreMediaError
 )
 
+FINAL_MANIFEST_SHA256 = "de06a1884057c337600e966c77d98119dbda1ff35e31b0c70a6a2ab9fed6428f"
+FINAL_BUILD_REPORT_SHA256 = "4e1986a756c86390441a81690b8c3f18b6c35692ba79bede6ce7f84cf62ee409"
+FINAL_DEPLOYABLE_BIN_SHA256 = "cce45129fc0debb18b563619cd93b91c5ae26ed8c0ff2e120bca494d05f99229"
+FINAL_DEPLOYABLE_CUE_SHA256 = "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
+
+
+def final_hash_lock_matches(report) -> bool:
+    return (
+        report.manifest_sha256.lower() == FINAL_MANIFEST_SHA256
+        and report.build_report_sha256.lower() == FINAL_BUILD_REPORT_SHA256
+        and report.bin_sha256.lower() == FINAL_DEPLOYABLE_BIN_SHA256
+        and report.cue_sha256.lower() == FINAL_DEPLOYABLE_CUE_SHA256
+    )
+
 
 def audit_sddrv210_level_seed_pre_media(project_directory):
     report = _r4.audit_sddrv210_voice_probe_keyed_pre_media(project_directory)
