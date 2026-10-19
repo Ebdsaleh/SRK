@@ -140,6 +140,10 @@ def audit_sddrv210_voice_probe_redteam_pre_media(project_directory):
         raise SaturnSblMidiCalibrationSddrv210VoiceProbeRedTeamPreMediaError(
             "R3 probe regressed to raw byte-pointer Sound-RAM access"
         )
+    if "static Uint32 srk_cal_probe_u32(Uint32 address)" in runtime:
+        raise SaturnSblMidiCalibrationSddrv210VoiceProbeRedTeamPreMediaError(
+            "R3 probe retained obsolete unused R2 u32 helper"
+        )
     if "if((f2&SRK_SBL_CAL_SLOT_NOTE_ON_MASK)!=0u)" in runtime:
         raise SaturnSblMidiCalibrationSddrv210VoiceProbeRedTeamPreMediaError(
             "R3 probe still gates allocation evidence on the old flag2 bit"
