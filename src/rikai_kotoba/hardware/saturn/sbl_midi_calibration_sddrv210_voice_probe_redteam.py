@@ -133,6 +133,17 @@ static void srk_cal_probe_latch_stop(SRK_SBL_MIDI_CAL_RUNTIME_STATE *s){srk_cal_
 """
     base = base.replace(helper_anchor, helpers, 1)
 
+    obsolete_u32 = (
+        "static Uint32 srk_cal_probe_u32(Uint32 address)"
+        "{volatile Uint16 *p=(volatile Uint16 *)address;"
+        "return ((Uint32)p[0]<<16)|(Uint32)p[1];}\n"
+    )
+    if base.count(obsolete_u32) != 1:
+        raise SaturnSblMidiCalibrationCandidateError(
+            "R3 obsolete R2 u32 helper anchor changed"
+        )
+    base = base.replace(obsolete_u32, "", 1)
+
     start = "static void srk_cal_probe_voice(SRK_SBL_MIDI_CAL_RUNTIME_STATE *s){\n"
     end = "}\nstatic void srk_cal_sample(SRK_SBL_MIDI_CAL_RUNTIME_STATE *s){\n"
     si = base.find(start)
