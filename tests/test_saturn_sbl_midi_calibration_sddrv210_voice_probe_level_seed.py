@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_consolidated as legacy
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_sddrv210 as sddrv210
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_sddrv210_volume as volume
@@ -23,6 +21,12 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_voice_probe_leve
     _runtime,
     _telemetry_manifest,
 )
+from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_voice_probe_level_seed_pre_media import (
+    FINAL_BUILD_REPORT_SHA256,
+    FINAL_DEPLOYABLE_BIN_SHA256,
+    FINAL_DEPLOYABLE_CUE_SHA256,
+    FINAL_MANIFEST_SHA256,
+)
 from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_voice_probe_level_seed_guarded_deployment import (
     CONFIRMATION_TOKEN,
     DESTINATION_NAME,
@@ -30,7 +34,6 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_voice_probe_leve
     EXPECTED_BUILD_REPORT_SHA256,
     EXPECTED_CUE_SHA256,
     EXPECTED_MANIFEST_SHA256,
-    SaturnSblMidiCalibrationSddrv210LevelSeedGuardedDeploymentError,
     _require_final_hash_lock,
 )
 
@@ -199,16 +202,28 @@ def test_current_candidate_routes_level_seed_over_preserved_r4():
     )
 
 
-def test_level_seed_guard_is_separate_and_fails_closed_before_r5_hash_lock():
+def test_level_seed_guard_is_separate_and_locks_exact_r5_build():
     assert DESTINATION_NAME == "SRK-Diagnostics-SBL-MIDI-CAL-SDDRV210-LEVEL-SEED-R5"
     assert CONFIRMATION_TOKEN == "DEPLOY-SBL-MIDI-CALIBRATION-SDDRV210-LEVEL-SEED-R5"
-    assert EXPECTED_MANIFEST_SHA256 is None
-    assert EXPECTED_BUILD_REPORT_SHA256 is None
-    assert EXPECTED_BIN_SHA256 is None
-    assert EXPECTED_CUE_SHA256 is None
-
-    with pytest.raises(
-        SaturnSblMidiCalibrationSddrv210LevelSeedGuardedDeploymentError,
-        match="intentionally blocked",
-    ):
-        _require_final_hash_lock()
+    assert FINAL_MANIFEST_SHA256 == (
+        "de06a1884057c337600e966c77d98119dbda1ff35e31b0c70a6a2ab9fed6428f"
+    )
+    assert FINAL_BUILD_REPORT_SHA256 == (
+        "4e1986a756c86390441a81690b8c3f18b6c35692ba79bede6ce7f84cf62ee409"
+    )
+    assert FINAL_DEPLOYABLE_BIN_SHA256 == (
+        "cce45129fc0debb18b563619cd93b91c5ae26ed8c0ff2e120bca494d05f99229"
+    )
+    assert FINAL_DEPLOYABLE_CUE_SHA256 == (
+        "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
+    )
+    assert EXPECTED_MANIFEST_SHA256 == FINAL_MANIFEST_SHA256
+    assert EXPECTED_BUILD_REPORT_SHA256 == FINAL_BUILD_REPORT_SHA256
+    assert EXPECTED_BIN_SHA256 == FINAL_DEPLOYABLE_BIN_SHA256
+    assert EXPECTED_CUE_SHA256 == FINAL_DEPLOYABLE_CUE_SHA256
+    assert _require_final_hash_lock() == (
+        FINAL_MANIFEST_SHA256,
+        FINAL_BUILD_REPORT_SHA256,
+        FINAL_DEPLOYABLE_BIN_SHA256,
+        FINAL_DEPLOYABLE_CUE_SHA256,
+    )
