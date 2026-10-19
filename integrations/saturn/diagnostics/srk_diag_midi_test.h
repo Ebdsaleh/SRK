@@ -15,6 +15,7 @@ extern "C" {
 #define SRK_DIAG_MIDI_DEFAULT_VELOCITY 100u
 #define SRK_DIAG_MIDI_DEFAULT_PAN 64u
 #define SRK_DIAG_MIDI_PAN_STEP 8u
+#define SRK_DIAG_MIDI_VELOCITY_STEP 8u
 
 
 typedef struct SRK_DIAG_MIDI_TEST_STATE {
@@ -36,6 +37,7 @@ typedef struct SRK_DIAG_MIDI_TEST_STATE {
 void srk_diag_midi_test_reset(SRK_DIAG_MIDI_TEST_STATE *state);
 void srk_diag_midi_test_move_program(SRK_DIAG_MIDI_TEST_STATE *state, int delta);
 void srk_diag_midi_test_move_pan(SRK_DIAG_MIDI_TEST_STATE *state, int delta);
+void srk_diag_midi_test_move_velocity(SRK_DIAG_MIDI_TEST_STATE *state, int delta);
 unsigned int srk_diag_midi_test_family(const SRK_DIAG_MIDI_TEST_STATE *state);
 const char *srk_diag_midi_program_name(unsigned int program);
 const char *srk_diag_midi_family_name(unsigned int family);
