@@ -246,19 +246,28 @@ static void srk_cal_probe_latch_stop(SRK_SBL_MIDI_CAL_RUNTIME_STATE *s){srk_cal_
         1,
     )
 
-    reset_anchor = (
-        " s->scsp_control=0u;s->scsp_sample_address_low=0u;s->scsp_loop_start=0u;s->scsp_loop_end=0u;s->scsp_total_level=0u;s->scsp_mixer=0u;\n"
+    reset_start = (
+        "void srk_saturn_sbl_midi_calibration_runtime_reset("
+        "SRK_SBL_MIDI_CAL_RUNTIME_STATE *s){\n"
     )
-    if base.count(reset_anchor) != 1:
+    reset_end = "}\nstatic unsigned int srk_cal_begin(void *context){\n"
+    rsi = base.find(reset_start)
+    rei = base.find(reset_end, rsi)
+    if rsi < 0 or rei < 0:
         raise SaturnSblMidiCalibrationCandidateError(
-            "R3 reset anchor changed"
+            "R3 runtime-reset function anchor changed"
+        )
+    reset_body = base[rsi:rei]
+    if "s->probe_bus_sane=0u;" in reset_body:
+        raise SaturnSblMidiCalibrationCandidateError(
+            "R3 runtime-reset fields already injected"
         )
     reset = """ s->probe_bus_sane=0u;s->direct_midi_status_word=0u;s->bank_read_stable=0u;s->layer_read_stable=0u;
  s->management_match_count=0u;s->slot_changed_count=0u;s->slot_changed_latched=0u;s->scsp_changed_count=0u;s->scsp_changed_latched=0u;s->scsp_keyed_count=0u;s->scsp_key_latched=0u;
  s->latched_slot_work_index=SRK_SBL_CAL_SLOT_NONE;s->latched_scsp_slot=SRK_SBL_CAL_SLOT_NONE;s->latched_slot_flag1=0u;s->latched_slot_flag2=0u;s->latched_slot_midi=0u;s->latched_slot_note=0u;s->latched_slot_velocity=0u;s->latched_slot_management=0u;s->latched_slot_layer_address=0UL;
  s->latched_scsp_control=0u;s->latched_scsp_sample_address_low=0u;s->latched_scsp_total_level=0u;s->latched_scsp_mixer=0u;s->probe_latch_active=0u;srk_cal_probe_latch_active=0u;
 """
-    return base.replace(reset_anchor, reset_anchor + reset, 1)
+    return base[:rei] + reset + base[rei:]
 
 
 def _main(base: str) -> str:
