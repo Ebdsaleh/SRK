@@ -120,11 +120,13 @@ def test_redteam_probe_latches_independent_slot_and_scsp_changes():
         assert required in runtime
 
 
-def test_redteam_probe_keeps_wordbus_and_stable_u32_reads():
+def test_redteam_probe_keeps_wordbus_and_only_stable_u32_reader():
     _, runtime, _ = _generated()
     assert "volatile Uint8 *" not in runtime
     assert "static Uint16 srk_cal_probe_word16(Uint32 address)" in runtime
+    assert "static Uint32 srk_cal_probe_u32(Uint32 address)" not in runtime
     assert "static Uint32 srk_cal_probe_u32_stable(Uint32 address,unsigned int *ok)" in runtime
+    assert runtime.count("srk_cal_probe_u32_stable(") >= 3
     assert "for(i=0u;i<4u;i++)" in runtime
     assert "s->bank_read_stable=stable" in runtime
     assert "s->layer_read_stable=stable" in runtime
