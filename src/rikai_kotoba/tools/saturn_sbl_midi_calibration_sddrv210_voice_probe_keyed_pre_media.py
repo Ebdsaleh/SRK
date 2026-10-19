@@ -6,6 +6,7 @@ from pathlib import Path
 from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_voice_probe_keyed_pre_media import (
     SaturnSblMidiCalibrationSddrv210VoiceProbeKeyedPreMediaError,
     audit_sddrv210_voice_probe_keyed_pre_media,
+    final_hash_lock_matches,
 )
 
 
@@ -49,7 +50,10 @@ def main(argv: list[str] | None = None) -> int:
     print("Raw SCSP audible reference: CTL=0x0820 MIX=0x8000 @ VOL4/CENTER")
     print("Probe behavior            : READ ONLY")
     print("SAROO writes              : NONE")
-    print("Deployment                : BLOCKED PENDING FINAL HASH LOCK")
+    if final_hash_lock_matches(report):
+        print("Deployment                : FINAL HASH LOCK MATCH / PREPARE ELIGIBLE")
+    else:
+        print("Deployment                : BLOCKED / FINAL HASH LOCK MISMATCH")
     print()
     print("Result                    : SUCCESS")
     return 0
