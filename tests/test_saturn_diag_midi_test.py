@@ -71,3 +71,20 @@ def test_first_calibration_pass_is_fixed_c4_velocity_100_channel_1():
     assert "SRK_DIAG_MIDI_DEFAULT_VELOCITY 100u" in header
     assert '"C4 / 60"' in app
     assert '"MIDI channel:"' in app
+
+
+def test_midi_velocity_is_interactive_without_changing_default_calibration_point():
+    header = _text("srk_diag_midi_test.h")
+    midi = _text("srk_diag_midi_test.c")
+    app = _text("srk_diag_app.c")
+
+    assert "#define SRK_DIAG_MIDI_DEFAULT_VELOCITY 100u" in header
+    assert "#define SRK_DIAG_MIDI_VELOCITY_STEP 8u" in header
+    assert "srk_diag_midi_test_move_velocity" in header
+    assert "if(value < 1)" in midi
+    assert "if(value > 127)" in midi
+    assert "state->velocity = (srk_u8)value;" in midi
+    assert '"B/C Velocity -/+ (1..127)"' in app
+    assert "SRK_DIAG_BUTTON_B" in app
+    assert "SRK_DIAG_BUTTON_C" in app
+    assert "SRK_DIAG_MIDI_VELOCITY_STEP" in app
