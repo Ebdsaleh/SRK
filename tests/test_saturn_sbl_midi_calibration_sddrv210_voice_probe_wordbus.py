@@ -135,23 +135,32 @@ def test_wordbus_manifest_records_measurement_correction_and_bank_init_invariant
     assert BANK_INIT_DEFAULT_VOLUME == 0x007F
 
 
-def test_current_candidate_routes_through_wordbus_probe():
-    source = (
+def test_r2_wordbus_probe_remains_preserved_behind_current_redteam_probe():
+    source_root = (
         ROOT
         / "src"
         / "rikai_kotoba"
         / "hardware"
         / "saturn"
-        / "sbl_midi_calibration_candidate_contract.py"
+    )
+    contract = (
+        source_root / "sbl_midi_calibration_candidate_contract.py"
+    ).read_text(encoding="utf-8")
+    redteam = (
+        source_root / "sbl_midi_calibration_sddrv210_voice_probe_redteam.py"
     ).read_text(encoding="utf-8")
     assert (
-        "from . import sbl_midi_calibration_sddrv210_voice_probe_wordbus "
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_redteam "
         "as _sddrv210_probe"
-        in source
+        in contract
     )
     assert (
         "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
-        in source
+        in contract
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_wordbus as _r2"
+        in redteam
     )
 
 
