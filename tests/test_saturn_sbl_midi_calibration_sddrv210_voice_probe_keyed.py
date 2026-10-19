@@ -183,10 +183,13 @@ def test_keyed_manifest_records_physical_raw_scsp_reference_without_writing_it()
     assert telemetry["raw_scsp_reference_audible_mixer_volume4_center"] == "0x8000"
 
 
-def test_keyed_probe_remains_preserved_behind_current_level_seed_probe():
+def test_keyed_probe_remains_preserved_behind_velocity_and_level_seed_probes():
     source_root = ROOT / "src" / "rikai_kotoba" / "hardware" / "saturn"
     contract = (
         source_root / "sbl_midi_calibration_candidate_contract.py"
+    ).read_text(encoding="utf-8")
+    velocity_sweep = (
+        source_root / "sbl_midi_calibration_sddrv210_voice_probe_velocity_sweep.py"
     ).read_text(encoding="utf-8")
     level_seed = (
         source_root / "sbl_midi_calibration_sddrv210_voice_probe_level_seed.py"
@@ -196,13 +199,17 @@ def test_keyed_probe_remains_preserved_behind_current_level_seed_probe():
     ).read_text(encoding="utf-8")
 
     assert (
-        "from . import sbl_midi_calibration_sddrv210_voice_probe_level_seed "
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_velocity_sweep "
         "as _sddrv210_probe"
         in contract
     )
     assert (
         "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
         in contract
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_level_seed as _r5"
+        in velocity_sweep
     )
     assert (
         "from . import sbl_midi_calibration_sddrv210_voice_probe_keyed as _r4"
