@@ -189,3 +189,23 @@ def test_redteam_guard_is_separate_and_fails_closed_before_r3_hash_lock():
         match="intentionally blocked",
     ):
         _require_final_hash_lock()
+
+
+def test_redteam_reset_state_is_injected_structurally_once():
+    _, runtime, _ = _generated()
+    start = runtime.index(
+        "void srk_saturn_sbl_midi_calibration_runtime_reset("
+        "SRK_SBL_MIDI_CAL_RUNTIME_STATE *s){"
+    )
+    end = runtime.index(
+        "static unsigned int srk_cal_begin(void *context){",
+        start,
+    )
+    reset = runtime[start:end]
+
+    assert reset.count("s->probe_bus_sane=0u;") == 1
+    assert "s->slot_changed_latched=0u" in reset
+    assert "s->scsp_changed_latched=0u" in reset
+    assert "s->scsp_key_latched=0u" in reset
+    assert "s->probe_latch_active=0u;srk_cal_probe_latch_active=0u;" in reset
+    assert runtime.count("s->probe_bus_sane=0u;") == 1
