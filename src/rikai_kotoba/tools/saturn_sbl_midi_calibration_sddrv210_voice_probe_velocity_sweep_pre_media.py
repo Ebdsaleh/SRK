@@ -6,6 +6,7 @@ from pathlib import Path
 from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_voice_probe_velocity_sweep_pre_media import (
     SaturnSblMidiCalibrationSddrv210VelocitySweepPreMediaError,
     audit_sddrv210_velocity_sweep_pre_media,
+    final_hash_lock_matches,
 )
 
 def build_parser():
@@ -45,7 +46,10 @@ def main(argv=None):
     print("Keyed SCSP telemetry      : PRESERVED / KYONB-GATED")
     print("Direct SCSP writes        : NONE")
     print("SAROO writes              : NONE")
-    print("Deployment                : BLOCKED PENDING FINAL HASH LOCK")
+    if final_hash_lock_matches(report):
+        print("Deployment                : FINAL HASH LOCK MATCH / PREPARE ELIGIBLE")
+    else:
+        print("Deployment                : BLOCKED / FINAL HASH LOCK MISMATCH")
     print()
     print("Result                    : SUCCESS")
     return 0
