@@ -135,7 +135,7 @@ def test_wordbus_manifest_records_measurement_correction_and_bank_init_invariant
     assert BANK_INIT_DEFAULT_VOLUME == 0x007F
 
 
-def test_r2_wordbus_probe_remains_preserved_behind_keyed_and_redteam_probes():
+def test_r2_wordbus_probe_remains_preserved_behind_level_seed_keyed_and_redteam_probes():
     source_root = (
         ROOT
         / "src"
@@ -146,6 +146,9 @@ def test_r2_wordbus_probe_remains_preserved_behind_keyed_and_redteam_probes():
     contract = (
         source_root / "sbl_midi_calibration_candidate_contract.py"
     ).read_text(encoding="utf-8")
+    level_seed = (
+        source_root / "sbl_midi_calibration_sddrv210_voice_probe_level_seed.py"
+    ).read_text(encoding="utf-8")
     keyed = (
         source_root / "sbl_midi_calibration_sddrv210_voice_probe_keyed.py"
     ).read_text(encoding="utf-8")
@@ -153,13 +156,17 @@ def test_r2_wordbus_probe_remains_preserved_behind_keyed_and_redteam_probes():
         source_root / "sbl_midi_calibration_sddrv210_voice_probe_redteam.py"
     ).read_text(encoding="utf-8")
     assert (
-        "from . import sbl_midi_calibration_sddrv210_voice_probe_keyed "
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_level_seed "
         "as _sddrv210_probe"
         in contract
     )
     assert (
         "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
         in contract
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_keyed as _r4"
+        in level_seed
     )
     assert (
         "from . import sbl_midi_calibration_sddrv210_voice_probe_redteam as _r3"
