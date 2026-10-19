@@ -140,7 +140,7 @@ def test_sddrv210_volume_manifest_records_control_contract():
     assert telemetry["master_volume_command"] == "SND_SetTlVl"
 
 
-def test_deployed_volume_layer_remains_preserved_behind_wordbus_and_r1_probes():
+def test_deployed_volume_layer_remains_preserved_behind_redteam_probe_chain():
     source_root = (
         ROOT
         / "src"
@@ -151,6 +151,9 @@ def test_deployed_volume_layer_remains_preserved_behind_wordbus_and_r1_probes():
     contract = (
         source_root / "sbl_midi_calibration_candidate_contract.py"
     ).read_text(encoding="utf-8")
+    redteam = (
+        source_root / "sbl_midi_calibration_sddrv210_voice_probe_redteam.py"
+    ).read_text(encoding="utf-8")
     wordbus = (
         source_root / "sbl_midi_calibration_sddrv210_voice_probe_wordbus.py"
     ).read_text(encoding="utf-8")
@@ -159,13 +162,17 @@ def test_deployed_volume_layer_remains_preserved_behind_wordbus_and_r1_probes():
     ).read_text(encoding="utf-8")
 
     assert (
-        "from . import sbl_midi_calibration_sddrv210_voice_probe_wordbus "
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_redteam "
         "as _sddrv210_probe"
         in contract
     )
     assert (
         "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
         in contract
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_wordbus as _r2"
+        in redteam
     )
     assert (
         "from . import sbl_midi_calibration_sddrv210_voice_probe as _probe"
