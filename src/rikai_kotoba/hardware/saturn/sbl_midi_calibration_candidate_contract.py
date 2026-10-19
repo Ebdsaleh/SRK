@@ -4,7 +4,7 @@ The current public calibration command routes through the SDDRV Ver 2.10
 screen-owned Sega Direct-MIDI one-shot contract, explicit 0..15 master-volume
 control, read-only SDDRV210 voice-allocation telemetry, word-safe Sound-RAM
 probing, REDTEAM-hardened independent allocation evidence, KYONB-qualified
-SCSP register snapshots, and complete 128-program family bank author. Historical GATE3/GATE4 reproduction code still passes explicit
+SCSP register snapshots, explicit CC7/CC11 Direct-MIDI level seeding, and complete 128-program family bank author. Historical GATE3/GATE4 reproduction code still passes explicit
 melodic/drum banks; that legacy signature is intentionally preserved and routed
 to the historical builder so prior physical evidence remains reproducible.
 """
@@ -17,7 +17,7 @@ from typing import Iterator
 
 from . import sbl_midi_calibration_candidate as _legacy_candidate
 from . import sbl_midi_calibration_consolidated as _candidate
-from . import sbl_midi_calibration_sddrv210_voice_probe_keyed as _sddrv210_probe
+from . import sbl_midi_calibration_sddrv210_voice_probe_level_seed as _sddrv210_probe
 
 
 SaturnSblMidiCalibrationCandidateError = _sddrv210_probe.SaturnSblMidiCalibrationCandidateError
