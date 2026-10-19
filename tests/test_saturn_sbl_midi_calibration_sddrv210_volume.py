@@ -140,7 +140,7 @@ def test_sddrv210_volume_manifest_records_control_contract():
     assert telemetry["master_volume_command"] == "SND_SetTlVl"
 
 
-def test_deployed_volume_layer_remains_preserved_behind_keyed_probe_chain():
+def test_deployed_volume_layer_remains_preserved_behind_level_seed_probe_chain():
     source_root = (
         ROOT
         / "src"
@@ -150,6 +150,9 @@ def test_deployed_volume_layer_remains_preserved_behind_keyed_probe_chain():
     )
     contract = (
         source_root / "sbl_midi_calibration_candidate_contract.py"
+    ).read_text(encoding="utf-8")
+    level_seed = (
+        source_root / "sbl_midi_calibration_sddrv210_voice_probe_level_seed.py"
     ).read_text(encoding="utf-8")
     keyed = (
         source_root / "sbl_midi_calibration_sddrv210_voice_probe_keyed.py"
@@ -165,13 +168,17 @@ def test_deployed_volume_layer_remains_preserved_behind_keyed_probe_chain():
     ).read_text(encoding="utf-8")
 
     assert (
-        "from . import sbl_midi_calibration_sddrv210_voice_probe_keyed "
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_level_seed "
         "as _sddrv210_probe"
         in contract
     )
     assert (
         "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
         in contract
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_keyed as _r4"
+        in level_seed
     )
     assert (
         "from . import sbl_midi_calibration_sddrv210_voice_probe_redteam as _r3"
