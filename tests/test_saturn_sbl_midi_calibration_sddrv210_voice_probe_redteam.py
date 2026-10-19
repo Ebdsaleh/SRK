@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_consolidated as legacy
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_sddrv210 as sddrv210
 from rikai_kotoba.hardware.saturn import sbl_midi_calibration_sddrv210_volume as volume
@@ -19,6 +17,12 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_voice_probe_redt
     _runtime,
     _telemetry_manifest,
 )
+from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_voice_probe_redteam_pre_media import (
+    FINAL_BUILD_REPORT_SHA256,
+    FINAL_DEPLOYABLE_BIN_SHA256,
+    FINAL_DEPLOYABLE_CUE_SHA256,
+    FINAL_MANIFEST_SHA256,
+)
 from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_voice_probe_redteam_guarded_deployment import (
     CONFIRMATION_TOKEN,
     DESTINATION_NAME,
@@ -26,7 +30,6 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_voice_probe_redt
     EXPECTED_BUILD_REPORT_SHA256,
     EXPECTED_CUE_SHA256,
     EXPECTED_MANIFEST_SHA256,
-    SaturnSblMidiCalibrationSddrv210VoiceProbeRedTeamGuardedDeploymentError,
     _require_final_hash_lock,
 )
 
@@ -174,23 +177,35 @@ def test_redteam_manifest_records_independent_evidence_contract():
     assert telemetry["u32_double_sample_stability"] is True
 
 
-def test_redteam_guard_is_separate_and_fails_closed_before_r3_hash_lock():
+def test_redteam_guard_is_separate_and_locks_exact_r3_fix1_build():
     assert DESTINATION_NAME == (
         "SRK-Diagnostics-SBL-MIDI-CAL-SDDRV210-VOICE-PROBE-REDTEAM"
     )
     assert CONFIRMATION_TOKEN == (
         "DEPLOY-SBL-MIDI-CALIBRATION-SDDRV210-VOICE-PROBE-REDTEAM"
     )
-    assert EXPECTED_MANIFEST_SHA256 is None
-    assert EXPECTED_BUILD_REPORT_SHA256 is None
-    assert EXPECTED_BIN_SHA256 is None
-    assert EXPECTED_CUE_SHA256 is None
-
-    with pytest.raises(
-        SaturnSblMidiCalibrationSddrv210VoiceProbeRedTeamGuardedDeploymentError,
-        match="intentionally blocked",
-    ):
-        _require_final_hash_lock()
+    assert FINAL_MANIFEST_SHA256 == (
+        "203d19d5925d40257b3619ee896bea62f4e03ac24d059152ceb7b6a415fb3656"
+    )
+    assert FINAL_BUILD_REPORT_SHA256 == (
+        "eb65e5b39d62b96db550bbf173cfd0c11ef2f1904f143958b69ceb72b203afa8"
+    )
+    assert FINAL_DEPLOYABLE_BIN_SHA256 == (
+        "27445ee35c639213bc522d6b762728e6321617fd9e9dbc43dc63fb0d9bf8b8f5"
+    )
+    assert FINAL_DEPLOYABLE_CUE_SHA256 == (
+        "5d3de34e75e7c86bb18b474bb9047dd2edf67c1e26eb87e0f0b70ff6c9022950"
+    )
+    assert EXPECTED_MANIFEST_SHA256 == FINAL_MANIFEST_SHA256
+    assert EXPECTED_BUILD_REPORT_SHA256 == FINAL_BUILD_REPORT_SHA256
+    assert EXPECTED_BIN_SHA256 == FINAL_DEPLOYABLE_BIN_SHA256
+    assert EXPECTED_CUE_SHA256 == FINAL_DEPLOYABLE_CUE_SHA256
+    assert _require_final_hash_lock() == (
+        FINAL_MANIFEST_SHA256,
+        FINAL_BUILD_REPORT_SHA256,
+        FINAL_DEPLOYABLE_BIN_SHA256,
+        FINAL_DEPLOYABLE_CUE_SHA256,
+    )
 
 
 def test_redteam_reset_state_is_injected_structurally_once():
