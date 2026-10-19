@@ -191,7 +191,7 @@ def test_voice_probe_manifest_records_exact_read_only_contract():
     assert telemetry["voice_probe_is_read_only"] is True
 
 
-def test_r1_voice_probe_remains_versioned_behind_level_seed_keyed_redteam_and_wordbus_probes():
+def test_r1_voice_probe_remains_versioned_behind_velocity_level_seed_keyed_redteam_and_wordbus_probes():
     source_root = (
         ROOT
         / "src"
@@ -201,6 +201,9 @@ def test_r1_voice_probe_remains_versioned_behind_level_seed_keyed_redteam_and_wo
     )
     contract = (
         source_root / "sbl_midi_calibration_candidate_contract.py"
+    ).read_text(encoding="utf-8")
+    velocity_sweep = (
+        source_root / "sbl_midi_calibration_sddrv210_voice_probe_velocity_sweep.py"
     ).read_text(encoding="utf-8")
     level_seed = (
         source_root / "sbl_midi_calibration_sddrv210_voice_probe_level_seed.py"
@@ -215,13 +218,17 @@ def test_r1_voice_probe_remains_versioned_behind_level_seed_keyed_redteam_and_wo
         source_root / "sbl_midi_calibration_sddrv210_voice_probe_wordbus.py"
     ).read_text(encoding="utf-8")
     assert (
-        "from . import sbl_midi_calibration_sddrv210_voice_probe_level_seed "
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_velocity_sweep "
         "as _sddrv210_probe"
         in contract
     )
     assert (
         "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
         in contract
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_level_seed as _r5"
+        in velocity_sweep
     )
     assert (
         "from . import sbl_midi_calibration_sddrv210_voice_probe_keyed as _r4"
