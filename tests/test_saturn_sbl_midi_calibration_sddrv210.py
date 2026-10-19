@@ -200,7 +200,7 @@ def test_sddrv210_guard_is_versioned_and_locks_exact_telemetry_correct_build():
     assert FINAL_DEPLOYABLE_BIN_SHA256 != TRANSITION_DEPLOYABLE_BIN_SHA256
 
 
-def test_deployed_sddrv210_contract_remains_preserved_behind_wordbus_probe_chain():
+def test_deployed_sddrv210_contract_remains_preserved_behind_redteam_probe_chain():
     source_root = (
         ROOT
         / "src"
@@ -210,6 +210,9 @@ def test_deployed_sddrv210_contract_remains_preserved_behind_wordbus_probe_chain
     )
     contract = (
         source_root / "sbl_midi_calibration_candidate_contract.py"
+    ).read_text(encoding="utf-8")
+    redteam = (
+        source_root / "sbl_midi_calibration_sddrv210_voice_probe_redteam.py"
     ).read_text(encoding="utf-8")
     wordbus = (
         source_root / "sbl_midi_calibration_sddrv210_voice_probe_wordbus.py"
@@ -222,12 +225,21 @@ def test_deployed_sddrv210_contract_remains_preserved_behind_wordbus_probe_chain
     ).read_text(encoding="utf-8")
 
     assert (
-        "from . import sbl_midi_calibration_sddrv210_voice_probe_wordbus as _sddrv210_probe"
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_redteam "
+        "as _sddrv210_probe"
         in contract
     )
     assert (
         "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
         in contract
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_wordbus as _r2"
+        in redteam
+    )
+    assert (
+        "return _r2.build_saturn_sbl_midi_calibration_candidate("
+        in redteam
     )
     assert (
         "from . import sbl_midi_calibration_sddrv210_voice_probe as _probe"
