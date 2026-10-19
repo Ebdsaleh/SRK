@@ -191,22 +191,31 @@ def test_voice_probe_manifest_records_exact_read_only_contract():
     assert telemetry["voice_probe_is_read_only"] is True
 
 
-def test_current_candidate_routes_probe_while_volume_candidate_remains_versioned():
-    source = (
+def test_r1_voice_probe_remains_versioned_behind_current_wordbus_probe():
+    source_root = (
         ROOT
         / "src"
         / "rikai_kotoba"
         / "hardware"
         / "saturn"
-        / "sbl_midi_calibration_candidate_contract.py"
+    )
+    contract = (
+        source_root / "sbl_midi_calibration_candidate_contract.py"
+    ).read_text(encoding="utf-8")
+    wordbus = (
+        source_root / "sbl_midi_calibration_sddrv210_voice_probe_wordbus.py"
     ).read_text(encoding="utf-8")
     assert (
-        "from . import sbl_midi_calibration_sddrv210_voice_probe as _sddrv210_probe"
-        in source
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_wordbus as _sddrv210_probe"
+        in contract
     )
     assert (
         "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
-        in source
+        in contract
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_voice_probe as _probe"
+        in wordbus
     )
 
 
