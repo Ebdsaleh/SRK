@@ -200,7 +200,7 @@ def test_sddrv210_guard_is_versioned_and_locks_exact_telemetry_correct_build():
     assert FINAL_DEPLOYABLE_BIN_SHA256 != TRANSITION_DEPLOYABLE_BIN_SHA256
 
 
-def test_deployed_sddrv210_contract_remains_preserved_behind_probe_and_volume_layers():
+def test_deployed_sddrv210_contract_remains_preserved_behind_wordbus_probe_chain():
     source_root = (
         ROOT
         / "src"
@@ -211,6 +211,9 @@ def test_deployed_sddrv210_contract_remains_preserved_behind_probe_and_volume_la
     contract = (
         source_root / "sbl_midi_calibration_candidate_contract.py"
     ).read_text(encoding="utf-8")
+    wordbus = (
+        source_root / "sbl_midi_calibration_sddrv210_voice_probe_wordbus.py"
+    ).read_text(encoding="utf-8")
     probe = (
         source_root / "sbl_midi_calibration_sddrv210_voice_probe.py"
     ).read_text(encoding="utf-8")
@@ -219,12 +222,20 @@ def test_deployed_sddrv210_contract_remains_preserved_behind_probe_and_volume_la
     ).read_text(encoding="utf-8")
 
     assert (
-        "from . import sbl_midi_calibration_sddrv210_voice_probe as _sddrv210_probe"
+        "from . import sbl_midi_calibration_sddrv210_voice_probe_wordbus as _sddrv210_probe"
         in contract
     )
     assert (
         "return _sddrv210_probe.build_saturn_sbl_midi_calibration_candidate("
         in contract
+    )
+    assert (
+        "from . import sbl_midi_calibration_sddrv210_voice_probe as _probe"
+        in wordbus
+    )
+    assert (
+        "return _probe.build_saturn_sbl_midi_calibration_candidate("
+        in wordbus
     )
     assert (
         "from . import sbl_midi_calibration_sddrv210_volume as _volume"
