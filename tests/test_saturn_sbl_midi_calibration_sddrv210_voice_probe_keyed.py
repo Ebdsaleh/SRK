@@ -33,6 +33,14 @@ from rikai_kotoba.hardware.saturn.sbl_midi_calibration_sddrv210_voice_probe_keye
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "integrations" / "saturn" / "standalone" / "srk_saturn_main.c"
+PRE_MEDIA = (
+    ROOT
+    / "src"
+    / "rikai_kotoba"
+    / "hardware"
+    / "saturn"
+    / "sbl_midi_calibration_sddrv210_voice_probe_keyed_pre_media.py"
+)
 
 
 def _families() -> SaturnGmCalibrationFamilyBanks:
@@ -213,3 +221,20 @@ def test_keyed_guard_is_separate_and_fails_closed_before_r4_hash_lock():
         match="intentionally blocked",
     ):
         _require_final_hash_lock()
+
+
+def test_keyed_pre_media_checks_struct_fields_in_generated_header():
+    source = PRE_MEDIA.read_text(encoding="utf-8")
+    assert '_RUNTIME_HEADER = "src/srk_saturn_sbl_midi_calibration_runtime.h"' in source
+
+    header_start = source.index("runtime_header = ")
+    runtime_start = source.index("runtime = ", header_start)
+    header_audit = source[header_start:runtime_start]
+    runtime_audit = source[runtime_start:]
+
+    assert '"unsigned int keyed_scsp_slot;"' in header_audit
+    assert '"unsigned int latched_keyed_scsp_slot;"' in header_audit
+    assert '"unsigned int keyed_scsp_slot"' not in runtime_audit
+    assert '"unsigned int latched_keyed_scsp_slot"' not in runtime_audit
+    assert '"s->keyed_scsp_slot=SRK_SBL_CAL_SLOT_NONE"' in runtime_audit
+    assert '"s->latched_keyed_scsp_slot=SRK_SBL_CAL_SLOT_NONE"' in runtime_audit
