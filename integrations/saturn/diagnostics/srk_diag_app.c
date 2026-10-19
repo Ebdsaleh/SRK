@@ -546,6 +546,7 @@ static void srk_diag_render_midi(
         srk_diag_draw(host, 2, 21, "L/R Pan left/right");
         srk_diag_draw(host, 2, 22, "A Hold = NOTE ON; release = NOTE OFF");
         srk_diag_draw(host, 2, 23, "X Mark current program for review");
+        srk_diag_draw(host, 2, 24, "B/C Velocity -/+ (1..127)");
         srk_diag_draw(host, 2, 25, "START Note off + return to menu");
     }
 
@@ -810,6 +811,20 @@ void srk_diag_app_frame(SRK_DIAG_APP *app, SRK_DIAG_HOST *host)
                     app->midi.pan
                 ))
                     app->midi.last_error = 1u;
+            }
+            if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_B) ||
+               srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_C)){
+                srk_diag_midi_note_off(app, host);
+                if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_B))
+                    srk_diag_midi_test_move_velocity(
+                        &app->midi,
+                        -(int)SRK_DIAG_MIDI_VELOCITY_STEP
+                    );
+                else
+                    srk_diag_midi_test_move_velocity(
+                        &app->midi,
+                        (int)SRK_DIAG_MIDI_VELOCITY_STEP
+                    );
             }
             if(srk_diag_input_was_pressed(&app->input, SRK_DIAG_BUTTON_A) &&
                app->midi.prepared && !app->midi.note_active){
