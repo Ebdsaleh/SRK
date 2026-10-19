@@ -7,6 +7,10 @@ from contextlib import contextmanager
 from . import sbl_midi_calibration_consolidated_guarded_deployment as _guard
 from .sbl_midi_calibration_sddrv210 import SDDRV210_SHA256
 from .sbl_midi_calibration_sddrv210_voice_probe_keyed_pre_media import (
+    FINAL_BUILD_REPORT_SHA256,
+    FINAL_DEPLOYABLE_BIN_SHA256,
+    FINAL_DEPLOYABLE_CUE_SHA256,
+    FINAL_MANIFEST_SHA256,
     audit_sddrv210_voice_probe_keyed_pre_media,
 )
 
@@ -16,11 +20,11 @@ DESTINATION_NAME = "SRK-Diagnostics-SBL-MIDI-CAL-SDDRV210-VOICE-PROBE-KEYED"
 CATEGORY = "TEST"
 EXPECTED_SOUND_DRIVER_SHA256 = SDDRV210_SHA256
 
-# Fail closed until the first off-card R4 build is audited.
-EXPECTED_MANIFEST_SHA256: str | None = None
-EXPECTED_BUILD_REPORT_SHA256: str | None = None
-EXPECTED_BIN_SHA256: str | None = None
-EXPECTED_CUE_SHA256: str | None = None
+# Exact R4 keyed-state off-card build audited on Eridu on 2026-10-19.
+EXPECTED_MANIFEST_SHA256: str | None = FINAL_MANIFEST_SHA256
+EXPECTED_BUILD_REPORT_SHA256: str | None = FINAL_BUILD_REPORT_SHA256
+EXPECTED_BIN_SHA256: str | None = FINAL_DEPLOYABLE_BIN_SHA256
+EXPECTED_CUE_SHA256: str | None = FINAL_DEPLOYABLE_CUE_SHA256
 
 SaturnSblMidiCalibrationSddrv210VoiceProbeKeyedGuardedDeploymentError = (
     _guard.SaturnSblMidiCalibrationConsolidatedGuardedDeploymentError
