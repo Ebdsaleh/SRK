@@ -13,6 +13,9 @@ SaturnSblMidiCalibrationSddrv210VoiceProbeKeyedPreMediaError = (
 )
 
 
+_RUNTIME_HEADER = "src/srk_saturn_sbl_midi_calibration_runtime.h"
+
+
 def audit_sddrv210_voice_probe_keyed_pre_media(project_directory):
     report = _r3.audit_sddrv210_voice_probe_redteam_pre_media(project_directory)
 
@@ -53,14 +56,24 @@ def audit_sddrv210_voice_probe_keyed_pre_media(project_directory):
             telemetry.get(key), wanted, f"R4 keyed telemetry {key}"
         )
 
+    runtime_header = _r3._sddrv._base._file(
+        root, _RUNTIME_HEADER, "SDDRV210 R4 keyed probe runtime header"
+    ).read_text(encoding="utf-8", errors="strict")
+    _r3._sddrv._base._require_source_anchors(
+        runtime_header,
+        (
+            "unsigned int keyed_scsp_slot;",
+            "unsigned int latched_keyed_scsp_slot;",
+        ),
+        "SDDRV210 R4 keyed runtime header",
+    )
+
     runtime = _r3._sddrv._base._file(
         root, _r3._sddrv._base._RUNTIME, "SDDRV210 R4 keyed probe runtime"
     ).read_text(encoding="utf-8", errors="strict")
     _r3._sddrv._base._require_source_anchors(
         runtime,
         (
-            "unsigned int keyed_scsp_slot",
-            "unsigned int latched_keyed_scsp_slot",
             "s->keyed_scsp_slot=SRK_SBL_CAL_SLOT_NONE",
             "s->latched_keyed_scsp_slot=SRK_SBL_CAL_SLOT_NONE",
             "if((srk_cal_probe_reg16(r+0x00UL)&SRK_SBL_CAL_SCSP_KYONB_MASK)!=0u)",
